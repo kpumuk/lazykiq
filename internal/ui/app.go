@@ -1,28 +1,42 @@
 package ui
 
 import (
+	"context"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components"
 	"github.com/kpumuk/lazykiq/internal/ui/theme"
 	"github.com/kpumuk/lazykiq/internal/ui/views"
 )
 
+// tickMsg is sent every 5 seconds to trigger a metrics update
+type tickMsg time.Time
+
+// connectionErrorMsg indicates a Redis connection error occurred
+type connectionErrorMsg struct {
+	err error
+}
+
 // App is the main application model
 type App struct {
-	keys       KeyMap
-	width      int
-	height     int
-	ready      bool
-	activeView int
-	views      []views.View
-	metrics    components.Metrics
-	navbar     components.Navbar
-	styles     theme.Styles
-	darkMode   bool
+	keys            KeyMap
+	width           int
+	height          int
+	ready           bool
+	activeView      int
+	views           []views.View
+	metrics         components.Metrics
+	navbar          components.Navbar
+	errorPopup      components.ErrorPopup
+	styles          theme.Styles
+	darkMode        bool
+	sidekiq         *sidekiq.Client
+	connectionError error
 }
 
 // New creates a new App instance
@@ -53,8 +67,10 @@ func New() App {
 		views:      viewList,
 		metrics:    components.NewMetrics(&styles),
 		navbar:     components.NewNavbar(viewList, &styles),
+		errorPopup: components.NewErrorPopup(&styles),
 		styles:     styles,
 		darkMode:   true,
+		sidekiq:    sidekiq.NewClient(),
 	}
 }
 
@@ -63,7 +79,38 @@ func (a App) Init() tea.Cmd {
 	return tea.Batch(
 		a.views[a.activeView].Init(),
 		a.metrics.Init(),
+		func() tea.Msg { return a.fetchStatsCmd() }, // Fetch stats immediately
+		tickCmd(), // Start the ticker for subsequent updates
 	)
+}
+
+// tickCmd returns a command that sends a tick message after 5 seconds
+func tickCmd() tea.Cmd {
+	return tea.Tick(5*time.Second, func(t time.Time) tea.Msg {
+		return tickMsg(t)
+	})
+}
+
+// fetchStatsCmd fetches Sidekiq stats and returns a MetricsUpdateMsg or connectionErrorMsg
+func (a App) fetchStatsCmd() tea.Msg {
+	ctx := context.Background()
+	stats, err := a.sidekiq.GetStats(ctx)
+	if err != nil {
+		// Return connection error message
+		return connectionErrorMsg{err: err}
+	}
+
+	return components.MetricsUpdateMsg{
+		Data: components.MetricsData{
+			Processed: stats.Processed,
+			Failed:    stats.Failed,
+			Busy:      stats.Busy,
+			Enqueued:  stats.Enqueued,
+			Retries:   stats.Retries,
+			Scheduled: stats.Scheduled,
+			Dead:      stats.Dead,
+		},
+	}
 }
 
 // Update implements tea.Model
@@ -71,6 +118,16 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
+	case tickMsg:
+		// Fetch stats and schedule next tick
+		cmds = append(cmds, func() tea.Msg {
+			return a.fetchStatsCmd()
+		}, tickCmd())
+
+	case connectionErrorMsg:
+		// Store the connection error
+		a.connectionError = msg.err
+
 	case tea.KeyMsg:
 		// Handle global keybindings first
 		switch {
@@ -129,8 +186,14 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for i := range a.views {
 			a.views[i] = a.views[i].SetSize(contentWidth, contentHeight)
 		}
+		a.errorPopup = a.errorPopup.SetSize(contentWidth, contentHeight)
 
 	default:
+		// Clear connection error on successful metrics update
+		if _, ok := msg.(components.MetricsUpdateMsg); ok {
+			a.connectionError = nil
+		}
+
 		// Pass messages to metrics for updates
 		updatedMetrics, cmd := a.metrics.Update(msg)
 		a.metrics = updatedMetrics
@@ -157,6 +220,12 @@ func (a App) View() string {
 	contentWidth := a.width - 2
 
 	content := a.renderBorderedBox(title, a.views[a.activeView].View(), contentWidth, contentHeight)
+
+	// If there's a connection error, overlay the error popup
+	if a.connectionError != nil {
+		popup := a.errorPopup.SetMessage(a.connectionError.Error())
+		content = popup.Render(content)
+	}
 
 	// Build the layout: metrics (top) + content (middle) + navbar (bottom)
 	return lipgloss.JoinVertical(
@@ -242,6 +311,7 @@ func (a *App) applyTheme() {
 	// Update components
 	a.metrics = a.metrics.SetStyles(&a.styles)
 	a.navbar = a.navbar.SetStyles(&a.styles)
+	a.errorPopup = a.errorPopup.SetStyles(&a.styles)
 
 	// Update views
 	viewStyles := views.Styles{
