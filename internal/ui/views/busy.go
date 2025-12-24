@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
+	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 	"github.com/kpumuk/lazykiq/internal/ui/format"
 )
@@ -60,11 +61,11 @@ func (b *Busy) Update(msg tea.Msg) (View, tea.Cmd) {
 // View implements View
 func (b *Busy) View() string {
 	if !b.ready {
-		return b.renderLoadingBox()
+		return b.renderMessage("Loading...")
 	}
 
 	if len(b.data.Processes) == 0 && len(b.data.Jobs) == 0 {
-		return b.renderMessageBox("No active processes")
+		return b.renderMessage("No active processes")
 	}
 
 	var output strings.Builder
@@ -301,86 +302,18 @@ func (b *Busy) renderJobsBox() string {
 	return topBorder + "\n" + strings.Join(middleLines, "\n") + "\n" + bottomBorder
 }
 
-// renderLoadingBox renders the loading state
-func (b *Busy) renderLoadingBox() string {
-	return b.renderMessageBox("Loading...")
-}
+func (b *Busy) renderMessage(msg string) string {
+	// Header: "No processes" placeholder
+	header := b.styles.BoxPadding.Render(b.styles.Muted.Render("No processes"))
+	headerHeight := 2 // placeholder line + newline
 
-// renderMessageBox renders process list placeholder + bordered box with centered message
-func (b *Busy) renderMessageBox(message string) string {
-	var output strings.Builder
+	// Bordered box with centered message
+	boxHeight := b.height - headerHeight
+	box := messagebox.Render(messagebox.Styles{
+		Title:  b.styles.Title,
+		Muted:  b.styles.Muted,
+		Border: b.styles.BorderStyle,
+	}, "Active Jobs", msg, b.width, boxHeight)
 
-	// 1. Empty process list area (1 line placeholder + spacing)
-	output.WriteString(b.styles.BoxPadding.Render(b.styles.Muted.Render("No processes")))
-	output.WriteString("\n")
-
-	// 2. Bordered "Active Jobs" box
-	title := "Active Jobs"
-	processListHeight := 2 // placeholder line + newline
-	boxHeight := b.height - processListHeight
-	if boxHeight < 5 {
-		boxHeight = 5
-	}
-	boxWidth := b.width
-
-	// Build the border
-	border := lipgloss.RoundedBorder()
-
-	// Top border with title
-	titleText := " " + title + " "
-	styledTitle := b.styles.Title.Render(titleText)
-	titleWidth := lipgloss.Width(styledTitle)
-	innerWidth := boxWidth - 2
-	leftPad := 1
-	rightPad := innerWidth - titleWidth - leftPad
-	if rightPad < 0 {
-		rightPad = 0
-	}
-
-	hBar := b.styles.BorderStyle.Render(string(border.Top))
-	topBorder := b.styles.BorderStyle.Render(string(border.TopLeft)) +
-		strings.Repeat(hBar, leftPad) +
-		styledTitle +
-		strings.Repeat(hBar, rightPad) +
-		b.styles.BorderStyle.Render(string(border.TopRight))
-
-	// Content with side borders - centered message
-	vBar := b.styles.BorderStyle.Render(string(border.Left))
-	vBarRight := b.styles.BorderStyle.Render(string(border.Right))
-
-	contentHeight := boxHeight - 2 // minus top and bottom borders
-	var middleLines []string
-
-	// Center the message vertically
-	msgText := b.styles.Muted.Render(message)
-	msgWidth := lipgloss.Width(msgText)
-	centerRow := contentHeight / 2
-
-	for i := 0; i < contentHeight; i++ {
-		var line string
-		if i == centerRow {
-			// Center horizontally
-			leftPadding := (innerWidth - msgWidth) / 2
-			if leftPadding < 0 {
-				leftPadding = 0
-			}
-			rightPadding := innerWidth - leftPadding - msgWidth
-			if rightPadding < 0 {
-				rightPadding = 0
-			}
-			line = strings.Repeat(" ", leftPadding) + msgText + strings.Repeat(" ", rightPadding)
-		} else {
-			line = strings.Repeat(" ", innerWidth)
-		}
-		middleLines = append(middleLines, vBar+line+vBarRight)
-	}
-
-	// Bottom border
-	bottomBorder := b.styles.BorderStyle.Render(string(border.BottomLeft)) +
-		strings.Repeat(hBar, innerWidth) +
-		b.styles.BorderStyle.Render(string(border.BottomRight))
-
-	output.WriteString(topBorder + "\n" + strings.Join(middleLines, "\n") + "\n" + bottomBorder)
-
-	return output.String()
+	return header + "\n" + box
 }

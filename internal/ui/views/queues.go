@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
+	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 	"github.com/kpumuk/lazykiq/internal/ui/format"
 )
@@ -117,11 +118,11 @@ func (q *Queues) Update(msg tea.Msg) (View, tea.Cmd) {
 // View implements View
 func (q *Queues) View() string {
 	if !q.ready {
-		return q.renderLoadingBox()
+		return q.renderMessage("Loading...")
 	}
 
 	if len(q.queues) == 0 {
-		return q.renderMessageBox("No queues")
+		return q.renderMessage("No queues")
 	}
 
 	var output strings.Builder
@@ -384,86 +385,18 @@ func (q *Queues) renderJobsBox() string {
 	return topBorder + "\n" + strings.Join(middleLines, "\n") + "\n" + bottomBorder
 }
 
-// renderLoadingBox renders the loading state
-func (q *Queues) renderLoadingBox() string {
-	return q.renderMessageBox("Loading...")
-}
+func (q *Queues) renderMessage(msg string) string {
+	// Header: "No queues" placeholder
+	header := q.styles.BoxPadding.Render(q.styles.Muted.Render("No queues"))
+	headerHeight := 2 // placeholder line + newline
 
-// renderMessageBox renders queue list placeholder + bordered box with centered message
-func (q *Queues) renderMessageBox(message string) string {
-	var output strings.Builder
+	// Bordered box with centered message
+	boxHeight := q.height - headerHeight
+	box := messagebox.Render(messagebox.Styles{
+		Title:  q.styles.Title,
+		Muted:  q.styles.Muted,
+		Border: q.styles.BorderStyle,
+	}, "Jobs", msg, q.width, boxHeight)
 
-	// 1. Empty queue list area (1 line placeholder + spacing)
-	output.WriteString(q.styles.BoxPadding.Render(q.styles.Muted.Render("No queues")))
-	output.WriteString("\n")
-
-	// 2. Bordered "Jobs" box
-	title := "Jobs"
-	queueListHeight := 2 // placeholder line + newline
-	boxHeight := q.height - queueListHeight
-	if boxHeight < 5 {
-		boxHeight = 5
-	}
-	boxWidth := q.width
-
-	// Build the border
-	border := lipgloss.RoundedBorder()
-
-	// Top border with title
-	titleText := " " + title + " "
-	styledTitle := q.styles.Title.Render(titleText)
-	titleWidth := lipgloss.Width(styledTitle)
-	innerWidth := boxWidth - 2
-	leftPad := 1
-	rightPad := innerWidth - titleWidth - leftPad
-	if rightPad < 0 {
-		rightPad = 0
-	}
-
-	hBar := q.styles.BorderStyle.Render(string(border.Top))
-	topBorder := q.styles.BorderStyle.Render(string(border.TopLeft)) +
-		strings.Repeat(hBar, leftPad) +
-		styledTitle +
-		strings.Repeat(hBar, rightPad) +
-		q.styles.BorderStyle.Render(string(border.TopRight))
-
-	// Content with side borders - centered message
-	vBar := q.styles.BorderStyle.Render(string(border.Left))
-	vBarRight := q.styles.BorderStyle.Render(string(border.Right))
-
-	contentHeight := boxHeight - 2 // minus top and bottom borders
-	var middleLines []string
-
-	// Center the message vertically
-	msgText := q.styles.Muted.Render(message)
-	msgWidth := lipgloss.Width(msgText)
-	centerRow := contentHeight / 2
-
-	for i := 0; i < contentHeight; i++ {
-		var line string
-		if i == centerRow {
-			// Center horizontally
-			leftPadding := (innerWidth - msgWidth) / 2
-			if leftPadding < 0 {
-				leftPadding = 0
-			}
-			rightPadding := innerWidth - leftPadding - msgWidth
-			if rightPadding < 0 {
-				rightPadding = 0
-			}
-			line = strings.Repeat(" ", leftPadding) + msgText + strings.Repeat(" ", rightPadding)
-		} else {
-			line = strings.Repeat(" ", innerWidth)
-		}
-		middleLines = append(middleLines, vBar+line+vBarRight)
-	}
-
-	// Bottom border
-	bottomBorder := q.styles.BorderStyle.Render(string(border.BottomLeft)) +
-		strings.Repeat(hBar, innerWidth) +
-		q.styles.BorderStyle.Render(string(border.BottomRight))
-
-	output.WriteString(topBorder + "\n" + strings.Join(middleLines, "\n") + "\n" + bottomBorder)
-
-	return output.String()
+	return header + "\n" + box
 }

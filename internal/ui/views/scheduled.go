@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
+	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 	"github.com/kpumuk/lazykiq/internal/ui/format"
 )
@@ -92,14 +93,22 @@ func (s *Scheduled) Update(msg tea.Msg) (View, tea.Cmd) {
 // View implements View
 func (s *Scheduled) View() string {
 	if !s.ready {
-		return s.renderMessageBox("Loading...")
+		return s.renderMessage("Loading...")
 	}
 
 	if len(s.jobs) == 0 && s.totalSize == 0 {
-		return s.renderMessageBox("No scheduled jobs")
+		return s.renderMessage("No scheduled jobs")
 	}
 
 	return s.renderJobsBox()
+}
+
+func (s *Scheduled) renderMessage(msg string) string {
+	return messagebox.Render(messagebox.Styles{
+		Title:  s.styles.Title,
+		Muted:  s.styles.Muted,
+		Border: s.styles.BorderStyle,
+	}, "Scheduled", msg, s.width, s.height)
 }
 
 // Name implements View
@@ -273,71 +282,3 @@ func (s *Scheduled) renderJobsBox() string {
 	return topBorder + "\n" + strings.Join(middleLines, "\n") + "\n" + bottomBorder
 }
 
-// renderMessageBox renders a bordered box with centered message
-func (s *Scheduled) renderMessageBox(message string) string {
-	title := "Scheduled"
-	boxHeight := s.height
-	if boxHeight < 5 {
-		boxHeight = 5
-	}
-	boxWidth := s.width
-
-	// Build the border
-	border := lipgloss.RoundedBorder()
-
-	// Top border with title
-	titleText := " " + title + " "
-	styledTitle := s.styles.Title.Render(titleText)
-	titleWidth := lipgloss.Width(styledTitle)
-	innerWidth := boxWidth - 2
-	leftPad := 1
-	rightPad := innerWidth - titleWidth - leftPad
-	if rightPad < 0 {
-		rightPad = 0
-	}
-
-	hBar := s.styles.BorderStyle.Render(string(border.Top))
-	topBorder := s.styles.BorderStyle.Render(string(border.TopLeft)) +
-		strings.Repeat(hBar, leftPad) +
-		styledTitle +
-		strings.Repeat(hBar, rightPad) +
-		s.styles.BorderStyle.Render(string(border.TopRight))
-
-	// Content with side borders - centered message
-	vBar := s.styles.BorderStyle.Render(string(border.Left))
-	vBarRight := s.styles.BorderStyle.Render(string(border.Right))
-
-	contentHeight := boxHeight - 2 // minus top and bottom borders
-	var middleLines []string
-
-	// Center the message vertically
-	msgText := s.styles.Muted.Render(message)
-	msgWidth := lipgloss.Width(msgText)
-	centerRow := contentHeight / 2
-
-	for i := 0; i < contentHeight; i++ {
-		var line string
-		if i == centerRow {
-			// Center horizontally
-			leftPadding := (innerWidth - msgWidth) / 2
-			if leftPadding < 0 {
-				leftPadding = 0
-			}
-			rightPadding := innerWidth - leftPadding - msgWidth
-			if rightPadding < 0 {
-				rightPadding = 0
-			}
-			line = strings.Repeat(" ", leftPadding) + msgText + strings.Repeat(" ", rightPadding)
-		} else {
-			line = strings.Repeat(" ", innerWidth)
-		}
-		middleLines = append(middleLines, vBar+line+vBarRight)
-	}
-
-	// Bottom border
-	bottomBorder := s.styles.BorderStyle.Render(string(border.BottomLeft)) +
-		strings.Repeat(hBar, innerWidth) +
-		s.styles.BorderStyle.Render(string(border.BottomRight))
-
-	return topBorder + "\n" + strings.Join(middleLines, "\n") + "\n" + bottomBorder
-}

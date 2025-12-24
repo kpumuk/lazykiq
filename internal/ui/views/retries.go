@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
+	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 	"github.com/kpumuk/lazykiq/internal/ui/format"
 )
@@ -92,14 +93,22 @@ func (r *Retries) Update(msg tea.Msg) (View, tea.Cmd) {
 // View implements View
 func (r *Retries) View() string {
 	if !r.ready {
-		return r.renderMessageBox("Loading...")
+		return r.renderMessage("Loading...")
 	}
 
 	if len(r.jobs) == 0 && r.totalSize == 0 {
-		return r.renderMessageBox("No retries")
+		return r.renderMessage("No retries")
 	}
 
 	return r.renderJobsBox()
+}
+
+func (r *Retries) renderMessage(msg string) string {
+	return messagebox.Render(messagebox.Styles{
+		Title:  r.styles.Title,
+		Muted:  r.styles.Muted,
+		Border: r.styles.BorderStyle,
+	}, "Retries", msg, r.width, r.height)
 }
 
 // Name implements View
@@ -290,71 +299,3 @@ func (r *Retries) renderJobsBox() string {
 	return topBorder + "\n" + strings.Join(middleLines, "\n") + "\n" + bottomBorder
 }
 
-// renderMessageBox renders a bordered box with centered message
-func (r *Retries) renderMessageBox(message string) string {
-	title := "Retries"
-	boxHeight := r.height
-	if boxHeight < 5 {
-		boxHeight = 5
-	}
-	boxWidth := r.width
-
-	// Build the border
-	border := lipgloss.RoundedBorder()
-
-	// Top border with title
-	titleText := " " + title + " "
-	styledTitle := r.styles.Title.Render(titleText)
-	titleWidth := lipgloss.Width(styledTitle)
-	innerWidth := boxWidth - 2
-	leftPad := 1
-	rightPad := innerWidth - titleWidth - leftPad
-	if rightPad < 0 {
-		rightPad = 0
-	}
-
-	hBar := r.styles.BorderStyle.Render(string(border.Top))
-	topBorder := r.styles.BorderStyle.Render(string(border.TopLeft)) +
-		strings.Repeat(hBar, leftPad) +
-		styledTitle +
-		strings.Repeat(hBar, rightPad) +
-		r.styles.BorderStyle.Render(string(border.TopRight))
-
-	// Content with side borders - centered message
-	vBar := r.styles.BorderStyle.Render(string(border.Left))
-	vBarRight := r.styles.BorderStyle.Render(string(border.Right))
-
-	contentHeight := boxHeight - 2 // minus top and bottom borders
-	var middleLines []string
-
-	// Center the message vertically
-	msgText := r.styles.Muted.Render(message)
-	msgWidth := lipgloss.Width(msgText)
-	centerRow := contentHeight / 2
-
-	for i := 0; i < contentHeight; i++ {
-		var line string
-		if i == centerRow {
-			// Center horizontally
-			leftPadding := (innerWidth - msgWidth) / 2
-			if leftPadding < 0 {
-				leftPadding = 0
-			}
-			rightPadding := innerWidth - leftPadding - msgWidth
-			if rightPadding < 0 {
-				rightPadding = 0
-			}
-			line = strings.Repeat(" ", leftPadding) + msgText + strings.Repeat(" ", rightPadding)
-		} else {
-			line = strings.Repeat(" ", innerWidth)
-		}
-		middleLines = append(middleLines, vBar+line+vBarRight)
-	}
-
-	// Bottom border
-	bottomBorder := r.styles.BorderStyle.Render(string(border.BottomLeft)) +
-		strings.Repeat(hBar, innerWidth) +
-		r.styles.BorderStyle.Render(string(border.BottomRight))
-
-	return topBorder + "\n" + strings.Join(middleLines, "\n") + "\n" + bottomBorder
-}
