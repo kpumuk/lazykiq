@@ -39,6 +39,7 @@ type App struct {
 	connectionError error
 	queuesPage      int // current page for Queues view (1-indexed)
 	selectedQueue   int // selected queue index for Queues view (0-indexed)
+	deadPage        int // current page for Dead view (1-indexed)
 }
 
 // New creates a new App instance
@@ -84,6 +85,7 @@ func New() App {
 		darkMode:   true,
 		sidekiq:    sidekiq.NewClient(),
 		queuesPage: 1,
+		deadPage:   1,
 	}
 }
 
@@ -137,6 +139,7 @@ func (a App) fetchBusyDataCmd() tea.Msg {
 }
 
 const queuesPageSize = 25
+const deadPageSize = 25
 
 // fetchQueuesDataCmd fetches queues data for the Queues view
 func (a App) fetchQueuesDataCmd() tea.Msg {
@@ -199,6 +202,41 @@ func (a App) fetchQueuesDataCmd() tea.Msg {
 	}
 }
 
+// fetchDeadDataCmd fetches dead jobs data for the Dead view
+func (a App) fetchDeadDataCmd() tea.Msg {
+	ctx := context.Background()
+
+	currentPage := a.deadPage
+	totalPages := 1
+
+	// Calculate pagination
+	start := (currentPage - 1) * deadPageSize
+	jobs, totalSize, err := a.sidekiq.GetDeadJobs(ctx, start, deadPageSize)
+	if err != nil {
+		return connectionErrorMsg{err: err}
+	}
+
+	// Calculate total pages
+	if totalSize > 0 {
+		totalPages = int((totalSize + deadPageSize - 1) / deadPageSize)
+	}
+
+	// Clamp current page to valid range
+	if currentPage > totalPages {
+		currentPage = totalPages
+	}
+	if currentPage < 1 {
+		currentPage = 1
+	}
+
+	return views.DeadUpdateMsg{
+		Jobs:        jobs,
+		CurrentPage: currentPage,
+		TotalPages:  totalPages,
+		TotalSize:   totalSize,
+	}
+}
+
 // Update implements tea.Model
 func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
@@ -219,6 +257,10 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case 2: // Queues view
 			cmds = append(cmds, func() tea.Msg {
 				return a.fetchQueuesDataCmd()
+			})
+		case 5: // Dead view
+			cmds = append(cmds, func() tea.Msg {
+				return a.fetchDeadDataCmd()
 			})
 		}
 
@@ -241,6 +283,13 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.queuesPage = 1 // Reset to first page when changing queues
 		cmds = append(cmds, func() tea.Msg {
 			return a.fetchQueuesDataCmd()
+		})
+
+	case views.DeadPageRequestMsg:
+		// Handle page change request from Dead view
+		a.deadPage = msg.Page
+		cmds = append(cmds, func() tea.Msg {
+			return a.fetchDeadDataCmd()
 		})
 
 	case tea.KeyMsg:
@@ -277,6 +326,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case key.Matches(msg, a.keys.View6):
 			a.activeView = 5
+			a.deadPage = 1 // Reset to first page when switching to Dead view
 			cmds = append(cmds, a.views[a.activeView].Init())
 
 		default:
@@ -301,9 +351,12 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Border takes 2 chars (left + right)
 		contentWidth := msg.Width - 2
 		for i := range a.views {
-			// Busy (1) and Queues (2) views render their own border, so give them the full area
+			// Busy (1) and Queues (2) views render their own border with header area outside, so give them extra height
 			if i == 1 || i == 2 {
 				a.views[i] = a.views[i].SetSize(contentWidth+2, contentHeight+3)
+			} else if i == 5 {
+				// Dead (5) renders its own border but has no header area outside
+				a.views[i] = a.views[i].SetSize(contentWidth+2, contentHeight+2)
 			} else {
 				a.views[i] = a.views[i].SetSize(contentWidth, contentHeight)
 			}
@@ -342,8 +395,8 @@ func (a App) View() string {
 	contentWidth := a.width - 2
 
 	var content string
-	// Busy (1) and Queues (2) views handle their own border (special case for list outside border)
-	if a.activeView == 1 || a.activeView == 2 {
+	// Busy (1), Queues (2), and Dead (5) views handle their own border
+	if a.activeView == 1 || a.activeView == 2 || a.activeView == 5 {
 		content = a.views[a.activeView].View()
 	} else {
 		content = a.renderBorderedBox(title, a.views[a.activeView].View(), contentWidth, contentHeight)
