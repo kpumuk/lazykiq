@@ -348,10 +348,17 @@ func (b *Busy) renderJobsBox() string {
 		content = b.table.View()
 	}
 
-	return jobsbox.Render(jobsbox.Styles{
-		Title:  b.styles.Title,
-		Border: b.styles.BorderStyle,
-	}, title, meta, content, b.width, boxHeight)
+	box := jobsbox.New(
+		jobsbox.WithStyles(jobsbox.Styles{
+			Title:  b.styles.Title,
+			Border: b.styles.BorderStyle,
+		}),
+		jobsbox.WithTitle(title),
+		jobsbox.WithMeta(meta),
+		jobsbox.WithContent(content),
+		jobsbox.WithSize(b.width, boxHeight),
+	)
+	return box.View()
 }
 
 func (b *Busy) renderMessage(msg string) string {

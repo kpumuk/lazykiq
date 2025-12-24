@@ -235,9 +235,16 @@ func (r *Retries) renderJobsBox() string {
 		content = r.table.View()
 	}
 
-	return jobsbox.Render(jobsbox.Styles{
-		Title:  r.styles.Title,
-		Border: r.styles.BorderStyle,
-	}, "Retries", meta, content, r.width, r.height)
+	box := jobsbox.New(
+		jobsbox.WithStyles(jobsbox.Styles{
+			Title:  r.styles.Title,
+			Border: r.styles.BorderStyle,
+		}),
+		jobsbox.WithTitle("Retries"),
+		jobsbox.WithMeta(meta),
+		jobsbox.WithContent(content),
+		jobsbox.WithSize(r.width, r.height),
+	)
+	return box.View()
 }
 

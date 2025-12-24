@@ -230,9 +230,16 @@ func (d *Dead) renderJobsBox() string {
 		content = d.table.View()
 	}
 
-	return jobsbox.Render(jobsbox.Styles{
-		Title:  d.styles.Title,
-		Border: d.styles.BorderStyle,
-	}, "Dead Jobs", meta, content, d.width, d.height)
+	box := jobsbox.New(
+		jobsbox.WithStyles(jobsbox.Styles{
+			Title:  d.styles.Title,
+			Border: d.styles.BorderStyle,
+		}),
+		jobsbox.WithTitle("Dead Jobs"),
+		jobsbox.WithMeta(meta),
+		jobsbox.WithContent(content),
+		jobsbox.WithSize(d.width, d.height),
+	)
+	return box.View()
 }
 

@@ -326,10 +326,17 @@ func (q *Queues) renderJobsBox() string {
 		content = q.table.View()
 	}
 
-	return jobsbox.Render(jobsbox.Styles{
-		Title:  q.styles.Title,
-		Border: q.styles.BorderStyle,
-	}, title, meta, content, q.width, boxHeight)
+	box := jobsbox.New(
+		jobsbox.WithStyles(jobsbox.Styles{
+			Title:  q.styles.Title,
+			Border: q.styles.BorderStyle,
+		}),
+		jobsbox.WithTitle(title),
+		jobsbox.WithMeta(meta),
+		jobsbox.WithContent(content),
+		jobsbox.WithSize(q.width, boxHeight),
+	)
+	return box.View()
 }
 
 func (q *Queues) renderMessage(msg string) string {

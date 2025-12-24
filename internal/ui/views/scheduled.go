@@ -218,9 +218,16 @@ func (s *Scheduled) renderJobsBox() string {
 		content = s.table.View()
 	}
 
-	return jobsbox.Render(jobsbox.Styles{
-		Title:  s.styles.Title,
-		Border: s.styles.BorderStyle,
-	}, "Scheduled", meta, content, s.width, s.height)
+	box := jobsbox.New(
+		jobsbox.WithStyles(jobsbox.Styles{
+			Title:  s.styles.Title,
+			Border: s.styles.BorderStyle,
+		}),
+		jobsbox.WithTitle("Scheduled"),
+		jobsbox.WithMeta(meta),
+		jobsbox.WithContent(content),
+		jobsbox.WithSize(s.width, s.height),
+	)
+	return box.View()
 }
 
