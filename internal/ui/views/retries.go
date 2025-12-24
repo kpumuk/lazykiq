@@ -2,13 +2,12 @@ package views
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
+	"github.com/kpumuk/lazykiq/internal/ui/components/jobsbox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 	"github.com/kpumuk/lazykiq/internal/ui/format"
@@ -224,78 +223,21 @@ func (r *Retries) ensureTable() {
 
 // renderJobsBox renders the bordered box containing the jobs table
 func (r *Retries) renderJobsBox() string {
-	// Build styled title parts: "Retries" on left, stats on right
-	titleLeft := " " + r.styles.Title.Render("Retries") + " "
-
-	// Build right side: SIZE and PAGE info
+	// Build meta: SIZE and PAGE info
 	sep := r.styles.Muted.Render(" • ")
 	sizeInfo := r.styles.MetricLabel.Render("SIZE: ") + r.styles.MetricValue.Render(format.Number(r.totalSize))
 	pageInfo := r.styles.MetricLabel.Render("PAGE: ") + r.styles.MetricValue.Render(fmt.Sprintf("%d/%d", r.currentPage, r.totalPages))
-	titleRight := " " + sizeInfo + sep + pageInfo + " "
-
-	// Calculate box dimensions
-	boxHeight := r.height
-	if boxHeight < 5 {
-		boxHeight = 5
-	}
-	boxWidth := r.width
-
-	// Build the border manually
-	border := lipgloss.RoundedBorder()
-
-	// Top border with title on left, stats on right
-	leftWidth := lipgloss.Width(titleLeft)
-	rightWidth := lipgloss.Width(titleRight)
-	innerWidth := boxWidth - 2
-	middlePad := innerWidth - leftWidth - rightWidth - 2
-	if middlePad < 0 {
-		middlePad = 0
-	}
-
-	hBar := r.styles.BorderStyle.Render(string(border.Top))
-	topBorder := r.styles.BorderStyle.Render(string(border.TopLeft)) +
-		hBar +
-		titleLeft +
-		strings.Repeat(hBar, middlePad) +
-		titleRight +
-		hBar +
-		r.styles.BorderStyle.Render(string(border.TopRight))
-
-	// Side borders
-	vBar := r.styles.BorderStyle.Render(string(border.Left))
-	vBarRight := r.styles.BorderStyle.Render(string(border.Right))
+	meta := sizeInfo + sep + pageInfo
 
 	// Get table content
-	tableContent := ""
+	content := ""
 	if r.table != nil {
-		tableContent = r.table.View()
-	}
-	lines := strings.Split(tableContent, "\n")
-
-	var middleLines []string
-	contentHeight := boxHeight - 2 // minus top and bottom borders
-
-	for i := 0; i < contentHeight; i++ {
-		var line string
-		if i < len(lines) {
-			line = lines[i]
-		}
-
-		// Add padding
-		line = " " + line + " "
-		lineWidth := lipgloss.Width(line)
-		padding := innerWidth - lineWidth
-		if padding > 0 {
-			line += strings.Repeat(" ", padding)
-		}
-		middleLines = append(middleLines, vBar+line+vBarRight)
+		content = r.table.View()
 	}
 
-	// Bottom border
-	bottomBorder := r.styles.BorderStyle.Render(string(border.BottomLeft)) +
-		strings.Repeat(hBar, innerWidth) +
-		r.styles.BorderStyle.Render(string(border.BottomRight))
-
-	return topBorder + "\n" + strings.Join(middleLines, "\n") + "\n" + bottomBorder
+	return jobsbox.Render(jobsbox.Styles{
+		Title:  r.styles.Title,
+		Border: r.styles.BorderStyle,
+	}, "Retries", meta, content, r.width, r.height)
 }
 

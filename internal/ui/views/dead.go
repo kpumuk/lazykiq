@@ -2,13 +2,12 @@ package views
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
+	"github.com/kpumuk/lazykiq/internal/ui/components/jobsbox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 	"github.com/kpumuk/lazykiq/internal/ui/format"
@@ -219,78 +218,21 @@ func (d *Dead) ensureTable() {
 
 // renderJobsBox renders the bordered box containing the jobs table
 func (d *Dead) renderJobsBox() string {
-	// Build styled title parts: "Dead Jobs" on left, stats on right
-	titleLeft := " " + d.styles.Title.Render("Dead Jobs") + " "
-
-	// Build right side: SIZE and PAGE info
+	// Build meta: SIZE and PAGE info
 	sep := d.styles.Muted.Render(" • ")
 	sizeInfo := d.styles.MetricLabel.Render("SIZE: ") + d.styles.MetricValue.Render(format.Number(d.totalSize))
 	pageInfo := d.styles.MetricLabel.Render("PAGE: ") + d.styles.MetricValue.Render(fmt.Sprintf("%d/%d", d.currentPage, d.totalPages))
-	titleRight := " " + sizeInfo + sep + pageInfo + " "
-
-	// Calculate box dimensions
-	boxHeight := d.height
-	if boxHeight < 5 {
-		boxHeight = 5
-	}
-	boxWidth := d.width
-
-	// Build the border manually
-	border := lipgloss.RoundedBorder()
-
-	// Top border with title on left, stats on right
-	leftWidth := lipgloss.Width(titleLeft)
-	rightWidth := lipgloss.Width(titleRight)
-	innerWidth := boxWidth - 2
-	middlePad := innerWidth - leftWidth - rightWidth - 2
-	if middlePad < 0 {
-		middlePad = 0
-	}
-
-	hBar := d.styles.BorderStyle.Render(string(border.Top))
-	topBorder := d.styles.BorderStyle.Render(string(border.TopLeft)) +
-		hBar +
-		titleLeft +
-		strings.Repeat(hBar, middlePad) +
-		titleRight +
-		hBar +
-		d.styles.BorderStyle.Render(string(border.TopRight))
-
-	// Side borders
-	vBar := d.styles.BorderStyle.Render(string(border.Left))
-	vBarRight := d.styles.BorderStyle.Render(string(border.Right))
+	meta := sizeInfo + sep + pageInfo
 
 	// Get table content
-	tableContent := ""
+	content := ""
 	if d.table != nil {
-		tableContent = d.table.View()
-	}
-	lines := strings.Split(tableContent, "\n")
-
-	var middleLines []string
-	contentHeight := boxHeight - 2 // minus top and bottom borders
-
-	for i := 0; i < contentHeight; i++ {
-		var line string
-		if i < len(lines) {
-			line = lines[i]
-		}
-
-		// Add padding
-		line = " " + line + " "
-		lineWidth := lipgloss.Width(line)
-		padding := innerWidth - lineWidth
-		if padding > 0 {
-			line += strings.Repeat(" ", padding)
-		}
-		middleLines = append(middleLines, vBar+line+vBarRight)
+		content = d.table.View()
 	}
 
-	// Bottom border
-	bottomBorder := d.styles.BorderStyle.Render(string(border.BottomLeft)) +
-		strings.Repeat(hBar, innerWidth) +
-		d.styles.BorderStyle.Render(string(border.BottomRight))
-
-	return topBorder + "\n" + strings.Join(middleLines, "\n") + "\n" + bottomBorder
+	return jobsbox.Render(jobsbox.Styles{
+		Title:  d.styles.Title,
+		Border: d.styles.BorderStyle,
+	}, "Dead Jobs", meta, content, d.width, d.height)
 }
 

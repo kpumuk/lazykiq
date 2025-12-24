@@ -7,8 +7,8 @@ import (
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
+	"github.com/kpumuk/lazykiq/internal/ui/components/jobsbox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 	"github.com/kpumuk/lazykiq/internal/ui/format"
@@ -209,7 +209,7 @@ func (b *Busy) ensureTable() {
 
 // renderJobsBox renders the bordered box containing the jobs table
 func (b *Busy) renderJobsBox() string {
-	// Build dynamic title with stats
+	// Calculate stats for meta
 	processCount := len(b.data.Processes)
 	totalThreads := 0
 	busyThreads := 0
@@ -226,80 +226,26 @@ func (b *Busy) renderJobsBox() string {
 		percentage = (busyThreads * 100) / totalThreads
 	}
 
-	rssStr := format.Bytes(totalRSS)
-
-	// Build styled title parts: "Active Jobs" on left, stats on right
-	titleLeft := " " + b.styles.Title.Render("Active Jobs") + " "
+	// Build meta: PRC, THR, RSS info
 	sep := b.styles.Muted.Render(" • ")
-	titleRight := " " + b.styles.MetricLabel.Render("PRC: ") + b.styles.MetricValue.Render(fmt.Sprintf("%d", processCount)) +
+	meta := b.styles.MetricLabel.Render("PRC: ") + b.styles.MetricValue.Render(fmt.Sprintf("%d", processCount)) +
 		sep + b.styles.MetricLabel.Render("THR: ") + b.styles.MetricValue.Render(fmt.Sprintf("%d/%d (%d%%)", busyThreads, totalThreads, percentage)) +
-		sep + b.styles.MetricLabel.Render("RSS: ") + b.styles.MetricValue.Render(rssStr) + " "
+		sep + b.styles.MetricLabel.Render("RSS: ") + b.styles.MetricValue.Render(format.Bytes(totalRSS))
 
-	// Calculate box dimensions
+	// Calculate box height (account for process list above)
 	processListHeight := len(b.data.Processes) + 1
 	boxHeight := b.height - processListHeight
-	if boxHeight < 5 {
-		boxHeight = 5
-	}
-	boxWidth := b.width
-
-	// Build the border manually
-	border := lipgloss.RoundedBorder()
-
-	// Top border with title on left, stats on right
-	leftWidth := lipgloss.Width(titleLeft)
-	rightWidth := lipgloss.Width(titleRight)
-	innerWidth := boxWidth - 2
-	middlePad := innerWidth - leftWidth - rightWidth - 2
-	if middlePad < 0 {
-		middlePad = 0
-	}
-
-	hBar := b.styles.BorderStyle.Render(string(border.Top))
-	topBorder := b.styles.BorderStyle.Render(string(border.TopLeft)) +
-		hBar +
-		titleLeft +
-		strings.Repeat(hBar, middlePad) +
-		titleRight +
-		hBar +
-		b.styles.BorderStyle.Render(string(border.TopRight))
-
-	// Side borders
-	vBar := b.styles.BorderStyle.Render(string(border.Left))
-	vBarRight := b.styles.BorderStyle.Render(string(border.Right))
 
 	// Get table content
-	tableContent := ""
+	content := ""
 	if b.table != nil {
-		tableContent = b.table.View()
-	}
-	lines := strings.Split(tableContent, "\n")
-
-	var middleLines []string
-	contentHeight := boxHeight - 2 // minus top and bottom borders
-
-	for i := 0; i < contentHeight; i++ {
-		var line string
-		if i < len(lines) {
-			line = lines[i]
-		}
-
-		// Add padding
-		line = " " + line + " "
-		lineWidth := lipgloss.Width(line)
-		padding := innerWidth - lineWidth
-		if padding > 0 {
-			line += strings.Repeat(" ", padding)
-		}
-		middleLines = append(middleLines, vBar+line+vBarRight)
+		content = b.table.View()
 	}
 
-	// Bottom border
-	bottomBorder := b.styles.BorderStyle.Render(string(border.BottomLeft)) +
-		strings.Repeat(hBar, innerWidth) +
-		b.styles.BorderStyle.Render(string(border.BottomRight))
-
-	return topBorder + "\n" + strings.Join(middleLines, "\n") + "\n" + bottomBorder
+	return jobsbox.Render(jobsbox.Styles{
+		Title:  b.styles.Title,
+		Border: b.styles.BorderStyle,
+	}, "Active Jobs", meta, content, b.width, boxHeight)
 }
 
 func (b *Busy) renderMessage(msg string) string {

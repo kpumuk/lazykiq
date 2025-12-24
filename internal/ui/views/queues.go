@@ -7,8 +7,8 @@ import (
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
+	"github.com/kpumuk/lazykiq/internal/ui/components/jobsbox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 	"github.com/kpumuk/lazykiq/internal/ui/format"
@@ -301,88 +301,35 @@ func (q *Queues) ensureTable() {
 
 // renderJobsBox renders the bordered box containing the jobs table
 func (q *Queues) renderJobsBox() string {
-	// Build dynamic title with queue name and size
+	// Build dynamic title with queue name
 	queueName := ""
 	queueSize := int64(0)
 	if q.selectedQueue < len(q.queues) {
 		queueName = q.queues[q.selectedQueue].Name
 		queueSize = q.queues[q.selectedQueue].Size
 	}
+	title := fmt.Sprintf("Jobs in %s", queueName)
 
-	// Build styled title parts: "Jobs in <queue>" on left, stats on right
-	titleLeft := " " + q.styles.Title.Render(fmt.Sprintf("Jobs in %s", queueName)) + " "
-
-	// Build right side: SIZE and PAGE info
+	// Build meta: SIZE and PAGE info
 	sep := q.styles.Muted.Render(" • ")
 	sizeInfo := q.styles.MetricLabel.Render("SIZE: ") + q.styles.MetricValue.Render(format.Number(queueSize))
 	pageInfo := q.styles.MetricLabel.Render("PAGE: ") + q.styles.MetricValue.Render(fmt.Sprintf("%d/%d", q.currentPage, q.totalPages))
-	titleRight := " " + sizeInfo + sep + pageInfo + " "
+	meta := sizeInfo + sep + pageInfo
 
-	// Calculate box dimensions
+	// Calculate box height (account for queue list above)
 	queueListHeight := len(q.queues) + 1
 	boxHeight := q.height - queueListHeight
-	if boxHeight < 5 {
-		boxHeight = 5
-	}
-	boxWidth := q.width
-
-	// Build the border manually
-	border := lipgloss.RoundedBorder()
-
-	// Top border with title on left, stats on right
-	leftWidth := lipgloss.Width(titleLeft)
-	rightWidth := lipgloss.Width(titleRight)
-	innerWidth := boxWidth - 2
-	middlePad := innerWidth - leftWidth - rightWidth - 2
-	if middlePad < 0 {
-		middlePad = 0
-	}
-
-	hBar := q.styles.BorderStyle.Render(string(border.Top))
-	topBorder := q.styles.BorderStyle.Render(string(border.TopLeft)) +
-		hBar +
-		titleLeft +
-		strings.Repeat(hBar, middlePad) +
-		titleRight +
-		hBar +
-		q.styles.BorderStyle.Render(string(border.TopRight))
-
-	// Side borders
-	vBar := q.styles.BorderStyle.Render(string(border.Left))
-	vBarRight := q.styles.BorderStyle.Render(string(border.Right))
 
 	// Get table content
-	tableContent := ""
+	content := ""
 	if q.table != nil {
-		tableContent = q.table.View()
-	}
-	lines := strings.Split(tableContent, "\n")
-
-	var middleLines []string
-	contentHeight := boxHeight - 2 // minus top and bottom borders
-
-	for i := 0; i < contentHeight; i++ {
-		var line string
-		if i < len(lines) {
-			line = lines[i]
-		}
-
-		// Add padding
-		line = " " + line + " "
-		lineWidth := lipgloss.Width(line)
-		padding := innerWidth - lineWidth
-		if padding > 0 {
-			line += strings.Repeat(" ", padding)
-		}
-		middleLines = append(middleLines, vBar+line+vBarRight)
+		content = q.table.View()
 	}
 
-	// Bottom border
-	bottomBorder := q.styles.BorderStyle.Render(string(border.BottomLeft)) +
-		strings.Repeat(hBar, innerWidth) +
-		q.styles.BorderStyle.Render(string(border.BottomRight))
-
-	return topBorder + "\n" + strings.Join(middleLines, "\n") + "\n" + bottomBorder
+	return jobsbox.Render(jobsbox.Styles{
+		Title:  q.styles.Title,
+		Border: q.styles.BorderStyle,
+	}, title, meta, content, q.width, boxHeight)
 }
 
 func (q *Queues) renderMessage(msg string) string {
