@@ -172,3 +172,8 @@ func (c *Client) GetDeadJobs(ctx context.Context, start, count int) ([]*SortedEn
 func (c *Client) GetRetryJobs(ctx context.Context, start, count int) ([]*SortedEntry, int64, error) {
 	return c.getSortedSetJobs(ctx, "retry", start, count, false)
 }
+
+// GetScheduledJobs fetches scheduled jobs with pagination (earliest execution time first).
+func (c *Client) GetScheduledJobs(ctx context.Context, start, count int) ([]*SortedEntry, int64, error) {
+	return c.getSortedSetJobs(ctx, "schedule", start, count, false)
+}

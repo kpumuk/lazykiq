@@ -37,10 +37,11 @@ type App struct {
 	darkMode        bool
 	sidekiq         *sidekiq.Client
 	connectionError error
-	queuesPage      int // current page for Queues view (1-indexed)
-	selectedQueue   int // selected queue index for Queues view (0-indexed)
-	retriesPage     int // current page for Retries view (1-indexed)
-	deadPage        int // current page for Dead view (1-indexed)
+	queuesPage    int // current page for Queues view (1-indexed)
+	selectedQueue int // selected queue index for Queues view (0-indexed)
+	retriesPage   int // current page for Retries view (1-indexed)
+	scheduledPage int // current page for Scheduled view (1-indexed)
+	deadPage      int // current page for Dead view (1-indexed)
 }
 
 // New creates a new App instance
@@ -84,10 +85,11 @@ func New() App {
 		errorPopup:  components.NewErrorPopup(&styles),
 		styles:      styles,
 		darkMode:    true,
-		sidekiq:     sidekiq.NewClient(),
-		queuesPage:  1,
-		retriesPage: 1,
-		deadPage:    1,
+		sidekiq:       sidekiq.NewClient(),
+		queuesPage:    1,
+		retriesPage:   1,
+		scheduledPage: 1,
+		deadPage:      1,
 	}
 }
 
@@ -142,6 +144,7 @@ func (a App) fetchBusyDataCmd() tea.Msg {
 
 const queuesPageSize = 25
 const retriesPageSize = 25
+const scheduledPageSize = 25
 const deadPageSize = 25
 
 // fetchQueuesDataCmd fetches queues data for the Queues view
@@ -240,6 +243,41 @@ func (a App) fetchRetriesDataCmd() tea.Msg {
 	}
 }
 
+// fetchScheduledDataCmd fetches scheduled jobs data for the Scheduled view
+func (a App) fetchScheduledDataCmd() tea.Msg {
+	ctx := context.Background()
+
+	currentPage := a.scheduledPage
+	totalPages := 1
+
+	// Calculate pagination
+	start := (currentPage - 1) * scheduledPageSize
+	jobs, totalSize, err := a.sidekiq.GetScheduledJobs(ctx, start, scheduledPageSize)
+	if err != nil {
+		return connectionErrorMsg{err: err}
+	}
+
+	// Calculate total pages
+	if totalSize > 0 {
+		totalPages = int((totalSize + scheduledPageSize - 1) / scheduledPageSize)
+	}
+
+	// Clamp current page to valid range
+	if currentPage > totalPages {
+		currentPage = totalPages
+	}
+	if currentPage < 1 {
+		currentPage = 1
+	}
+
+	return views.ScheduledUpdateMsg{
+		Jobs:        jobs,
+		CurrentPage: currentPage,
+		TotalPages:  totalPages,
+		TotalSize:   totalSize,
+	}
+}
+
 // fetchDeadDataCmd fetches dead jobs data for the Dead view
 func (a App) fetchDeadDataCmd() tea.Msg {
 	ctx := context.Background()
@@ -300,6 +338,10 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, func() tea.Msg {
 				return a.fetchRetriesDataCmd()
 			})
+		case 4: // Scheduled view
+			cmds = append(cmds, func() tea.Msg {
+				return a.fetchScheduledDataCmd()
+			})
 		case 5: // Dead view
 			cmds = append(cmds, func() tea.Msg {
 				return a.fetchDeadDataCmd()
@@ -332,6 +374,13 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.retriesPage = msg.Page
 		cmds = append(cmds, func() tea.Msg {
 			return a.fetchRetriesDataCmd()
+		})
+
+	case views.ScheduledPageRequestMsg:
+		// Handle page change request from Scheduled view
+		a.scheduledPage = msg.Page
+		cmds = append(cmds, func() tea.Msg {
+			return a.fetchScheduledDataCmd()
 		})
 
 	case views.DeadPageRequestMsg:
@@ -372,6 +421,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case key.Matches(msg, a.keys.View5):
 			a.activeView = 4
+			a.scheduledPage = 1 // Reset to first page when switching to Scheduled view
 			cmds = append(cmds, a.views[a.activeView].Init())
 
 		case key.Matches(msg, a.keys.View6):
@@ -404,8 +454,8 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Busy (1) and Queues (2) views render their own border with header area outside, so give them extra height
 			if i == 1 || i == 2 {
 				a.views[i] = a.views[i].SetSize(contentWidth+2, contentHeight+3)
-			} else if i == 3 || i == 5 {
-				// Retries (3) and Dead (5) render their own border but have no header area outside
+			} else if i == 3 || i == 4 || i == 5 {
+				// Retries (3), Scheduled (4), and Dead (5) render their own border but have no header area outside
 				a.views[i] = a.views[i].SetSize(contentWidth+2, contentHeight+2)
 			} else {
 				a.views[i] = a.views[i].SetSize(contentWidth, contentHeight)
@@ -445,8 +495,8 @@ func (a App) View() string {
 	contentWidth := a.width - 2
 
 	var content string
-	// Busy (1), Queues (2), Retries (3), and Dead (5) views handle their own border
-	if a.activeView == 1 || a.activeView == 2 || a.activeView == 3 || a.activeView == 5 {
+	// Busy (1), Queues (2), Retries (3), Scheduled (4), and Dead (5) views handle their own border
+	if a.activeView == 1 || a.activeView == 2 || a.activeView == 3 || a.activeView == 4 || a.activeView == 5 {
 		content = a.views[a.activeView].View()
 	} else {
 		content = a.renderBorderedBox(title, a.views[a.activeView].View(), contentWidth, contentHeight)
