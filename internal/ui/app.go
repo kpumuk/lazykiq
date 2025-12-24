@@ -37,6 +37,8 @@ type App struct {
 	darkMode        bool
 	sidekiq         *sidekiq.Client
 	connectionError error
+	queuesPage      int // current page for Queues view (1-indexed)
+	selectedQueue   int // selected queue index for Queues view (0-indexed)
 }
 
 // New creates a new App instance
@@ -65,6 +67,7 @@ func New() App {
 		TableSeparator: styles.TableSeparator,
 		BoxPadding:     styles.BoxPadding,
 		BorderStyle:    styles.BorderStyle,
+		NavKey:         styles.NavKey,
 	}
 	for i := range viewList {
 		viewList[i] = viewList[i].SetStyles(viewStyles)
@@ -80,6 +83,7 @@ func New() App {
 		styles:     styles,
 		darkMode:   true,
 		sidekiq:    sidekiq.NewClient(),
+		queuesPage: 1,
 	}
 }
 
@@ -132,6 +136,69 @@ func (a App) fetchBusyDataCmd() tea.Msg {
 	return views.BusyUpdateMsg{Data: data}
 }
 
+const queuesPageSize = 25
+
+// fetchQueuesDataCmd fetches queues data for the Queues view
+func (a App) fetchQueuesDataCmd() tea.Msg {
+	ctx := context.Background()
+
+	// Get all queues
+	queues, err := a.sidekiq.GetQueues(ctx)
+	if err != nil {
+		return connectionErrorMsg{err: err}
+	}
+
+	// Build queue info list with size and latency
+	queueInfos := make([]*views.QueueInfo, len(queues))
+	for i, q := range queues {
+		size, _ := q.Size(ctx)
+		latency, _ := q.Latency(ctx)
+		queueInfos[i] = &views.QueueInfo{
+			Name:    q.Name(),
+			Size:    size,
+			Latency: latency,
+		}
+	}
+
+	// Get jobs from the selected queue (if any) with pagination
+	var jobs []*sidekiq.JobRecord
+	var totalSize int64
+	currentPage := a.queuesPage
+	totalPages := 1
+	selectedQueue := a.selectedQueue
+
+	// Clamp selected queue to valid range
+	if selectedQueue >= len(queues) {
+		selectedQueue = 0
+	}
+
+	if len(queues) > 0 && selectedQueue < len(queues) {
+		start := (currentPage - 1) * queuesPageSize
+		jobs, totalSize, _ = queues[selectedQueue].GetJobs(ctx, start, queuesPageSize)
+
+		// Calculate total pages
+		if totalSize > 0 {
+			totalPages = int((totalSize + queuesPageSize - 1) / queuesPageSize)
+		}
+
+		// Clamp current page to valid range
+		if currentPage > totalPages {
+			currentPage = totalPages
+		}
+		if currentPage < 1 {
+			currentPage = 1
+		}
+	}
+
+	return views.QueuesUpdateMsg{
+		Queues:        queueInfos,
+		Jobs:          jobs,
+		CurrentPage:   currentPage,
+		TotalPages:    totalPages,
+		SelectedQueue: selectedQueue,
+	}
+}
+
 // Update implements tea.Model
 func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
@@ -143,10 +210,15 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a.fetchStatsCmd()
 		})
 
-		// Additionally fetch busy data if viewing Busy view
-		if a.activeView == 1 { // Busy view is index 1
+		// Additionally fetch view-specific data
+		switch a.activeView {
+		case 1: // Busy view
 			cmds = append(cmds, func() tea.Msg {
 				return a.fetchBusyDataCmd()
+			})
+		case 2: // Queues view
+			cmds = append(cmds, func() tea.Msg {
+				return a.fetchQueuesDataCmd()
 			})
 		}
 
@@ -155,6 +227,21 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case connectionErrorMsg:
 		// Store the connection error
 		a.connectionError = msg.err
+
+	case views.QueuesPageRequestMsg:
+		// Handle page change request from Queues view
+		a.queuesPage = msg.Page
+		cmds = append(cmds, func() tea.Msg {
+			return a.fetchQueuesDataCmd()
+		})
+
+	case views.QueuesQueueSelectMsg:
+		// Handle queue selection from Queues view
+		a.selectedQueue = msg.Index
+		a.queuesPage = 1 // Reset to first page when changing queues
+		cmds = append(cmds, func() tea.Msg {
+			return a.fetchQueuesDataCmd()
+		})
 
 	case tea.KeyMsg:
 		// Handle global keybindings first
@@ -176,6 +263,8 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case key.Matches(msg, a.keys.View3):
 			a.activeView = 2
+			a.queuesPage = 1      // Reset to first page when switching to Queues view
+			a.selectedQueue = 0   // Reset to first queue when switching to Queues view
 			cmds = append(cmds, a.views[a.activeView].Init())
 
 		case key.Matches(msg, a.keys.View4):
@@ -212,7 +301,8 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Border takes 2 chars (left + right)
 		contentWidth := msg.Width - 2
 		for i := range a.views {
-			if i == 1 { // Busy view renders its own border, so give it the full area
+			// Busy (1) and Queues (2) views render their own border, so give them the full area
+			if i == 1 || i == 2 {
 				a.views[i] = a.views[i].SetSize(contentWidth+2, contentHeight+3)
 			} else {
 				a.views[i] = a.views[i].SetSize(contentWidth, contentHeight)
@@ -252,8 +342,8 @@ func (a App) View() string {
 	contentWidth := a.width - 2
 
 	var content string
-	// Busy view handles its own border (special case for process list outside border)
-	if a.activeView == 1 {
+	// Busy (1) and Queues (2) views handle their own border (special case for list outside border)
+	if a.activeView == 1 || a.activeView == 2 {
 		content = a.views[a.activeView].View()
 	} else {
 		content = a.renderBorderedBox(title, a.views[a.activeView].View(), contentWidth, contentHeight)
@@ -364,6 +454,7 @@ func (a *App) applyTheme() {
 		TableSeparator: a.styles.TableSeparator,
 		BoxPadding:     a.styles.BoxPadding,
 		BorderStyle:    a.styles.BorderStyle,
+		NavKey:         a.styles.NavKey,
 	}
 	for i := range a.views {
 		a.views[i] = a.views[i].SetStyles(viewStyles)

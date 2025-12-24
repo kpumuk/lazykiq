@@ -19,6 +19,7 @@ type Styles struct {
 	TableSeparator lipgloss.Style
 	BoxPadding     lipgloss.Style
 	BorderStyle    lipgloss.Style
+	NavKey         lipgloss.Style
 }
 
 // View defines the interface that all views must implement

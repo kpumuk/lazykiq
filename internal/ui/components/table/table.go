@@ -33,6 +33,7 @@ type Table struct {
 	yOffset        int
 	xOffset        int
 	maxRowWidth    int
+	colWidths      []int  // dynamic column widths (max of defined and actual)
 	emptyMessage   string
 	content        string // pre-rendered body content
 	viewportHeight int
@@ -252,8 +253,14 @@ func (t *Table) renderHeader() string {
 	var cols []string
 	lastCol := len(t.columns) - 1
 	for i, col := range t.columns {
+		// Use dynamic column width if available, otherwise use defined width
+		width := col.Width
+		if t.colWidths != nil && i < len(t.colWidths) {
+			width = t.colWidths[i]
+		}
+
 		if i < lastCol {
-			cols = append(cols, padRight(col.Title, col.Width))
+			cols = append(cols, padRight(col.Title, width))
 		} else {
 			// Last column: no width constraint
 			cols = append(cols, col.Title)
@@ -289,20 +296,34 @@ func (t *Table) renderHeader() string {
 func (t *Table) renderBody() string {
 	if len(t.rows) == 0 {
 		t.maxRowWidth = 0
+		t.colWidths = nil
 		return t.styles.Muted.Render(t.emptyMessage)
 	}
 
-	// First pass: build all rows and find max width
+	// First pass: find max width for each column (at least the defined width)
+	t.colWidths = make([]int, len(t.columns))
+	for i, col := range t.columns {
+		t.colWidths[i] = col.Width
+	}
+	for _, row := range t.rows {
+		for i, cell := range row {
+			if i < len(t.colWidths) && len(cell) > t.colWidths[i] {
+				t.colWidths[i] = len(cell)
+			}
+		}
+	}
+
+	// Second pass: build all rows using actual column widths (no truncation)
 	var rawRows []string
 	maxWidth := 0
+	lastCol := len(t.columns) - 1
 	for _, row := range t.rows {
 		var cols []string
-		lastCol := len(t.columns) - 1
 		for i, cell := range row {
 			if i < lastCol {
-				cols = append(cols, padRight(cell, t.columns[i].Width))
+				cols = append(cols, padRight(cell, t.colWidths[i]))
 			} else {
-				// Last column: no truncation (allows variable width for scrolling)
+				// Last column: no padding (variable width)
 				cols = append(cols, cell)
 			}
 		}
@@ -384,10 +405,10 @@ func applyHorizontalScroll(line string, offset, visibleWidth int) string {
 	return string(runes[:visibleWidth])
 }
 
-// padRight pads a string to the specified width
+// padRight pads a string to the specified width (no truncation)
 func padRight(s string, width int) string {
 	if len(s) >= width {
-		return s[:width]
+		return s
 	}
 	return s + strings.Repeat(" ", width-len(s))
 }
