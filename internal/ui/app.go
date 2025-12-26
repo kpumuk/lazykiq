@@ -9,7 +9,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
-	"github.com/kpumuk/lazykiq/internal/ui/components"
+	"github.com/kpumuk/lazykiq/internal/ui/components/errorpopup"
+	"github.com/kpumuk/lazykiq/internal/ui/components/metrics"
+	"github.com/kpumuk/lazykiq/internal/ui/components/navbar"
 	"github.com/kpumuk/lazykiq/internal/ui/theme"
 	"github.com/kpumuk/lazykiq/internal/ui/views"
 )
@@ -30,9 +32,9 @@ type App struct {
 	ready           bool
 	activeView      int
 	views           []views.View
-	metrics         components.Metrics
-	navbar          components.Navbar
-	errorPopup      components.ErrorPopup
+	metrics         metrics.Model
+	navbar          navbar.Model
+	errorPopup      errorpopup.Model
 	styles          theme.Styles
 	darkMode        bool
 	sidekiq         *sidekiq.Client
@@ -76,15 +78,42 @@ func New() App {
 		viewList[i] = viewList[i].SetStyles(viewStyles)
 	}
 
+	// Build navbar view infos
+	navViews := make([]navbar.ViewInfo, len(viewList))
+	for i, v := range viewList {
+		navViews[i] = navbar.ViewInfo{Name: v.Name()}
+	}
+
 	return App{
-		keys:        DefaultKeyMap(),
-		activeView:  0,
-		views:       viewList,
-		metrics:     components.NewMetrics(&styles),
-		navbar:      components.NewNavbar(viewList, &styles),
-		errorPopup:  components.NewErrorPopup(&styles),
-		styles:      styles,
-		darkMode:    true,
+		keys:       DefaultKeyMap(),
+		activeView: 0,
+		views:      viewList,
+		metrics: metrics.New(
+			metrics.WithStyles(metrics.Styles{
+				Bar:       styles.MetricsBar,
+				Label:     styles.MetricLabel,
+				Value:     styles.MetricValue,
+				Separator: styles.MetricSep,
+			}),
+		),
+		navbar: navbar.New(
+			navbar.WithStyles(navbar.Styles{
+				Bar:  styles.NavBar,
+				Key:  styles.NavKey,
+				Item: styles.NavItem,
+				Quit: styles.NavQuit,
+			}),
+			navbar.WithViews(navViews),
+		),
+		errorPopup: errorpopup.New(
+			errorpopup.WithStyles(errorpopup.Styles{
+				Title:   lipgloss.NewStyle().Foreground(lipgloss.Color("#FF0000")).Bold(true),
+				Message: styles.ViewMuted,
+				Border:  lipgloss.NewStyle().Foreground(lipgloss.Color("#FF0000")),
+			}),
+		),
+		styles:        styles,
+		darkMode:      true,
 		sidekiq:       sidekiq.NewClient(),
 		queuesPage:    1,
 		retriesPage:   1,
@@ -110,7 +139,7 @@ func tickCmd() tea.Cmd {
 	})
 }
 
-// fetchStatsCmd fetches Sidekiq stats and returns a MetricsUpdateMsg or connectionErrorMsg
+// fetchStatsCmd fetches Sidekiq stats and returns a metrics.UpdateMsg or connectionErrorMsg
 func (a App) fetchStatsCmd() tea.Msg {
 	ctx := context.Background()
 	stats, err := a.sidekiq.GetStats(ctx)
@@ -119,8 +148,8 @@ func (a App) fetchStatsCmd() tea.Msg {
 		return connectionErrorMsg{err: err}
 	}
 
-	return components.MetricsUpdateMsg{
-		Data: components.MetricsData{
+	return metrics.UpdateMsg{
+		Data: metrics.Data{
 			Processed: stats.Processed,
 			Failed:    stats.Failed,
 			Busy:      stats.Busy,
@@ -457,8 +486,8 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.ready = true
 
 		// Update component dimensions
-		a.metrics = a.metrics.SetWidth(msg.Width)
-		a.navbar = a.navbar.SetWidth(msg.Width)
+		a.metrics.SetWidth(msg.Width)
+		a.navbar.SetWidth(msg.Width)
 
 		// Calculate content height (total - metrics - navbar - border)
 		// Border takes 2 lines (top + bottom)
@@ -476,11 +505,11 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.views[i] = a.views[i].SetSize(contentWidth, contentHeight)
 			}
 		}
-		a.errorPopup = a.errorPopup.SetSize(contentWidth, contentHeight)
+		a.errorPopup.SetSize(contentWidth, contentHeight)
 
 	default:
 		// Clear connection error on successful metrics update
-		if _, ok := msg.(components.MetricsUpdateMsg); ok {
+		if _, ok := msg.(metrics.UpdateMsg); ok {
 			a.connectionError = nil
 		}
 
@@ -519,8 +548,9 @@ func (a App) View() string {
 
 	// If there's a connection error, overlay the error popup
 	if a.connectionError != nil {
-		popup := a.errorPopup.SetMessage(a.connectionError.Error())
-		content = popup.Render(content)
+		a.errorPopup.SetMessage(a.connectionError.Error())
+		a.errorPopup.SetBackground(content)
+		content = a.errorPopup.View()
 	}
 
 	// Build the layout: metrics (top) + content (middle) + navbar (bottom)
@@ -605,9 +635,23 @@ func (a *App) applyTheme() {
 	a.styles = theme.NewStyles(t)
 
 	// Update components
-	a.metrics = a.metrics.SetStyles(&a.styles)
-	a.navbar = a.navbar.SetStyles(&a.styles)
-	a.errorPopup = a.errorPopup.SetStyles(&a.styles)
+	a.metrics.SetStyles(metrics.Styles{
+		Bar:       a.styles.MetricsBar,
+		Label:     a.styles.MetricLabel,
+		Value:     a.styles.MetricValue,
+		Separator: a.styles.MetricSep,
+	})
+	a.navbar.SetStyles(navbar.Styles{
+		Bar:  a.styles.NavBar,
+		Key:  a.styles.NavKey,
+		Item: a.styles.NavItem,
+		Quit: a.styles.NavQuit,
+	})
+	a.errorPopup.SetStyles(errorpopup.Styles{
+		Title:   lipgloss.NewStyle().Foreground(lipgloss.Color("#FF0000")).Bold(true),
+		Message: a.styles.ViewMuted,
+		Border:  lipgloss.NewStyle().Foreground(lipgloss.Color("#FF0000")),
+	})
 
 	// Update views
 	viewStyles := views.Styles{
