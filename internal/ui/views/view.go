@@ -18,7 +18,10 @@ type Styles struct {
 	TableSeparator lipgloss.Style
 	BoxPadding     lipgloss.Style
 	BorderStyle    lipgloss.Style
+	FocusBorder    lipgloss.Style
 	NavKey         lipgloss.Style
+	ChartSuccess   lipgloss.Style
+	ChartFailure   lipgloss.Style
 }
 
 // RefreshMsg is broadcast by the app on the 5-second ticker.

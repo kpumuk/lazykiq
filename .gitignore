@@ -3,6 +3,7 @@
 
 # Temp files
 /tmp
+.gocache
 
 # IDE configurations
 /.idea

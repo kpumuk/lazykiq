@@ -67,11 +67,33 @@ func Args(args []interface{}) string {
 // Number formats a number with K/M suffixes for readability
 func Number(n int64) string {
 	switch {
+	case n >= 1_000_000_000:
+		return fmt.Sprintf("%.1fB", float64(n)/1_000_000_000)
 	case n >= 1_000_000:
 		return fmt.Sprintf("%.1fM", float64(n)/1_000_000)
 	case n >= 1_000:
 		return fmt.Sprintf("%.1fK", float64(n)/1_000)
 	default:
 		return fmt.Sprintf("%d", n)
+	}
+}
+
+// ShortNumber formats a number into a compact 4-char max string (e.g., 999, 9.9K, 120K).
+func ShortNumber(n int64) string {
+	switch {
+	case n < 1_000:
+		return fmt.Sprintf("%d", n)
+	case n < 10_000:
+		return fmt.Sprintf("%.1fK", float64(n)/1_000)
+	case n < 1_000_000:
+		return fmt.Sprintf("%dK", n/1_000)
+	case n < 10_000_000:
+		return fmt.Sprintf("%.1fM", float64(n)/1_000_000)
+	case n < 1_000_000_000:
+		return fmt.Sprintf("%dM", n/1_000_000)
+	case n < 10_000_000_000:
+		return fmt.Sprintf("%.1fB", float64(n)/1_000_000_000)
+	default:
+		return fmt.Sprintf("%dB", n/1_000_000_000)
 	}
 }

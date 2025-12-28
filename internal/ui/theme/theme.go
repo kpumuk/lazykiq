@@ -24,6 +24,7 @@ type Theme struct {
 	// Accent colors
 	TableSelectedFg lipgloss.AdaptiveColor
 	TableSelectedBg lipgloss.AdaptiveColor
+	Success         lipgloss.AdaptiveColor
 	Error           lipgloss.AdaptiveColor
 }
 
@@ -82,6 +83,10 @@ var DefaultTheme = Theme{
 		Light: "57",
 		Dark:  "57",
 	},
+	Success: lipgloss.AdaptiveColor{
+		Light: "#16A34A",
+		Dark:  "#22C55E",
+	},
 	Error: lipgloss.AdaptiveColor{
 		Light: "#FF0000",
 		Dark:  "#FF0000",
@@ -115,6 +120,11 @@ type Styles struct {
 	// Layout helpers
 	BoxPadding  lipgloss.Style
 	BorderStyle lipgloss.Style
+	FocusBorder lipgloss.Style
+
+	// Charts
+	ChartSuccess lipgloss.Style
+	ChartFailure lipgloss.Style
 
 	// Errors
 	ErrorTitle  lipgloss.Style
@@ -186,6 +196,15 @@ func NewStyles() Styles {
 
 		BorderStyle: lipgloss.NewStyle().
 			Foreground(t.Border),
+
+		FocusBorder: lipgloss.NewStyle().
+			Foreground(t.BorderFocus),
+
+		ChartSuccess: lipgloss.NewStyle().
+			Foreground(t.Success),
+
+		ChartFailure: lipgloss.NewStyle().
+			Foreground(t.Error),
 
 		ErrorTitle: lipgloss.NewStyle().
 			Foreground(t.Error).

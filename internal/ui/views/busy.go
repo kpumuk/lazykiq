@@ -192,7 +192,7 @@ func (b *Busy) SetStyles(styles Styles) View {
 		JSON:        styles.Text,
 		Border:      styles.BorderStyle,
 		PanelTitle:  styles.Title,
-		FocusBorder: styles.Text,
+		FocusBorder: styles.FocusBorder,
 		Muted:       styles.Muted,
 	})
 	return b

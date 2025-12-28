@@ -46,7 +46,7 @@ func New() App {
 	client := sidekiq.NewClient()
 
 	viewList := []views.View{
-		views.NewDashboard(),
+		views.NewDashboard(client),
 		views.NewBusy(client),
 		views.NewQueues(client),
 		views.NewRetries(client),
@@ -66,7 +66,10 @@ func New() App {
 		TableSeparator: styles.TableSeparator,
 		BoxPadding:     styles.BoxPadding,
 		BorderStyle:    styles.BorderStyle,
+		FocusBorder:    styles.FocusBorder,
 		NavKey:         styles.NavKey,
+		ChartSuccess:   styles.ChartSuccess,
+		ChartFailure:   styles.ChartFailure,
 	}
 	for i := range viewList {
 		viewList[i] = viewList[i].SetStyles(viewStyles)
