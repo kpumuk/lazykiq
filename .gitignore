@@ -1,3 +1,8 @@
+# Compiled binary
 /lazykiq
-/vendor
+
+# Temp files
+/tmp
+
+# IDE configurations
 /.idea
