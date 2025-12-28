@@ -14,10 +14,12 @@ A terminal UI for Sidekiq.
 
 ## Usage
 
-To install, run:
+You can download the latest release from the [Releases](https://github.com/kpumuk/lazykiq/releases) page for your platform.
+
+Alternatively, install current development version with `go install`:
 
 ```bash
-go install github.com/kpumuk/lazykiq@latest
+go install github.com/kpumuk/lazykiq/cmd/lazykiq@latest
 ```
 
 ### Keys
