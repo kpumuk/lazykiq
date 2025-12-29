@@ -216,7 +216,7 @@ func (s *Scheduled) renderMessage(msg string) string {
 	return messagebox.Render(messagebox.Styles{
 		Title:  s.styles.Title,
 		Muted:  s.styles.Muted,
-		Border: s.styles.BorderStyle,
+		Border: s.styles.FocusBorder,
 	}, "Scheduled", msg, s.width, s.height)
 }
 
@@ -335,7 +335,7 @@ func (s *Scheduled) renderJobsBox() string {
 	box := jobsbox.New(
 		jobsbox.WithStyles(jobsbox.Styles{
 			Title:  s.styles.Title,
-			Border: s.styles.BorderStyle,
+			Border: s.styles.FocusBorder,
 		}),
 		jobsbox.WithTitle("Scheduled"),
 		jobsbox.WithMeta(meta),

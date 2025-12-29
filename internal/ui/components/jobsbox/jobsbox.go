@@ -129,10 +129,10 @@ func (m Model) View() string {
 	border := lipgloss.RoundedBorder()
 
 	// Build styled title
-	titleLeft := " " + m.styles.Title.Render(m.title) + " "
+	titleLeft := m.styles.Title.Render(m.title)
 
 	// Meta is pre-styled by caller
-	titleRight := " " + m.meta + " "
+	titleRight := m.styles.Border.Render("╖") + m.meta + m.styles.Border.Render("╓")
 
 	// Calculate dimensions
 	innerWidth := m.width - 2

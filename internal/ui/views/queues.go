@@ -394,7 +394,7 @@ func (q *Queues) renderJobsBox() string {
 	box := jobsbox.New(
 		jobsbox.WithStyles(jobsbox.Styles{
 			Title:  q.styles.Title,
-			Border: q.styles.BorderStyle,
+			Border: q.styles.FocusBorder,
 		}),
 		jobsbox.WithTitle(title),
 		jobsbox.WithMeta(meta),
@@ -414,7 +414,7 @@ func (q *Queues) renderMessage(msg string) string {
 	box := messagebox.Render(messagebox.Styles{
 		Title:  q.styles.Title,
 		Muted:  q.styles.Muted,
-		Border: q.styles.BorderStyle,
+		Border: q.styles.FocusBorder,
 	}, "Jobs", msg, q.width, boxHeight)
 
 	return header + "\n" + box

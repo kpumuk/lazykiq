@@ -384,7 +384,7 @@ func (b *Busy) renderJobsBox() string {
 	box := jobsbox.New(
 		jobsbox.WithStyles(jobsbox.Styles{
 			Title:  b.styles.Title,
-			Border: b.styles.BorderStyle,
+			Border: b.styles.FocusBorder,
 		}),
 		jobsbox.WithTitle(title),
 		jobsbox.WithMeta(meta),
@@ -404,7 +404,7 @@ func (b *Busy) renderMessage(msg string) string {
 	box := messagebox.Render(messagebox.Styles{
 		Title:  b.styles.Title,
 		Muted:  b.styles.Muted,
-		Border: b.styles.BorderStyle,
+		Border: b.styles.FocusBorder,
 	}, "Active Jobs", msg, b.width, boxHeight)
 
 	return header + "\n" + box

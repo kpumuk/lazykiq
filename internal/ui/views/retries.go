@@ -217,7 +217,7 @@ func (r *Retries) renderMessage(msg string) string {
 	return messagebox.Render(messagebox.Styles{
 		Title:  r.styles.Title,
 		Muted:  r.styles.Muted,
-		Border: r.styles.BorderStyle,
+		Border: r.styles.FocusBorder,
 	}, "Retries", msg, r.width, r.height)
 }
 
@@ -353,7 +353,7 @@ func (r *Retries) renderJobsBox() string {
 	box := jobsbox.New(
 		jobsbox.WithStyles(jobsbox.Styles{
 			Title:  r.styles.Title,
-			Border: r.styles.BorderStyle,
+			Border: r.styles.FocusBorder,
 		}),
 		jobsbox.WithTitle("Retries"),
 		jobsbox.WithMeta(meta),

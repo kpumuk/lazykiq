@@ -216,7 +216,7 @@ func (d *Dead) renderMessage(msg string) string {
 	return messagebox.Render(messagebox.Styles{
 		Title:  d.styles.Title,
 		Muted:  d.styles.Muted,
-		Border: d.styles.BorderStyle,
+		Border: d.styles.FocusBorder,
 	}, "Dead Jobs", msg, d.width, d.height)
 }
 
@@ -347,7 +347,7 @@ func (d *Dead) renderJobsBox() string {
 	box := jobsbox.New(
 		jobsbox.WithStyles(jobsbox.Styles{
 			Title:  d.styles.Title,
-			Border: d.styles.BorderStyle,
+			Border: d.styles.FocusBorder,
 		}),
 		jobsbox.WithTitle("Dead Jobs"),
 		jobsbox.WithMeta(meta),

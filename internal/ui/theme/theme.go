@@ -6,7 +6,7 @@ import "charm.land/lipgloss/v2/compat"
 // Theme defines all colors used throughout the UI.
 type Theme struct {
 	// Base colors
-	Primary   compat.AdaptiveColor
+	Primary   compat.CompleteAdaptiveColor
 	Secondary compat.AdaptiveColor
 
 	// Text colors
@@ -21,7 +21,7 @@ type Theme struct {
 
 	// Border colors
 	Border      compat.AdaptiveColor
-	BorderFocus compat.AdaptiveColor
+	BorderFocus compat.CompleteAdaptiveColor
 
 	// Accent colors
 	TableSelectedFg compat.AdaptiveColor
@@ -37,10 +37,9 @@ type Theme struct {
 // DefaultTheme is the adaptive color scheme used by default.
 // Use Open Color palette when possible to define colors: https://yeun.github.io/open-color/
 var DefaultTheme = Theme{
-	// Sidekiq-inspired primary
-	Primary: compat.AdaptiveColor{
-		Light: lipgloss.Color("#B2003C"),
-		Dark:  lipgloss.Color("#F73D68"),
+	Primary: compat.CompleteAdaptiveColor{
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#B2003C"), ANSI256: lipgloss.Color("161"), ANSI: lipgloss.Color("13")},
+		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#F73D68"), ANSI256: lipgloss.Color("204"), ANSI: lipgloss.Color("13")},
 	},
 	Secondary: compat.AdaptiveColor{
 		Light: lipgloss.Color("#6B7280"), // Gray-500
@@ -80,9 +79,9 @@ var DefaultTheme = Theme{
 		Light: lipgloss.Color("#D1D5DB"), // Gray-300
 		Dark:  lipgloss.Color("#374151"), // Gray-700
 	},
-	BorderFocus: compat.AdaptiveColor{
-		Light: lipgloss.Color("#9CA3AF"), // Gray-400
-		Dark:  lipgloss.Color("#6B7280"), // Gray-500
+	BorderFocus: compat.CompleteAdaptiveColor{
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#B2003C"), ANSI256: lipgloss.Color("161"), ANSI: lipgloss.Color("13")},
+		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#F73D68"), ANSI256: lipgloss.Color("204"), ANSI: lipgloss.Color("13")},
 	},
 
 	// Accents
