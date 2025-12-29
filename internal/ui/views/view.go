@@ -9,20 +9,26 @@ import (
 
 // Styles holds the view-related styles from the theme.
 type Styles struct {
-	Text           lipgloss.Style
-	Muted          lipgloss.Style
-	Title          lipgloss.Style
-	MetricLabel    lipgloss.Style
-	MetricValue    lipgloss.Style
-	TableHeader    lipgloss.Style
-	TableSelected  lipgloss.Style
-	TableSeparator lipgloss.Style
-	BoxPadding     lipgloss.Style
-	BorderStyle    lipgloss.Style
-	FocusBorder    lipgloss.Style
-	NavKey         lipgloss.Style
-	ChartSuccess   lipgloss.Style
-	ChartFailure   lipgloss.Style
+	Text            lipgloss.Style
+	Muted           lipgloss.Style
+	Title           lipgloss.Style
+	MetricLabel     lipgloss.Style
+	MetricValue     lipgloss.Style
+	TableHeader     lipgloss.Style
+	TableSelected   lipgloss.Style
+	TableSeparator  lipgloss.Style
+	BoxPadding      lipgloss.Style
+	BorderStyle     lipgloss.Style
+	FocusBorder     lipgloss.Style
+	NavKey          lipgloss.Style
+	ChartSuccess    lipgloss.Style
+	ChartFailure    lipgloss.Style
+	JSONKey         lipgloss.Style
+	JSONString      lipgloss.Style
+	JSONNumber      lipgloss.Style
+	JSONBool        lipgloss.Style
+	JSONNull        lipgloss.Style
+	JSONPunctuation lipgloss.Style
 }
 
 // RefreshMsg is broadcast by the app on the 5-second ticker.

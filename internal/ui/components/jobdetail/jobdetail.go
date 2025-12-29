@@ -2,7 +2,6 @@
 package jobdetail
 
 import (
-	"encoding/json"
 	"fmt"
 	"math"
 	"strings"
@@ -11,8 +10,10 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
+	"github.com/kpumuk/lazykiq/internal/ui/components/jsonview"
 	"github.com/kpumuk/lazykiq/internal/ui/format"
 )
 
@@ -73,27 +74,39 @@ func DefaultKeyMap() KeyMap {
 
 // Styles holds styles for the job detail component.
 type Styles struct {
-	Title       lipgloss.Style
-	Label       lipgloss.Style
-	Value       lipgloss.Style
-	JSON        lipgloss.Style
-	Border      lipgloss.Style
-	PanelTitle  lipgloss.Style
-	FocusBorder lipgloss.Style
-	Muted       lipgloss.Style
+	Title           lipgloss.Style
+	Label           lipgloss.Style
+	Value           lipgloss.Style
+	JSON            lipgloss.Style
+	JSONKey         lipgloss.Style
+	JSONString      lipgloss.Style
+	JSONNumber      lipgloss.Style
+	JSONBool        lipgloss.Style
+	JSONNull        lipgloss.Style
+	JSONPunctuation lipgloss.Style
+	Border          lipgloss.Style
+	PanelTitle      lipgloss.Style
+	FocusBorder     lipgloss.Style
+	Muted           lipgloss.Style
 }
 
 // DefaultStyles returns default styles.
 func DefaultStyles() Styles {
 	return Styles{
-		Title:       lipgloss.NewStyle().Bold(true),
-		Label:       lipgloss.NewStyle().Faint(true),
-		Value:       lipgloss.NewStyle(),
-		JSON:        lipgloss.NewStyle(),
-		Border:      lipgloss.NewStyle(),
-		PanelTitle:  lipgloss.NewStyle().Bold(true),
-		FocusBorder: lipgloss.NewStyle(),
-		Muted:       lipgloss.NewStyle().Faint(true),
+		Title:           lipgloss.NewStyle().Bold(true),
+		Label:           lipgloss.NewStyle().Faint(true),
+		Value:           lipgloss.NewStyle(),
+		JSON:            lipgloss.NewStyle(),
+		JSONKey:         lipgloss.NewStyle(),
+		JSONString:      lipgloss.NewStyle(),
+		JSONNumber:      lipgloss.NewStyle(),
+		JSONBool:        lipgloss.NewStyle(),
+		JSONNull:        lipgloss.NewStyle(),
+		JSONPunctuation: lipgloss.NewStyle(),
+		Border:          lipgloss.NewStyle(),
+		PanelTitle:      lipgloss.NewStyle().Bold(true),
+		FocusBorder:     lipgloss.NewStyle(),
+		Muted:           lipgloss.NewStyle().Faint(true),
 	}
 }
 
@@ -113,7 +126,7 @@ type Model struct {
 	// Job data
 	job        *sidekiq.JobRecord
 	properties []PropertyRow
-	jsonLines  []string
+	jsonView   jsonview.Model
 
 	// Scroll state
 	leftYOffset  int
@@ -124,10 +137,9 @@ type Model struct {
 	focusRight bool
 
 	// Calculated dimensions
-	leftWidth    int
-	rightWidth   int
-	panelHeight  int
-	maxJSONWidth int
+	leftWidth   int
+	rightWidth  int
+	panelHeight int
 }
 
 const (
@@ -141,8 +153,9 @@ type Option func(*Model)
 // New creates a new job detail model.
 func New(opts ...Option) Model {
 	m := Model{
-		KeyMap: DefaultKeyMap(),
-		styles: DefaultStyles(),
+		KeyMap:   DefaultKeyMap(),
+		styles:   DefaultStyles(),
+		jsonView: jsonview.New(),
 	}
 
 	for _, opt := range opts {
@@ -156,6 +169,16 @@ func New(opts ...Option) Model {
 func WithStyles(s Styles) Option {
 	return func(m *Model) {
 		m.styles = s
+		m.jsonView.SetStyles(jsonview.Styles{
+			Text:        s.JSON,
+			Key:         s.JSONKey,
+			String:      s.JSONString,
+			Number:      s.JSONNumber,
+			Bool:        s.JSONBool,
+			Null:        s.JSONNull,
+			Punctuation: s.JSONPunctuation,
+			Muted:       s.Muted,
+		})
 	}
 }
 
@@ -172,12 +195,23 @@ func WithSize(width, height int) Option {
 		m.width = width
 		m.height = height
 		m.updateDimensions()
+		m.jsonView.SetSize(width, height)
 	}
 }
 
 // SetStyles sets the styles.
 func (m *Model) SetStyles(s Styles) {
 	m.styles = s
+	m.jsonView.SetStyles(jsonview.Styles{
+		Text:        s.JSON,
+		Key:         s.JSONKey,
+		String:      s.JSONString,
+		Number:      s.JSONNumber,
+		Bool:        s.JSONBool,
+		Null:        s.JSONNull,
+		Punctuation: s.JSONPunctuation,
+		Muted:       s.Muted,
+	})
 }
 
 // SetSize sets the dimensions.
@@ -186,6 +220,7 @@ func (m *Model) SetSize(width, height int) {
 	m.height = height
 	m.updateDimensions()
 	m.clampScroll()
+	m.jsonView.SetSize(width, height)
 }
 
 // SetJob sets the job to display.
@@ -293,7 +328,7 @@ func (m Model) maxLeftYOffset() int {
 }
 
 func (m Model) maxRightYOffset() int {
-	maxY := len(m.jsonLines) - m.panelHeight
+	maxY := m.jsonView.LineCount() - m.panelHeight
 	if maxY < 0 {
 		return 0
 	}
@@ -302,7 +337,7 @@ func (m Model) maxRightYOffset() int {
 
 func (m Model) maxRightXOffset() int {
 	contentWidth := max(m.rightWidth-2-2*jobDetailPanelPadding, 0)
-	maxX := m.maxJSONWidth - contentWidth
+	maxX := m.jsonView.MaxWidth() - contentWidth
 	if maxX < 0 {
 		return 0
 	}
@@ -446,27 +481,11 @@ func (m *Model) extractProperties() {
 
 // formatJSON creates pretty-printed JSON lines.
 func (m *Model) formatJSON() {
-	m.jsonLines = nil
-	m.maxJSONWidth = 0
-
 	if m.job == nil {
+		m.jsonView.SetValue(nil)
 		return
 	}
-
-	b, err := json.MarshalIndent(m.job.Item(), "", "  ")
-	if err != nil {
-		m.jsonLines = []string{"{}", "  Error formatting JSON"}
-		return
-	}
-
-	m.jsonLines = strings.Split(string(b), "\n")
-
-	// Calculate max width for horizontal scroll
-	for _, line := range m.jsonLines {
-		if len(line) > m.maxJSONWidth {
-			m.maxJSONWidth = len(line)
-		}
-	}
+	m.jsonView.SetValue(m.job.Item())
 }
 
 // renderLeftPanel renders the properties panel.
@@ -531,7 +550,7 @@ func (m Model) renderRightPanel() string {
 	contentWidth := max(innerWidth-2*jobDetailPanelPadding, 0)
 
 	// Content lines with horizontal scroll
-	endY := min(m.rightYOffset+m.panelHeight, len(m.jsonLines))
+	endY := min(m.rightYOffset+m.panelHeight, m.jsonView.LineCount())
 	contentCap := 0
 	if endY > m.rightYOffset {
 		contentCap = endY - m.rightYOffset
@@ -539,11 +558,7 @@ func (m Model) renderRightPanel() string {
 	contentLines := make([]string, 0, contentCap)
 
 	for i := m.rightYOffset; i < endY; i++ {
-		line := m.jsonLines[i]
-		// Apply horizontal scroll BEFORE styling
-		line = applyHorizontalScroll(line, m.rightXOffset, contentWidth)
-		line = m.styles.JSON.Render(line)
-		contentLines = append(contentLines, line)
+		contentLines = append(contentLines, m.jsonView.RenderLine(i, m.rightXOffset, contentWidth))
 	}
 
 	// Pad to panel height
@@ -584,40 +599,23 @@ func formatTimestamp(ts float64) string {
 	return t.Format("2006-01-02 15:04:05")
 }
 
-// applyHorizontalScroll applies horizontal scroll offset.
-func applyHorizontalScroll(line string, offset, visibleWidth int) string {
-	runes := []rune(line)
-
-	if offset >= len(runes) {
-		return strings.Repeat(" ", visibleWidth)
-	}
-	runes = runes[offset:]
-
-	if len(runes) < visibleWidth {
-		return string(runes) + strings.Repeat(" ", visibleWidth-len(runes))
-	}
-	return string(runes[:visibleWidth])
-}
-
 // wrapText wraps text to fit within the specified width.
 func wrapText(s string, width int) []string {
 	if width <= 0 {
 		return []string{s}
 	}
 
-	runes := []rune(s)
-	if len(runes) <= width {
+	if lipgloss.Width(s) <= width {
 		return []string{s}
 	}
 
 	var lines []string
-	for len(runes) > 0 {
-		if len(runes) <= width {
-			lines = append(lines, string(runes))
-			break
-		}
-		lines = append(lines, string(runes[:width]))
-		runes = runes[width:]
+	for lipgloss.Width(s) > width {
+		lines = append(lines, ansi.Truncate(s, width, ""))
+		s = ansi.Cut(s, width, lipgloss.Width(s))
+	}
+	if s != "" {
+		lines = append(lines, s)
 	}
 	return lines
 }

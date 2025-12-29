@@ -31,6 +31,14 @@ type Theme struct {
 
 	// Metrics colors
 	MetricsText compat.CompleteAdaptiveColor
+
+	// JSON colors
+	JSONKey         compat.CompleteAdaptiveColor
+	JSONString      compat.CompleteAdaptiveColor
+	JSONNumber      compat.CompleteAdaptiveColor
+	JSONBool        compat.CompleteAdaptiveColor
+	JSONNull        compat.CompleteAdaptiveColor
+	JSONPunctuation compat.CompleteAdaptiveColor
 }
 
 // DefaultTheme is the adaptive color scheme used by default.
@@ -94,6 +102,32 @@ var DefaultTheme = Theme{
 		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#f8f9fa"), ANSI256: lipgloss.Color("255"), ANSI: lipgloss.Color("15")},
 		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#f8f9fa"), ANSI256: lipgloss.Color("255"), ANSI: lipgloss.Color("15")},
 	},
+
+	// JSON
+	JSONKey: compat.CompleteAdaptiveColor{
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#364FC7"), ANSI256: lipgloss.Color("62"), ANSI: lipgloss.Color("4")},
+		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#748FFC"), ANSI256: lipgloss.Color("69"), ANSI: lipgloss.Color("4")},
+	},
+	JSONString: compat.CompleteAdaptiveColor{
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#2B8A3E"), ANSI256: lipgloss.Color("28"), ANSI: lipgloss.Color("2")},
+		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#69DB7C"), ANSI256: lipgloss.Color("78"), ANSI: lipgloss.Color("2")},
+	},
+	JSONNumber: compat.CompleteAdaptiveColor{
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#D9480F"), ANSI256: lipgloss.Color("166"), ANSI: lipgloss.Color("3")},
+		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#FFA94D"), ANSI256: lipgloss.Color("215"), ANSI: lipgloss.Color("3")},
+	},
+	JSONBool: compat.CompleteAdaptiveColor{
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#C92A2A"), ANSI256: lipgloss.Color("160"), ANSI: lipgloss.Color("1")},
+		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#FF6B6B"), ANSI256: lipgloss.Color("203"), ANSI: lipgloss.Color("1")},
+	},
+	JSONNull: compat.CompleteAdaptiveColor{
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#868E96"), ANSI256: lipgloss.Color("245"), ANSI: lipgloss.Color("8")},
+		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#ADB5BD"), ANSI256: lipgloss.Color("249"), ANSI: lipgloss.Color("7")},
+	},
+	JSONPunctuation: compat.CompleteAdaptiveColor{
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#495057"), ANSI256: lipgloss.Color("240"), ANSI: lipgloss.Color("8")},
+		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#DEE2E6"), ANSI256: lipgloss.Color("253"), ANSI: lipgloss.Color("7")},
+	},
 }
 
 // Styles holds all lipgloss styles derived from a theme.
@@ -131,6 +165,14 @@ type Styles struct {
 	// Charts
 	ChartSuccess lipgloss.Style
 	ChartFailure lipgloss.Style
+
+	// JSON highlighting
+	JSONKey         lipgloss.Style
+	JSONString      lipgloss.Style
+	JSONNumber      lipgloss.Style
+	JSONBool        lipgloss.Style
+	JSONNull        lipgloss.Style
+	JSONPunctuation lipgloss.Style
 
 	// Errors
 	ErrorTitle  lipgloss.Style
@@ -221,6 +263,24 @@ func NewStyles() Styles {
 
 		ChartFailure: lipgloss.NewStyle().
 			Foreground(t.Error),
+
+		JSONKey: lipgloss.NewStyle().
+			Foreground(t.JSONKey),
+
+		JSONString: lipgloss.NewStyle().
+			Foreground(t.JSONString),
+
+		JSONNumber: lipgloss.NewStyle().
+			Foreground(t.JSONNumber),
+
+		JSONBool: lipgloss.NewStyle().
+			Foreground(t.JSONBool),
+
+		JSONNull: lipgloss.NewStyle().
+			Foreground(t.JSONNull),
+
+		JSONPunctuation: lipgloss.NewStyle().
+			Foreground(t.JSONPunctuation),
 
 		ErrorTitle: lipgloss.NewStyle().
 			Foreground(t.Error).

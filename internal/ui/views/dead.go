@@ -262,14 +262,20 @@ func (d *Dead) SetStyles(styles Styles) View {
 		Cursor:      styles.Text,
 	})
 	d.jobDetail.SetStyles(jobdetail.Styles{
-		Title:       styles.Title,
-		Label:       styles.Muted,
-		Value:       styles.Text,
-		JSON:        styles.Text,
-		Border:      styles.BorderStyle,
-		PanelTitle:  styles.Title,
-		FocusBorder: styles.FocusBorder,
-		Muted:       styles.Muted,
+		Title:           styles.Title,
+		Label:           styles.Muted,
+		Value:           styles.Text,
+		JSON:            styles.Text,
+		JSONKey:         styles.JSONKey,
+		JSONString:      styles.JSONString,
+		JSONNumber:      styles.JSONNumber,
+		JSONBool:        styles.JSONBool,
+		JSONNull:        styles.JSONNull,
+		JSONPunctuation: styles.JSONPunctuation,
+		Border:          styles.BorderStyle,
+		PanelTitle:      styles.Title,
+		FocusBorder:     styles.FocusBorder,
+		Muted:           styles.Muted,
 	})
 	return d
 }
