@@ -511,7 +511,7 @@ func (m *Model) renderBody() string {
 	m.lastColWidth = m.computeLastColWidth(m.colWidths)
 
 	// Second pass: build all rows using actual column widths (no truncation)
-	var rawRows []string
+	rawRows := make([]string, 0, len(m.rows))
 	maxWidth := 0
 	for _, row := range m.rows {
 		var cols []string
@@ -533,7 +533,7 @@ func (m *Model) renderBody() string {
 	m.maxRowWidth = maxWidth
 
 	// Third pass: apply scroll and styling
-	var lines []string
+	lines := make([]string, 0, len(rawRows))
 	for i, row := range rawRows {
 		// Pad row to max width for consistent selection highlight
 		if len(row) < maxWidth {

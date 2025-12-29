@@ -285,7 +285,7 @@ func (q *Queues) renderQueueList() string {
 		}
 	}
 
-	var lines []string
+	lines := make([]string, 0, len(q.queues))
 	for i, queue := range q.queues {
 		// Hotkey with grey background (like navbar), bold if selected
 		hotkeyText := fmt.Sprintf("%d", i+1)

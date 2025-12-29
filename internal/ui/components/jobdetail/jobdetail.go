@@ -526,7 +526,7 @@ func (m Model) renderLeftPanel() string {
 	}
 
 	// Build all display lines (label on own row, value indented below)
-	var allLines []string
+	allLines := make([]string, 0, len(m.properties)*2)
 	for _, prop := range m.properties {
 		// Label row
 		label := m.styles.Label.Render(prop.Label + ":")
@@ -559,7 +559,7 @@ func (m Model) renderLeftPanel() string {
 	// Add borders to content
 	vBar := borderStyle.Render(border.Left)
 	vBarRight := borderStyle.Render(border.Right)
-	var middleLines []string
+	middleLines := make([]string, 0, len(contentLines))
 	for _, line := range contentLines {
 		lineWidth := lipgloss.Width(line)
 		padding := innerWidth - lineWidth
@@ -611,11 +611,15 @@ func (m Model) renderRightPanel() string {
 		borderStyle.Render(border.TopRight)
 
 	// Content lines with horizontal scroll
-	var contentLines []string
 	endY := m.rightYOffset + m.panelHeight
 	if endY > len(m.jsonLines) {
 		endY = len(m.jsonLines)
 	}
+	contentCap := 0
+	if endY > m.rightYOffset {
+		contentCap = endY - m.rightYOffset
+	}
+	contentLines := make([]string, 0, contentCap)
 
 	contentWidth := innerWidth - 2 // padding on each side
 
@@ -635,7 +639,7 @@ func (m Model) renderRightPanel() string {
 	// Add borders to content
 	vBar := borderStyle.Render(border.Left)
 	vBarRight := borderStyle.Render(border.Right)
-	var middleLines []string
+	middleLines := make([]string, 0, len(contentLines))
 	for _, line := range contentLines {
 		lineWidth := lipgloss.Width(line)
 		padding := innerWidth - lineWidth

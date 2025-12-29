@@ -249,7 +249,7 @@ func (b *Busy) renderProcessList() string {
 		}
 	}
 
-	var lines []string
+	lines := make([]string, 0, len(rows))
 	for i, row := range rows {
 		// Hotkey with NavKey style, bold if selected
 		hotkeyText := fmt.Sprintf("%d", i+1)

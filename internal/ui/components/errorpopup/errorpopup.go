@@ -182,7 +182,7 @@ func (m Model) renderErrorBox(title, content string, width int) string {
 	renderedContent := contentStyle.Render(content)
 	contentLines := strings.Split(renderedContent, "\n")
 
-	var middleLines []string
+	middleLines := make([]string, 0, len(contentLines))
 	for _, line := range contentLines {
 		// Pad line to inner width with spaces (transparent background)
 		lineWidth := lipgloss.Width(line)
