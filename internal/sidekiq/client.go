@@ -204,47 +204,16 @@ func (c *Client) GetBusyData(ctx context.Context) (BusyData, error) {
 		}
 
 		// Parse info JSON
-		if fields[0] != nil {
-			var info map[string]interface{}
-			if infoStr, ok := fields[0].(string); ok {
-				if err := json.Unmarshal([]byte(infoStr), &info); err == nil {
-					if concurrency, ok := info["concurrency"].(float64); ok {
-						process.Concurrency = int(concurrency)
-					}
-					if queues, ok := info["queues"].([]interface{}); ok {
-						process.Queues = make([]string, 0, len(queues))
-						for _, q := range queues {
-							if queueName, ok := q.(string); ok {
-								process.Queues = append(process.Queues, queueName)
-							}
-						}
-					}
-					if tag, ok := info["tag"].(string); ok {
-						process.Tag = tag
-					}
-					if startedAt, ok := info["started_at"].(float64); ok {
-						process.StartedAt = int64(startedAt)
-					}
-				}
-			}
-		}
+		parseProcessInfo(fields[0], &process)
 
 		// Parse busy count
-		if fields[1] != nil {
-			if busyStr, ok := fields[1].(string); ok {
-				if busyCount, err := strconv.ParseInt(busyStr, 10, 64); err == nil {
-					process.Busy = int(busyCount)
-				}
-			}
+		if busyCount, ok := parseOptionalInt64(fields[1]); ok {
+			process.Busy = int(busyCount)
 		}
 
 		// Parse RSS (in KB, convert to bytes)
-		if fields[2] != nil {
-			if rssStr, ok := fields[2].(string); ok {
-				if rss, err := strconv.ParseInt(rssStr, 10, 64); err == nil {
-					process.RSS = rss * 1024 // Convert KB to bytes
-				}
-			}
+		if rss, ok := parseOptionalInt64(fields[2]); ok {
+			process.RSS = rss * 1024
 		}
 
 		data.Processes = append(data.Processes, process)
@@ -287,4 +256,47 @@ func (c *Client) GetBusyData(ctx context.Context) (BusyData, error) {
 	}
 
 	return data, nil
+}
+
+func parseProcessInfo(field interface{}, process *Process) {
+	infoStr, ok := field.(string)
+	if !ok || infoStr == "" {
+		return
+	}
+
+	var info map[string]interface{}
+	if err := json.Unmarshal([]byte(infoStr), &info); err != nil {
+		return
+	}
+
+	if concurrency, ok := info["concurrency"].(float64); ok {
+		process.Concurrency = int(concurrency)
+	}
+	if queues, ok := info["queues"].([]interface{}); ok {
+		process.Queues = make([]string, 0, len(queues))
+		for _, q := range queues {
+			queueName, ok := q.(string)
+			if ok {
+				process.Queues = append(process.Queues, queueName)
+			}
+		}
+	}
+	if tag, ok := info["tag"].(string); ok {
+		process.Tag = tag
+	}
+	if startedAt, ok := info["started_at"].(float64); ok {
+		process.StartedAt = int64(startedAt)
+	}
+}
+
+func parseOptionalInt64(field interface{}) (int64, bool) {
+	value, ok := field.(string)
+	if !ok || value == "" {
+		return 0, false
+	}
+	parsed, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	return parsed, true
 }

@@ -80,34 +80,44 @@ func (jr *JobRecord) DisplayClass() string {
 	displayClass := klass
 
 	// Unwrap ActiveJob wrapper
-	if klass == "ActiveJob::QueueAdapters::SidekiqAdapter::JobWrapper" || klass == "Sidekiq::ActiveJob::Wrapper" {
-		if wrapped, ok := jr.item["wrapped"].(string); ok {
-			displayClass = wrapped
-		} else if args := jr.Args(); len(args) > 0 {
-			if firstArg, ok := args[0].(string); ok {
-				displayClass = firstArg
-			}
-		}
-
-		if displayClass == "ActionMailer::DeliveryJob" || displayClass == "ActionMailer::MailDeliveryJob" {
-			args := jr.Args()
-			if argsMap, ok := firstArgsMap(args); ok {
-				if rawArgs, ok := argsMap["arguments"]; ok {
-					if deserialized, ok := deserializeArgument(rawArgs).([]interface{}); ok && len(deserialized) >= 2 {
-						mailer, okMailer := deserialized[0].(string)
-						method, okMethod := deserialized[1].(string)
-						if okMailer && okMethod {
-							displayClass = mailer + "#" + method
-						}
-					}
-				}
-			}
-		}
+	if isActiveJobWrapper(klass) {
+		displayClass = jr.unwrapActiveJobDisplayClass(displayClass)
 	}
 
 	jr.displayClass = displayClass
 	jr.displayClassLoaded = true
 	return displayClass
+}
+
+func (jr *JobRecord) unwrapActiveJobDisplayClass(displayClass string) string {
+	if wrapped, ok := jr.item["wrapped"].(string); ok {
+		displayClass = wrapped
+	} else if firstArg, ok := firstStringArg(jr.Args()); ok {
+		displayClass = firstArg
+	}
+
+	if !isActionMailerWrapper(displayClass) {
+		return displayClass
+	}
+
+	argsMap, ok := firstArgsMap(jr.Args())
+	if !ok {
+		return displayClass
+	}
+	rawArgs, ok := argsMap["arguments"]
+	if !ok {
+		return displayClass
+	}
+	deserialized, ok := deserializeArgument(rawArgs).([]interface{})
+	if !ok || len(deserialized) < 2 {
+		return displayClass
+	}
+	mailer, okMailer := deserialized[0].(string)
+	method, okMethod := deserialized[1].(string)
+	if !okMailer || !okMethod {
+		return displayClass
+	}
+	return mailer + "#" + method
 }
 
 // Args returns the job arguments.
@@ -129,52 +139,8 @@ func (jr *JobRecord) DisplayArgs() []interface{} {
 	}
 
 	klass := jr.Klass()
-	if klass == "ActiveJob::QueueAdapters::SidekiqAdapter::JobWrapper" || klass == "Sidekiq::ActiveJob::Wrapper" {
-		args := jr.Args()
-		jobArgs := []interface{}{}
-		wrapped, hasWrapped := jr.item["wrapped"].(string)
-		if hasWrapped {
-			if argsMap, ok := firstArgsMap(args); ok {
-				if rawArgs, ok := argsMap["arguments"]; ok {
-					if deserialized, ok := deserializeArgument(rawArgs).([]interface{}); ok {
-						jobArgs = deserialized
-					}
-				}
-			}
-		}
-
-		jobClass := wrapped
-		if !hasWrapped {
-			if len(args) > 0 {
-				if first, ok := args[0].(string); ok {
-					jobClass = first
-				}
-			}
-		}
-
-		switch jobClass {
-		case "ActionMailer::DeliveryJob":
-			if len(jobArgs) > 3 {
-				jobArgs = jobArgs[3:]
-			} else {
-				jobArgs = []interface{}{}
-			}
-		case "ActionMailer::MailDeliveryJob":
-			if len(jobArgs) > 3 {
-				jobArgs = jobArgs[3:]
-			} else {
-				jobArgs = []interface{}{}
-			}
-			if len(jobArgs) > 0 {
-				if paramsMap, ok := jobArgs[0].(map[string]interface{}); ok {
-					jobArgs = []interface{}{paramsMap["params"], paramsMap["args"]}
-				} else {
-					jobArgs = []interface{}{}
-				}
-			}
-		}
-
-		jr.displayArgs = jobArgs
+	if isActiveJobWrapper(klass) {
+		jr.displayArgs = jr.unwrapActiveJobArgs()
 		jr.displayArgsLoaded = true
 		return jr.displayArgs
 	}
@@ -189,15 +155,39 @@ func (jr *JobRecord) DisplayArgs() []interface{} {
 	displayArgs := make([]interface{}, len(args))
 	copy(displayArgs, args)
 
-	if encrypted, ok := jr.item["encrypt"].(bool); ok && encrypted {
-		displayArgs[len(displayArgs)-1] = "[encrypted data]"
-	} else if jr.item["encrypt"] != nil {
+	encrypted, ok := jr.item["encrypt"].(bool)
+	if (ok && encrypted) || (!ok && jr.item["encrypt"] != nil) {
 		displayArgs[len(displayArgs)-1] = "[encrypted data]"
 	}
 
 	jr.displayArgs = displayArgs
 	jr.displayArgsLoaded = true
 	return jr.displayArgs
+}
+
+func (jr *JobRecord) unwrapActiveJobArgs() []interface{} {
+	args := jr.Args()
+	wrapped, hasWrapped := jr.item["wrapped"].(string)
+	jobArgs := []interface{}{}
+	if hasWrapped {
+		jobArgs = extractActiveJobArgs(args)
+	}
+
+	jobClass := wrapped
+	if !hasWrapped {
+		if first, ok := firstStringArg(args); ok {
+			jobClass = first
+		}
+	}
+
+	switch jobClass {
+	case actionMailerDeliveryJob:
+		return trimActionMailerArgs(jobArgs)
+	case actionMailerMailDeliveryJob:
+		return normalizeMailDeliveryArgs(jobArgs)
+	default:
+		return jobArgs
+	}
 }
 
 // Context returns the current attributes (cattr) for the job.
@@ -392,6 +382,57 @@ func deserializeArgument(argument interface{}) interface{} {
 	}
 }
 
+func isActiveJobWrapper(klass string) bool {
+	return klass == activeJobAdapterWrapper || klass == activeJobWrapper
+}
+
+func isActionMailerWrapper(klass string) bool {
+	return klass == actionMailerDeliveryJob || klass == actionMailerMailDeliveryJob
+}
+
+func firstStringArg(args []interface{}) (string, bool) {
+	if len(args) == 0 {
+		return "", false
+	}
+	value, ok := args[0].(string)
+	return value, ok
+}
+
+func extractActiveJobArgs(args []interface{}) []interface{} {
+	argsMap, ok := firstArgsMap(args)
+	if !ok {
+		return []interface{}{}
+	}
+	rawArgs, ok := argsMap["arguments"]
+	if !ok {
+		return []interface{}{}
+	}
+	deserialized, ok := deserializeArgument(rawArgs).([]interface{})
+	if !ok {
+		return []interface{}{}
+	}
+	return deserialized
+}
+
+func trimActionMailerArgs(args []interface{}) []interface{} {
+	if len(args) <= 3 {
+		return []interface{}{}
+	}
+	return args[3:]
+}
+
+func normalizeMailDeliveryArgs(args []interface{}) []interface{} {
+	args = trimActionMailerArgs(args)
+	if len(args) == 0 {
+		return []interface{}{}
+	}
+	paramsMap, ok := args[0].(map[string]interface{})
+	if !ok {
+		return []interface{}{}
+	}
+	return []interface{}{paramsMap["params"], paramsMap["args"]}
+}
+
 func isSerializedGlobalID(value map[string]interface{}) bool {
 	if len(value) != 1 {
 		return false
@@ -411,6 +452,10 @@ func firstArgsMap(args []interface{}) (map[string]interface{}, bool) {
 }
 
 const (
-	activeJobPrefix = "_aj_"
-	globalIDKey     = "_aj_globalid"
+	activeJobPrefix             = "_aj_"
+	globalIDKey                 = "_aj_globalid"
+	activeJobAdapterWrapper     = "ActiveJob::QueueAdapters::SidekiqAdapter::JobWrapper"
+	activeJobWrapper            = "Sidekiq::ActiveJob::Wrapper"
+	actionMailerDeliveryJob     = "ActionMailer::DeliveryJob"
+	actionMailerMailDeliveryJob = "ActionMailer::MailDeliveryJob"
 )
