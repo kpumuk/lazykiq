@@ -260,6 +260,10 @@ func (m Model) renderTopBorder(state StyleState, innerWidth int) string {
 	topRight := state.Border.Render(m.border.TopRight)
 	hBar := state.Border.Render(m.border.Top)
 
+	leftPad := 1
+	rightPad := 1
+	available := max(innerWidth-leftPad-rightPad, 0)
+
 	title := padLabel(m.title, m.titlePadding)
 	styledTitle := state.Title.Render(title)
 	titleWidth := lipgloss.Width(styledTitle)
@@ -270,9 +274,23 @@ func (m Model) renderTopBorder(state StyleState, innerWidth int) string {
 	}
 	metaWidth := lipgloss.Width(meta)
 
-	leftPad := 1
-	rightPad := 1
-	remaining := max(innerWidth-leftPad-rightPad-titleWidth-metaWidth, 0)
+	if titleWidth+metaWidth > available {
+		excess := titleWidth + metaWidth - available
+		if metaWidth > 0 {
+			reduce := min(excess, metaWidth)
+			meta = ""
+			metaWidth = 0
+			excess -= reduce
+		}
+		if excess > 0 && titleWidth > 0 {
+			target := max(titleWidth-excess, 0)
+			title = lipgloss.NewStyle().Width(target).MaxWidth(target).Render(title)
+			styledTitle = state.Title.Render(title)
+			titleWidth = lipgloss.Width(styledTitle)
+		}
+	}
+
+	remaining := max(available-titleWidth-metaWidth, 0)
 
 	return topLeft +
 		strings.Repeat(hBar, leftPad) +

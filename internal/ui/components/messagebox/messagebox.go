@@ -122,9 +122,8 @@ func (m Model) Message() string {
 
 // View renders the message box.
 func (m Model) View() string {
-	height := max(m.height, 5)
 	innerWidth := max(m.width-2, 0)
-	contentHeight := max(height-2, 0)
+	contentHeight := max(m.height-2, 0)
 
 	// Center the message vertically within contentHeight
 	lines := make([]string, contentHeight)
@@ -156,7 +155,8 @@ func (m Model) View() string {
 		frame.WithTitle(m.title),
 		frame.WithTitlePadding(1),
 		frame.WithContent(strings.Join(lines, "\n")),
-		frame.WithSize(m.width, height),
+		frame.WithSize(m.width, m.height),
+		frame.WithMinHeight(5),
 	)
 
 	return box.View()
