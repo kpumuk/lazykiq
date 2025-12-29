@@ -85,11 +85,10 @@ func New(client *sidekiq.Client) App {
 		views:      viewList,
 		metrics: metrics.New(
 			metrics.WithStyles(metrics.Styles{
-				Bar:       styles.MetricsBar,
-				Fill:      styles.MetricsFill,
-				Label:     styles.MetricsLabel,
-				Value:     styles.MetricsValue,
-				Separator: styles.MetricsSep,
+				Bar:   styles.MetricsBar,
+				Fill:  styles.MetricsFill,
+				Label: styles.MetricsLabel,
+				Value: styles.MetricsValue,
 			}),
 		),
 		navbar: navbar.New(

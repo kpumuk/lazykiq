@@ -27,21 +27,19 @@ type UpdateMsg struct {
 
 // Styles holds the styles needed by the metrics bar.
 type Styles struct {
-	Bar       lipgloss.Style
-	Fill      lipgloss.Style
-	Label     lipgloss.Style
-	Value     lipgloss.Style
-	Separator lipgloss.Style
+	Bar   lipgloss.Style
+	Fill  lipgloss.Style
+	Label lipgloss.Style
+	Value lipgloss.Style
 }
 
 // DefaultStyles returns default styles for the metrics bar.
 func DefaultStyles() Styles {
 	return Styles{
-		Bar:       lipgloss.NewStyle().Padding(0, 1),
-		Fill:      lipgloss.NewStyle(),
-		Label:     lipgloss.NewStyle().Faint(true),
-		Value:     lipgloss.NewStyle().Bold(true),
-		Separator: lipgloss.NewStyle().Faint(true),
+		Bar:   lipgloss.NewStyle().Padding(0, 1),
+		Fill:  lipgloss.NewStyle(),
+		Label: lipgloss.NewStyle().Faint(true),
+		Value: lipgloss.NewStyle().Bold(true),
 	}
 }
 
@@ -157,7 +155,7 @@ func (m Model) View() string {
 	}
 
 	baseItems, baseWidths, maxWidth := buildBaseItems(baseMetrics, m.styles)
-	sep := m.styles.Separator.Render(" ")
+	sep := " "
 	sepWidth := lipgloss.Width(sep)
 
 	targetWidths := layoutTargetWidths(baseWidths, maxWidth, contentWidth, sepWidth)

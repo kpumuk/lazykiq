@@ -9,14 +9,12 @@ type Theme struct {
 	Primary compat.CompleteAdaptiveColor
 
 	// Text colors
-	Text       compat.AdaptiveColor
-	TextMuted  compat.AdaptiveColor
-	TextBright compat.AdaptiveColor
+	Text      compat.CompleteAdaptiveColor
+	TextMuted compat.CompleteAdaptiveColor
 
 	// Background colors
 	Bg           compat.AdaptiveColor
-	BgAlt        compat.AdaptiveColor
-	MetricsBarBg compat.AdaptiveColor
+	MetricsBarBg compat.CompleteAdaptiveColor
 
 	// Border colors
 	Border      compat.AdaptiveColor
@@ -29,8 +27,7 @@ type Theme struct {
 	Error           compat.AdaptiveColor
 
 	// Metrics colors
-	MetricsText  compat.AdaptiveColor
-	MetricsSepBg compat.AdaptiveColor
+	MetricsText compat.CompleteAdaptiveColor
 }
 
 // DefaultTheme is the adaptive color scheme used by default.
@@ -42,31 +39,23 @@ var DefaultTheme = Theme{
 	},
 
 	// Text
-	Text: compat.AdaptiveColor{
-		Light: lipgloss.Color("#111827"), // Gray-900
-		Dark:  lipgloss.Color("#F9FAFB"), // Gray-50
+	Text: compat.CompleteAdaptiveColor{
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#111827"), ANSI256: lipgloss.Color("0"), ANSI: lipgloss.Color("0")},
+		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#F9FAFB"), ANSI256: lipgloss.Color("15"), ANSI: lipgloss.Color("15")},
 	},
-	TextMuted: compat.AdaptiveColor{
-		Light: lipgloss.Color("#6B7280"), // Gray-500
-		Dark:  lipgloss.Color("#9CA3AF"), // Gray-400
-	},
-	TextBright: compat.AdaptiveColor{
-		Light: lipgloss.Color("#030712"), // Gray-950
-		Dark:  lipgloss.Color("#FFFFFF"), // White
+	TextMuted: compat.CompleteAdaptiveColor{
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#6B7280"), ANSI256: lipgloss.Color("240"), ANSI: lipgloss.Color("8")},
+		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#9CA3AF"), ANSI256: lipgloss.Color("250"), ANSI: lipgloss.Color("7")},
 	},
 
 	// Backgrounds
 	Bg: compat.AdaptiveColor{
-		Light: lipgloss.Color("#FFFFFF"), // White
-		Dark:  lipgloss.Color("#111827"), // Gray-900
+		Light: lipgloss.Color("15"),
+		Dark:  lipgloss.Color("0"),
 	},
-	BgAlt: compat.AdaptiveColor{
-		Light: lipgloss.Color("#F3F4F6"), // Gray-100
-		Dark:  lipgloss.Color("#1F2937"), // Gray-800
-	},
-	MetricsBarBg: compat.AdaptiveColor{
-		Light: lipgloss.Color("#1c7ed6"), // blue 7
-		Dark:  lipgloss.Color("#4dabf7"), // blue 4
+	MetricsBarBg: compat.CompleteAdaptiveColor{
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#1c7ed6"), ANSI256: lipgloss.Color("33"), ANSI: lipgloss.Color("12")},
+		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#4dabf7"), ANSI256: lipgloss.Color("25"), ANSI: lipgloss.Color("4")},
 	},
 
 	// Borders
@@ -98,13 +87,9 @@ var DefaultTheme = Theme{
 	},
 
 	// Metrics
-	MetricsText: compat.AdaptiveColor{
-		Light: lipgloss.Color("#f8f9fa"),
-		Dark:  lipgloss.Color("#212529"), //gray 9
-	},
-	MetricsSepBg: compat.AdaptiveColor{
-		Light: lipgloss.Color("#1971c2"), // blue 8
-		Dark:  lipgloss.Color("#339af0"), // blue 5
+	MetricsText: compat.CompleteAdaptiveColor{
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#f8f9fa"), ANSI256: lipgloss.Color("255"), ANSI: lipgloss.Color("15")},
+		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#f8f9fa"), ANSI256: lipgloss.Color("255"), ANSI: lipgloss.Color("15")},
 	},
 }
 
@@ -170,9 +155,6 @@ func NewStyles() Styles {
 			Foreground(t.MetricsText).
 			Background(t.MetricsBarBg).
 			Bold(true),
-
-		MetricsSep: lipgloss.NewStyle().
-			Background(t.MetricsSepBg),
 
 		MetricLabel: lipgloss.NewStyle().
 			Foreground(t.TextMuted),
