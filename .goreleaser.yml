@@ -48,7 +48,7 @@ snapshot:
   version_template: "{{ incpatch .Version }}-next"
 
 changelog:
-  use: github-native
+  use: github
   filters:
     exclude:
       - "^docs:"
