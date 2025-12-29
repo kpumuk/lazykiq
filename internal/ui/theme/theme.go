@@ -6,8 +6,7 @@ import "charm.land/lipgloss/v2/compat"
 // Theme defines all colors used throughout the UI.
 type Theme struct {
 	// Base colors
-	Primary   compat.CompleteAdaptiveColor
-	Secondary compat.AdaptiveColor
+	Primary compat.CompleteAdaptiveColor
 
 	// Text colors
 	Text       compat.AdaptiveColor
@@ -40,10 +39,6 @@ var DefaultTheme = Theme{
 	Primary: compat.CompleteAdaptiveColor{
 		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#B2003C"), ANSI256: lipgloss.Color("161"), ANSI: lipgloss.Color("13")},
 		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#F73D68"), ANSI256: lipgloss.Color("204"), ANSI: lipgloss.Color("13")},
-	},
-	Secondary: compat.AdaptiveColor{
-		Light: lipgloss.Color("#6B7280"), // Gray-500
-		Dark:  lipgloss.Color("#6B7280"), // Gray-500
 	},
 
 	// Text
