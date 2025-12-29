@@ -1,3 +1,4 @@
+// Package main provides the lazykiq CLI entry point.
 package main
 
 import "os"

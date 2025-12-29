@@ -1,3 +1,4 @@
+// Package jobdetail renders job detail panels.
 package jobdetail
 
 import (

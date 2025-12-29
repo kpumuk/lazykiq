@@ -1,3 +1,4 @@
+// Package metrics renders the top metrics bar.
 package metrics
 
 import (

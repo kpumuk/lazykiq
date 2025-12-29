@@ -430,14 +430,14 @@ func (d *Dashboard) trimRealtimeSeries() {
 	d.realtimeTimes = trimTimes(d.realtimeTimes, maxPoints)
 }
 
-func trimSeries(values []int64, max int) []int64 {
-	if max <= 0 {
+func trimSeries(values []int64, maxItems int) []int64 {
+	if maxItems <= 0 {
 		return nil
 	}
-	if len(values) <= max {
+	if len(values) <= maxItems {
 		return values
 	}
-	return values[len(values)-max:]
+	return values[len(values)-maxItems:]
 }
 
 func (d *Dashboard) renderTimeSeriesChart(width, height int, times []time.Time, processed, failed []int64, xFormatter func(int, float64) string) string {
@@ -543,27 +543,27 @@ func orFallback(value, fallback string) string {
 	return value
 }
 
-func trimTimes(values []time.Time, max int) []time.Time {
-	if max <= 0 {
+func trimTimes(values []time.Time, maxItems int) []time.Time {
+	if maxItems <= 0 {
 		return nil
 	}
-	if len(values) <= max {
+	if len(values) <= maxItems {
 		return values
 	}
-	return values[len(values)-max:]
+	return values[len(values)-maxItems:]
 }
 
 func minInt(values ...int) int {
 	if len(values) == 0 {
 		return 0
 	}
-	min := values[0]
+	minValue := values[0]
 	for _, v := range values[1:] {
-		if v < min {
-			min = v
+		if v < minValue {
+			minValue = v
 		}
 	}
-	return min
+	return minValue
 }
 
 func (d *Dashboard) seedRealtimeSeries() {

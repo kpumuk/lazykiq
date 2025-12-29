@@ -1,3 +1,4 @@
+// Package ui renders the Bubble Tea application UI.
 package ui
 
 import (

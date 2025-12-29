@@ -1,3 +1,4 @@
+// Package theme defines UI colors and styles.
 package theme
 
 import (

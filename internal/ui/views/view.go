@@ -1,3 +1,4 @@
+// Package views contains the main UI views.
 package views
 
 import (

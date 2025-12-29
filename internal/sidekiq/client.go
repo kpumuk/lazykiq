@@ -1,3 +1,4 @@
+// Package sidekiq provides a Redis-backed Sidekiq client and data models.
 package sidekiq
 
 import (

@@ -1,3 +1,4 @@
+// Package messagebox renders titled message boxes.
 package messagebox
 
 import (

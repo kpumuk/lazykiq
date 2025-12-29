@@ -1,3 +1,4 @@
+// Package jobsbox renders titled jobs summary boxes.
 package jobsbox
 
 import (

@@ -1,3 +1,4 @@
+// Package format provides UI formatting helpers.
 package format
 
 import (

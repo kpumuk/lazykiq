@@ -1,3 +1,4 @@
+// Package navbar renders the bottom navigation bar.
 package navbar
 
 import (
@@ -105,7 +106,7 @@ func (m Model) Init() tea.Cmd {
 }
 
 // Update handles messages.
-func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
+func (m Model) Update(_ tea.Msg) (Model, tea.Cmd) {
 	return m, nil
 }
 

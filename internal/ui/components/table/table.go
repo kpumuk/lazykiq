@@ -1,3 +1,4 @@
+// Package table provides a scrollable, selectable table component.
 package table
 
 import (

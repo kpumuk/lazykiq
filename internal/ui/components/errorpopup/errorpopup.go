@@ -1,3 +1,4 @@
+// Package errorpopup renders connection error overlays.
 package errorpopup
 
 import (

@@ -1,3 +1,4 @@
+// Package filterinput provides a reusable filter input component.
 package filterinput
 
 import (
@@ -8,14 +9,19 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
+// Action describes filter input intents.
 type Action int
 
 const (
+	// ActionNone indicates no action.
 	ActionNone Action = iota
+	// ActionApply indicates the current query should be applied.
 	ActionApply
+	// ActionClear indicates the current query should be cleared.
 	ActionClear
 )
 
+// ActionMsg reports a filter action and query.
 type ActionMsg struct {
 	Action Action
 	Query  string
