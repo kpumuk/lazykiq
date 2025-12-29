@@ -24,6 +24,8 @@ type connectionErrorMsg struct {
 	err error
 }
 
+const dashboardViewIndex = 0
+
 // App is the main application model.
 type App struct {
 	keys            KeyMap
@@ -177,6 +179,21 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case views.ConnectionErrorMsg:
 		// Handle connection errors from views
 		a.connectionError = msg.Err
+
+	case views.DashboardTickMsg:
+		updatedView, cmd := a.views[dashboardViewIndex].Update(msg)
+		a.views[dashboardViewIndex] = updatedView
+		cmds = append(cmds, cmd)
+
+	case views.DashboardRealtimeMsg:
+		updatedView, cmd := a.views[dashboardViewIndex].Update(msg)
+		a.views[dashboardViewIndex] = updatedView
+		cmds = append(cmds, cmd)
+
+	case views.DashboardHistoryMsg:
+		updatedView, cmd := a.views[dashboardViewIndex].Update(msg)
+		a.views[dashboardViewIndex] = updatedView
+		cmds = append(cmds, cmd)
 
 	case tea.KeyMsg:
 		if view, ok := a.views[a.activeView].(interface{ FilterFocused() bool }); ok && view.FilterFocused() {

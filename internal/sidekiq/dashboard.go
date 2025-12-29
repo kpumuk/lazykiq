@@ -18,6 +18,13 @@ type RedisInfo struct {
 	UsedMemoryPeak string
 }
 
+// DashboardRealtime combines stats and Redis info for the realtime dashboard pane.
+type DashboardRealtime struct {
+	Stats     Stats
+	RedisInfo RedisInfo
+	FetchedAt time.Time
+}
+
 // StatsHistory holds daily processed and failed counts.
 type StatsHistory struct {
 	// Use parallel slices to match chart data sets without extra struct mapping.
@@ -47,6 +54,23 @@ func (c *Client) GetRedisInfo(ctx context.Context) (RedisInfo, error) {
 	}
 
 	return info, nil
+}
+
+// GetDashboardRealtime fetches realtime dashboard data in one call.
+func (c *Client) GetDashboardRealtime(ctx context.Context) (DashboardRealtime, error) {
+	stats, err := c.GetStats(ctx)
+	if err != nil {
+		return DashboardRealtime{}, err
+	}
+	redisInfo, err := c.GetRedisInfo(ctx)
+	if err != nil {
+		return DashboardRealtime{}, err
+	}
+	return DashboardRealtime{
+		Stats:     stats,
+		RedisInfo: redisInfo,
+		FetchedAt: time.Now(),
+	}, nil
 }
 
 // GetStatsHistory fetches per-day processed and failed stats for the last N days.

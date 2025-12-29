@@ -21,17 +21,18 @@ const (
 	dashboardPaneHistory
 )
 
-type dashboardRealtimeMsg struct {
-	stats     sidekiq.Stats
-	redisInfo sidekiq.RedisInfo
-	at        time.Time
+// DashboardRealtimeMsg carries realtime dashboard data.
+type DashboardRealtimeMsg struct {
+	Snapshot sidekiq.DashboardRealtime
 }
 
-type dashboardHistoryMsg struct {
+// DashboardHistoryMsg carries historical dashboard data.
+type DashboardHistoryMsg struct {
 	history sidekiq.StatsHistory
 }
 
-type dashboardTickMsg struct {
+// DashboardTickMsg is emitted by the realtime ticker.
+type DashboardTickMsg struct {
 	id int
 }
 
@@ -91,20 +92,20 @@ func (d *Dashboard) Init() tea.Cmd {
 // Update implements View.
 func (d *Dashboard) Update(msg tea.Msg) (View, tea.Cmd) {
 	switch msg := msg.(type) {
-	case dashboardTickMsg:
+	case DashboardTickMsg:
 		if msg.id != d.tickID {
 			return d, nil
 		}
 		return d, tea.Batch(d.fetchRealtimeCmd(), d.realtimeTickCmd())
 
-	case dashboardRealtimeMsg:
-		d.redisInfo = msg.redisInfo
+	case DashboardRealtimeMsg:
+		d.redisInfo = msg.Snapshot.RedisInfo
 
 		var deltaProcessed int64
 		var deltaFailed int64
 		if d.hasLastTotals {
-			deltaProcessed = msg.stats.Processed - d.lastProcessed
-			deltaFailed = msg.stats.Failed - d.lastFailed
+			deltaProcessed = msg.Snapshot.Stats.Processed - d.lastProcessed
+			deltaFailed = msg.Snapshot.Stats.Failed - d.lastFailed
 			if deltaProcessed < 0 {
 				deltaProcessed = 0
 			}
@@ -112,8 +113,8 @@ func (d *Dashboard) Update(msg tea.Msg) (View, tea.Cmd) {
 				deltaFailed = 0
 			}
 		}
-		d.lastProcessed = msg.stats.Processed
-		d.lastFailed = msg.stats.Failed
+		d.lastProcessed = msg.Snapshot.Stats.Processed
+		d.lastFailed = msg.Snapshot.Stats.Failed
 		if !d.hasLastTotals {
 			d.hasLastTotals = true
 			return d, nil
@@ -124,16 +125,16 @@ func (d *Dashboard) Update(msg tea.Msg) (View, tea.Cmd) {
 			return d, nil
 		}
 
-		d.lastPollAt = msg.at
+		d.lastPollAt = msg.Snapshot.FetchedAt
 		d.lastDeltaP = deltaProcessed
 		d.lastDeltaF = deltaFailed
 		d.realtimeProcessed = append(d.realtimeProcessed, deltaProcessed)
 		d.realtimeFailed = append(d.realtimeFailed, deltaFailed)
-		d.realtimeTimes = append(d.realtimeTimes, msg.at)
+		d.realtimeTimes = append(d.realtimeTimes, msg.Snapshot.FetchedAt)
 		d.trimRealtimeSeries()
 		return d, nil
 
-	case dashboardHistoryMsg:
+	case DashboardHistoryMsg:
 		d.historyDates = msg.history.Dates
 		d.historyProcessed = msg.history.Processed
 		d.historyFailed = msg.history.Failed
@@ -231,25 +232,19 @@ func (d *Dashboard) realtimeTickCmd() tea.Cmd {
 	id := d.tickID
 	interval := time.Duration(d.realtimeInterval) * time.Second
 	return tea.Tick(interval, func(time.Time) tea.Msg {
-		return dashboardTickMsg{id: id}
+		return DashboardTickMsg{id: id}
 	})
 }
 
 func (d *Dashboard) fetchRealtimeCmd() tea.Cmd {
 	return func() tea.Msg {
 		ctx := context.Background()
-		stats, err := d.client.GetStats(ctx)
+		snapshot, err := d.client.GetDashboardRealtime(ctx)
 		if err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}
-		redisInfo, err := d.client.GetRedisInfo(ctx)
-		if err != nil {
-			return ConnectionErrorMsg{Err: err}
-		}
-		return dashboardRealtimeMsg{
-			stats:     stats,
-			redisInfo: redisInfo,
-			at:        time.Now(),
+		return DashboardRealtimeMsg{
+			Snapshot: snapshot,
 		}
 	}
 }
@@ -262,7 +257,7 @@ func (d *Dashboard) fetchHistoryCmd() tea.Cmd {
 		if err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}
-		return dashboardHistoryMsg{history: history}
+		return DashboardHistoryMsg{history: history}
 	}
 }
 
