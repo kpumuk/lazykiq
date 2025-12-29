@@ -31,7 +31,7 @@ go install github.com/kpumuk/lazykiq/cmd/lazykiq@latest
 
 ### Keys
 
-- `1-6` - switch views
+- `1-7` - switch views
 - `j` / `k` - navigate down / up (or `Down` / `Up`)
 - `Enter` - view job details, `Esc` to close
 - `[` / `]` - previous / next page (switch interval on the Dashboard)

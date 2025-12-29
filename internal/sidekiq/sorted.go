@@ -44,6 +44,9 @@ func (c *Client) getSortedSetJobs(ctx context.Context, key string, start, count 
 	}
 
 	end := int64(start + count - 1)
+	if count <= 0 {
+		end = -1
+	}
 	var results []redis.Z
 	if reverse {
 		results, err = c.redis.ZRevRangeWithScores(ctx, key, int64(start), end).Result()
