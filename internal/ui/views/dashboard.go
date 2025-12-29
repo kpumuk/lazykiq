@@ -338,12 +338,12 @@ func (d *Dashboard) renderRealtimeContent(contentHeight int) string {
 		return ""
 	}
 	if len(d.realtimeProcessed) == 0 {
-		return renderCenteredMessage("Loading...", width, contentHeight)
+		return renderCenteredLoading(width, contentHeight)
 	}
 
 	chartHeight := contentHeight - 1
 	if chartHeight < 1 {
-		return renderCenteredMessage("Loading...", width, contentHeight)
+		return renderCenteredLoading(width, contentHeight)
 	}
 
 	chart := d.renderTimeSeriesChart(width, chartHeight, d.realtimeTimes, d.realtimeProcessed, d.realtimeFailed, realtimeTimeLabelFormatter())
@@ -357,12 +357,12 @@ func (d *Dashboard) renderHistoryContent(contentHeight int) string {
 		return ""
 	}
 	if len(d.historyProcessed) == 0 {
-		return renderCenteredMessage("Loading...", width, contentHeight)
+		return renderCenteredLoading(width, contentHeight)
 	}
 
 	chartHeight := contentHeight - 1
 	if chartHeight < 1 {
-		return renderCenteredMessage("Loading...", width, contentHeight)
+		return renderCenteredLoading(width, contentHeight)
 	}
 
 	chart := d.renderTimeSeriesChart(width, chartHeight, d.historyDates, d.historyProcessed, d.historyFailed, historyTimeLabelFormatter())
@@ -446,7 +446,7 @@ func (d *Dashboard) renderTimeSeriesChart(width, height int, times []time.Time, 
 	}
 	n := minInt(len(times), len(processed), len(failed))
 	if n == 0 {
-		return renderCenteredMessage("Loading...", width, height)
+		return renderCenteredLoading(width, height)
 	}
 
 	times = times[len(times)-n:]
@@ -508,7 +508,7 @@ func (d *Dashboard) renderTimeSeriesChart(width, height int, times []time.Time, 
 	return chart.View()
 }
 
-func renderCenteredMessage(msg string, width, height int) string {
+func renderCenteredLoading(width, height int) string {
 	if height < 1 {
 		return ""
 	}
@@ -518,7 +518,7 @@ func renderCenteredMessage(msg string, width, height int) string {
 		lines[i] = strings.Repeat(" ", width)
 	}
 	if width > 0 {
-		trimmed := lipgloss.NewStyle().MaxWidth(width).Render(msg)
+		trimmed := lipgloss.NewStyle().MaxWidth(width).Render("Loading...")
 		padding := (width - lipgloss.Width(trimmed)) / 2
 		if padding < 0 {
 			padding = 0

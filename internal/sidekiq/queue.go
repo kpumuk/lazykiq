@@ -67,7 +67,7 @@ func (q *Queue) Latency(ctx context.Context) (float64, error) {
 
 	var jobData map[string]interface{}
 	if err := json.Unmarshal([]byte(entry), &jobData); err != nil {
-		return 0.0, nil
+		return 0.0, err
 	}
 
 	enqueuedAt, ok := jobData["enqueued_at"].(float64)
