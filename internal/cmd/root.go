@@ -1,4 +1,6 @@
-package main
+// Package cmd provides the entrypoint and CLI command configuration for the
+// lazykiq application.
+package cmd
 
 import (
 	"context"
@@ -15,30 +17,6 @@ import (
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui"
 )
-
-var (
-	Version = "dev"
-	Commit  = ""
-	Date    = ""
-	BuiltBy = ""
-)
-
-var rootCmd = &cobra.Command{
-	Use:   "lazykiq",
-	Short: "A terminal UI for Sidekiq.",
-	Long:  "A terminal UI for Sidekiq.",
-	Args:  cobra.NoArgs,
-}
-
-func Execute() error {
-	return fang.Execute(
-		context.Background(),
-		rootCmd,
-		fang.WithVersion(rootCmd.Version),
-		fang.WithoutCompletions(),
-		fang.WithoutManpage(),
-	)
-}
 
 func buildVersion(version, commit, date, builtBy string) string {
 	result := version
@@ -59,8 +37,16 @@ func buildVersion(version, commit, date, builtBy string) string {
 	return result
 }
 
-func init() {
-	rootCmd.Version = buildVersion(Version, Commit, Date, BuiltBy)
+// Execute initializes and runs the lazykiq terminal application.
+func Execute(version, commit, date, builtBy string) error {
+	rootCmd := &cobra.Command{
+		Use:   "lazykiq",
+		Short: "A terminal UI for Sidekiq.",
+		Long:  "A terminal UI for Sidekiq.",
+		Args:  cobra.NoArgs,
+	}
+
+	rootCmd.Version = buildVersion(version, commit, date, builtBy)
 	rootCmd.SetVersionTemplate(`lazykiq {{printf "version %s\n" .Version}}`)
 
 	rootCmd.Flags().String(
@@ -126,4 +112,12 @@ func init() {
 
 		return nil
 	}
+
+	return fang.Execute(
+		context.Background(),
+		rootCmd,
+		fang.WithVersion(rootCmd.Version),
+		fang.WithoutCompletions(),
+		fang.WithoutManpage(),
+	)
 }
