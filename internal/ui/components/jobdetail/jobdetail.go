@@ -3,6 +3,7 @@ package jobdetail
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
+	"github.com/kpumuk/lazykiq/internal/ui/format"
 )
 
 // KeyMap defines keybindings for the job detail view.
@@ -387,24 +389,37 @@ func (m *Model) extractProperties() {
 		return
 	}
 
-	item := m.job.Item()
-
 	// Basic properties
 	m.properties = append(m.properties, PropertyRow{Label: "JID", Value: m.job.JID()})
+	if bid := m.job.Bid(); bid != "" {
+		m.properties = append(m.properties, PropertyRow{Label: "BID", Value: bid})
+	}
 	m.properties = append(m.properties, PropertyRow{Label: "Queue", Value: m.job.Queue()})
 	m.properties = append(m.properties, PropertyRow{Label: "Class", Value: m.job.DisplayClass()})
 
 	// Timestamps
-	if enqueuedAt, ok := item["enqueued_at"].(float64); ok {
+	if enqueuedAt := m.job.EnqueuedAt(); enqueuedAt > 0 {
 		m.properties = append(m.properties, PropertyRow{
 			Label: "Enqueued At",
 			Value: formatTimestamp(enqueuedAt),
 		})
 	}
-	if createdAt, ok := item["created_at"].(float64); ok {
+	if createdAt := m.job.CreatedAt(); createdAt > 0 {
 		m.properties = append(m.properties, PropertyRow{
 			Label: "Created At",
 			Value: formatTimestamp(createdAt),
+		})
+	}
+	if latency := m.job.Latency(); latency > 0 {
+		m.properties = append(m.properties, PropertyRow{
+			Label: "Latency",
+			Value: format.Duration(int64(math.Round(latency))),
+		})
+	}
+	if tags := m.job.Tags(); len(tags) > 0 {
+		m.properties = append(m.properties, PropertyRow{
+			Label: "Tags",
+			Value: strings.Join(tags, ", "),
 		})
 	}
 
@@ -431,11 +446,23 @@ func (m *Model) extractProperties() {
 			Value: formatTimestamp(retriedAt),
 		})
 	}
+	if backtrace := m.job.ErrorBacktrace(); len(backtrace) > 0 {
+		m.properties = append(m.properties, PropertyRow{
+			Label: "Backtrace",
+			Value: strings.Join(backtrace, " | "),
+		})
+	}
 
 	// Arguments summary
-	if args := m.job.Args(); len(args) > 0 {
-		argsStr := fmt.Sprintf("%d argument(s)", len(args))
-		m.properties = append(m.properties, PropertyRow{Label: "Arguments", Value: argsStr})
+	displayArgs := m.job.DisplayArgs()
+	if len(displayArgs) == 0 {
+		displayArgs = m.job.Args()
+	}
+	if len(displayArgs) > 0 {
+		m.properties = append(m.properties, PropertyRow{
+			Label: "Args",
+			Value: format.Args(displayArgs),
+		})
 	}
 }
 
