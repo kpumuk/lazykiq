@@ -53,6 +53,7 @@ func New(client *sidekiq.Client) App {
 		views.NewRetries(client),
 		views.NewScheduled(client),
 		views.NewDead(client),
+		views.NewErrors(client),
 	}
 
 	// Apply styles to views
@@ -235,6 +236,10 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case key.Matches(msg, a.keys.View6):
 			a.activeView = 5
+			cmds = append(cmds, a.views[a.activeView].Init())
+
+		case key.Matches(msg, a.keys.View7):
+			a.activeView = 6
 			cmds = append(cmds, a.views[a.activeView].Init())
 
 		default:
