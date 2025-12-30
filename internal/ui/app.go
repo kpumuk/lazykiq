@@ -34,7 +34,8 @@ const (
 	viewRetries
 	viewScheduled
 	viewDead
-	viewErrors
+	viewErrorsSummary
+	viewErrorsDetails
 	viewJobDetail
 )
 
@@ -67,17 +68,18 @@ func New(client *sidekiq.Client) App {
 		viewRetries,
 		viewScheduled,
 		viewDead,
-		viewErrors,
+		viewErrorsSummary,
 	}
 	viewRegistry := map[viewID]views.View{
-		viewDashboard: views.NewDashboard(client),
-		viewBusy:      views.NewBusy(client),
-		viewQueues:    views.NewQueues(client),
-		viewRetries:   views.NewRetries(client),
-		viewScheduled: views.NewScheduled(client),
-		viewDead:      views.NewDead(client),
-		viewErrors:    views.NewErrors(client),
-		viewJobDetail: views.NewJobDetail(),
+		viewDashboard:     views.NewDashboard(client),
+		viewBusy:          views.NewBusy(client),
+		viewQueues:        views.NewQueues(client),
+		viewRetries:       views.NewRetries(client),
+		viewScheduled:     views.NewScheduled(client),
+		viewDead:          views.NewDead(client),
+		viewErrorsSummary: views.NewErrorsSummary(client),
+		viewErrorsDetails: views.NewErrorsDetails(client),
+		viewJobDetail:     views.NewJobDetail(),
 	}
 
 	// Apply styles to views
@@ -106,6 +108,7 @@ func New(client *sidekiq.Client) App {
 	for _, id := range viewOrder {
 		viewRegistry[id] = viewRegistry[id].SetStyles(viewStyles)
 	}
+	viewRegistry[viewErrorsDetails] = viewRegistry[viewErrorsDetails].SetStyles(viewStyles)
 	viewRegistry[viewJobDetail] = viewRegistry[viewJobDetail].SetStyles(viewStyles)
 
 	// Build navbar view infos
@@ -311,6 +314,12 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		cmds = append(cmds, a.pushView(viewJobDetail))
 
+	case views.ShowErrorDetailsMsg:
+		if setter, ok := a.viewRegistry[viewErrorsDetails].(views.ErrorDetailsSetter); ok {
+			setter.SetErrorGroup(msg.DisplayClass, msg.ErrorClass, msg.Queue, msg.Query)
+		}
+		cmds = append(cmds, a.pushView(viewErrorsDetails))
+
 	case tea.KeyMsg:
 		activeID := a.activeViewID()
 		if view, ok := a.viewRegistry[activeID].(interface{ FilterFocused() bool }); ok && view.FilterFocused() {
@@ -346,7 +355,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, a.setActiveView(viewDead))
 
 		case key.Matches(msg, a.keys.View7):
-			cmds = append(cmds, a.setActiveView(viewErrors))
+			cmds = append(cmds, a.setActiveView(viewErrorsSummary))
 
 		default:
 			// Pass to active view

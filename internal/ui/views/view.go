@@ -71,9 +71,22 @@ type ShowJobDetailMsg struct {
 	Job *sidekiq.JobRecord
 }
 
+// ShowErrorDetailsMsg requests a stacked error details view.
+type ShowErrorDetailsMsg struct {
+	DisplayClass string
+	ErrorClass   string
+	Queue        string
+	Query        string
+}
+
 // JobDetailSetter allows setting job data on a job detail view.
 type JobDetailSetter interface {
 	SetJob(job *sidekiq.JobRecord)
+}
+
+// ErrorDetailsSetter allows setting error group data on an error details view.
+type ErrorDetailsSetter interface {
+	SetErrorGroup(displayClass, errorClass, queue, query string)
 }
 
 // Disposable allows views to clean up when removed from the stack.

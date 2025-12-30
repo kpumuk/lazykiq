@@ -15,6 +15,7 @@
 * Explore Sidekiq queues and jobs
 * Inspect job arguments and error backtraces
 * View Sidekiq retries, scheduled, and dead jobs
+* Analyze errors in dead and retry queues
 * ... more to come!
 
 ![lazykiq demo](./doc/assets/demo.gif)
