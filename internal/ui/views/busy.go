@@ -46,18 +46,6 @@ func NewBusy(client *sidekiq.Client) *Busy {
 	}
 }
 
-// fetchDataCmd fetches busy data from Redis.
-func (b *Busy) fetchDataCmd() tea.Cmd {
-	return func() tea.Msg {
-		ctx := context.Background()
-		data, err := b.client.GetBusyData(ctx)
-		if err != nil {
-			return ConnectionErrorMsg{Err: err}
-		}
-		return busyDataMsg{data: data}
-	}
-}
-
 // Init implements View.
 func (b *Busy) Init() tea.Cmd {
 	b.reset()
@@ -146,15 +134,6 @@ func (b *Busy) SetSize(width, height int) View {
 	return b
 }
 
-func (b *Busy) reset() {
-	b.ready = false
-	b.data = sidekiq.BusyData{}
-	b.filteredJobs = nil
-	b.selectedProcess = -1
-	b.table.SetRows(nil)
-	b.table.SetCursor(0)
-}
-
 // Dispose clears cached data when the view is removed from the stack.
 func (b *Busy) Dispose() {
 	b.reset()
@@ -172,6 +151,27 @@ func (b *Busy) SetStyles(styles Styles) View {
 		Separator: styles.TableSeparator,
 	})
 	return b
+}
+
+// fetchDataCmd fetches busy data from Redis.
+func (b *Busy) fetchDataCmd() tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+		data, err := b.client.GetBusyData(ctx)
+		if err != nil {
+			return ConnectionErrorMsg{Err: err}
+		}
+		return busyDataMsg{data: data}
+	}
+}
+
+func (b *Busy) reset() {
+	b.ready = false
+	b.data = sidekiq.BusyData{}
+	b.filteredJobs = nil
+	b.selectedProcess = -1
+	b.table.SetRows(nil)
+	b.table.SetCursor(0)
 }
 
 // renderProcessList renders the process list as a table (outside the border).

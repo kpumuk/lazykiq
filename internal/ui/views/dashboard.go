@@ -162,29 +162,6 @@ func (d *Dashboard) Update(msg tea.Msg) (View, tea.Cmd) {
 	return d, nil
 }
 
-func (d *Dashboard) adjustFocusedPane(delta int) (View, tea.Cmd) {
-	switch d.focusedPane {
-	case dashboardPaneRealtime:
-		next := max(d.realtimeInterval+delta, 5)
-		next = min(next, 20)
-		if next != d.realtimeInterval {
-			d.realtimeInterval = next
-			d.tickID++
-			return d, tea.Batch(d.fetchRealtimeCmd(), d.realtimeTickCmd())
-		}
-	case dashboardPaneHistory:
-		next := max(d.historyRangeIdx+delta, 0)
-		if next >= len(d.historyRanges) {
-			next = len(d.historyRanges) - 1
-		}
-		if next != d.historyRangeIdx {
-			d.historyRangeIdx = next
-			return d, d.fetchHistoryCmd()
-		}
-	}
-	return d, nil
-}
-
 // View implements View.
 func (d *Dashboard) View() string {
 	if d.width <= 0 || d.height <= 0 {
@@ -226,6 +203,29 @@ func (d *Dashboard) SetSize(width, height int) View {
 func (d *Dashboard) SetStyles(styles Styles) View {
 	d.styles = styles
 	return d
+}
+
+func (d *Dashboard) adjustFocusedPane(delta int) (View, tea.Cmd) {
+	switch d.focusedPane {
+	case dashboardPaneRealtime:
+		next := max(d.realtimeInterval+delta, 5)
+		next = min(next, 20)
+		if next != d.realtimeInterval {
+			d.realtimeInterval = next
+			d.tickID++
+			return d, tea.Batch(d.fetchRealtimeCmd(), d.realtimeTickCmd())
+		}
+	case dashboardPaneHistory:
+		next := max(d.historyRangeIdx+delta, 0)
+		if next >= len(d.historyRanges) {
+			next = len(d.historyRanges) - 1
+		}
+		if next != d.historyRangeIdx {
+			d.historyRangeIdx = next
+			return d, d.fetchHistoryCmd()
+		}
+	}
+	return d, nil
 }
 
 func (d *Dashboard) realtimeTickCmd() tea.Cmd {

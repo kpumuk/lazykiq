@@ -63,63 +63,6 @@ func NewQueues(client *sidekiq.Client) *Queues {
 	}
 }
 
-// fetchDataCmd fetches queues data from Redis.
-func (q *Queues) fetchDataCmd() tea.Cmd {
-	return func() tea.Msg {
-		ctx := context.Background()
-
-		queues, err := q.client.GetQueues(ctx)
-		if err != nil {
-			return ConnectionErrorMsg{Err: err}
-		}
-
-		queueInfos := make([]*QueueInfo, len(queues))
-		for i, queue := range queues {
-			size, _ := queue.Size(ctx)
-			latency, _ := queue.Latency(ctx)
-			queueInfos[i] = &QueueInfo{
-				Name:    queue.Name(),
-				Size:    size,
-				Latency: latency,
-			}
-		}
-
-		var jobs []*sidekiq.PositionedEntry
-		var totalSize int64
-		currentPage := q.currentPage
-		totalPages := 1
-		selectedQueue := q.selectedQueue
-
-		if selectedQueue >= len(queues) {
-			selectedQueue = 0
-		}
-
-		if len(queues) > 0 && selectedQueue < len(queues) {
-			start := (currentPage - 1) * queuesPageSize
-			jobs, totalSize, _ = queues[selectedQueue].GetJobs(ctx, start, queuesPageSize)
-
-			if totalSize > 0 {
-				totalPages = int((totalSize + queuesPageSize - 1) / queuesPageSize)
-			}
-
-			if currentPage > totalPages {
-				currentPage = totalPages
-			}
-			if currentPage < 1 {
-				currentPage = 1
-			}
-		}
-
-		return queuesDataMsg{
-			queues:        queueInfos,
-			jobs:          jobs,
-			currentPage:   currentPage,
-			totalPages:    totalPages,
-			selectedQueue: selectedQueue,
-		}
-	}
-}
-
 // Init implements View.
 func (q *Queues) Init() tea.Cmd {
 	q.reset()
@@ -212,17 +155,6 @@ func (q *Queues) SetSize(width, height int) View {
 	return q
 }
 
-func (q *Queues) reset() {
-	q.ready = false
-	q.currentPage = 1
-	q.totalPages = 1
-	q.selectedQueue = 0
-	q.queues = nil
-	q.jobs = nil
-	q.table.SetRows(nil)
-	q.table.SetCursor(0)
-}
-
 // Dispose clears cached data when the view is removed from the stack.
 func (q *Queues) Dispose() {
 	q.reset()
@@ -240,6 +172,74 @@ func (q *Queues) SetStyles(styles Styles) View {
 		Separator: styles.TableSeparator,
 	})
 	return q
+}
+
+// fetchDataCmd fetches queues data from Redis.
+func (q *Queues) fetchDataCmd() tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+
+		queues, err := q.client.GetQueues(ctx)
+		if err != nil {
+			return ConnectionErrorMsg{Err: err}
+		}
+
+		queueInfos := make([]*QueueInfo, len(queues))
+		for i, queue := range queues {
+			size, _ := queue.Size(ctx)
+			latency, _ := queue.Latency(ctx)
+			queueInfos[i] = &QueueInfo{
+				Name:    queue.Name(),
+				Size:    size,
+				Latency: latency,
+			}
+		}
+
+		var jobs []*sidekiq.PositionedEntry
+		var totalSize int64
+		currentPage := q.currentPage
+		totalPages := 1
+		selectedQueue := q.selectedQueue
+
+		if selectedQueue >= len(queues) {
+			selectedQueue = 0
+		}
+
+		if len(queues) > 0 && selectedQueue < len(queues) {
+			start := (currentPage - 1) * queuesPageSize
+			jobs, totalSize, _ = queues[selectedQueue].GetJobs(ctx, start, queuesPageSize)
+
+			if totalSize > 0 {
+				totalPages = int((totalSize + queuesPageSize - 1) / queuesPageSize)
+			}
+
+			if currentPage > totalPages {
+				currentPage = totalPages
+			}
+			if currentPage < 1 {
+				currentPage = 1
+			}
+		}
+
+		return queuesDataMsg{
+			queues:        queueInfos,
+			jobs:          jobs,
+			currentPage:   currentPage,
+			totalPages:    totalPages,
+			selectedQueue: selectedQueue,
+		}
+	}
+}
+
+func (q *Queues) reset() {
+	q.ready = false
+	q.currentPage = 1
+	q.totalPages = 1
+	q.selectedQueue = 0
+	q.queues = nil
+	q.jobs = nil
+	q.table.SetRows(nil)
+	q.table.SetCursor(0)
 }
 
 // renderQueueList renders the compact queue list (outside the border).

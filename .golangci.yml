@@ -3,6 +3,7 @@ linters:
   enable:
     - bodyclose
     - exhaustive
+    - funcorder
     - godot
     - gomoddirectives
     - goprintffuncname

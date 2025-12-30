@@ -89,37 +89,6 @@ func (jr *JobRecord) DisplayClass() string {
 	return displayClass
 }
 
-func (jr *JobRecord) unwrapActiveJobDisplayClass(displayClass string) string {
-	if wrapped, ok := jr.item["wrapped"].(string); ok {
-		displayClass = wrapped
-	} else if firstArg, ok := firstStringArg(jr.Args()); ok {
-		displayClass = firstArg
-	}
-
-	if !isActionMailerWrapper(displayClass) {
-		return displayClass
-	}
-
-	argsMap, ok := firstArgsMap(jr.Args())
-	if !ok {
-		return displayClass
-	}
-	rawArgs, ok := argsMap["arguments"]
-	if !ok {
-		return displayClass
-	}
-	deserialized, ok := deserializeArgument(rawArgs).([]any)
-	if !ok || len(deserialized) < 2 {
-		return displayClass
-	}
-	mailer, okMailer := deserialized[0].(string)
-	method, okMethod := deserialized[1].(string)
-	if !okMailer || !okMethod {
-		return displayClass
-	}
-	return mailer + "#" + method
-}
-
 // Args returns the job arguments.
 func (jr *JobRecord) Args() []any {
 	if jr.args != nil {
@@ -163,31 +132,6 @@ func (jr *JobRecord) DisplayArgs() []any {
 	jr.displayArgs = displayArgs
 	jr.displayArgsLoaded = true
 	return jr.displayArgs
-}
-
-func (jr *JobRecord) unwrapActiveJobArgs() []any {
-	args := jr.Args()
-	wrapped, hasWrapped := jr.item["wrapped"].(string)
-	jobArgs := []any{}
-	if hasWrapped {
-		jobArgs = extractActiveJobArgs(args)
-	}
-
-	jobClass := wrapped
-	if !hasWrapped {
-		if first, ok := firstStringArg(args); ok {
-			jobClass = first
-		}
-	}
-
-	switch jobClass {
-	case actionMailerDeliveryJob:
-		return trimActionMailerArgs(jobArgs)
-	case actionMailerMailDeliveryJob:
-		return normalizeMailDeliveryArgs(jobArgs)
-	default:
-		return jobArgs
-	}
 }
 
 // Context returns the current attributes (cattr) for the job.
@@ -355,6 +299,62 @@ func (jr *JobRecord) Latency() float64 {
 	}
 	nowSec := float64(time.Now().Unix())
 	return nowSec - timestamp
+}
+
+func (jr *JobRecord) unwrapActiveJobDisplayClass(displayClass string) string {
+	if wrapped, ok := jr.item["wrapped"].(string); ok {
+		displayClass = wrapped
+	} else if firstArg, ok := firstStringArg(jr.Args()); ok {
+		displayClass = firstArg
+	}
+
+	if !isActionMailerWrapper(displayClass) {
+		return displayClass
+	}
+
+	argsMap, ok := firstArgsMap(jr.Args())
+	if !ok {
+		return displayClass
+	}
+	rawArgs, ok := argsMap["arguments"]
+	if !ok {
+		return displayClass
+	}
+	deserialized, ok := deserializeArgument(rawArgs).([]any)
+	if !ok || len(deserialized) < 2 {
+		return displayClass
+	}
+	mailer, okMailer := deserialized[0].(string)
+	method, okMethod := deserialized[1].(string)
+	if !okMailer || !okMethod {
+		return displayClass
+	}
+	return mailer + "#" + method
+}
+
+func (jr *JobRecord) unwrapActiveJobArgs() []any {
+	args := jr.Args()
+	wrapped, hasWrapped := jr.item["wrapped"].(string)
+	jobArgs := []any{}
+	if hasWrapped {
+		jobArgs = extractActiveJobArgs(args)
+	}
+
+	jobClass := wrapped
+	if !hasWrapped {
+		if first, ok := firstStringArg(args); ok {
+			jobClass = first
+		}
+	}
+
+	switch jobClass {
+	case actionMailerDeliveryJob:
+		return trimActionMailerArgs(jobArgs)
+	case actionMailerMailDeliveryJob:
+		return normalizeMailDeliveryArgs(jobArgs)
+	default:
+		return jobArgs
+	}
 }
 
 func deserializeArgument(argument any) any {

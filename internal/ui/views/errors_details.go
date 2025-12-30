@@ -125,14 +125,6 @@ func (e *ErrorsDetails) View() string {
 	return e.renderDetailsBox()
 }
 
-func (e *ErrorsDetails) renderMessage(msg string) string {
-	return messagebox.Render(messagebox.Styles{
-		Title:  e.styles.Title,
-		Muted:  e.styles.Muted,
-		Border: e.styles.FocusBorder,
-	}, "Errors", msg, e.width, e.height)
-}
-
 // Name implements View.
 func (e *ErrorsDetails) Name() string {
 	if e.groupKey.errorClass != "" {
@@ -152,18 +144,6 @@ func (e *ErrorsDetails) SetSize(width, height int) View {
 	e.height = height
 	e.updateTableSize()
 	return e
-}
-
-func (e *ErrorsDetails) resetData() {
-	e.ready = false
-	e.groupJobs = nil
-	e.table.SetRows(nil)
-	e.table.SetCursor(0)
-}
-
-func (e *ErrorsDetails) reset() {
-	e.resetData()
-	e.groupKey = errorSummaryKey{}
 }
 
 // Dispose clears cached data when the view is removed from the stack.
@@ -191,6 +171,26 @@ func (e *ErrorsDetails) SetStyles(styles Styles) View {
 		Cursor:      styles.Text,
 	})
 	return e
+}
+
+func (e *ErrorsDetails) renderMessage(msg string) string {
+	return messagebox.Render(messagebox.Styles{
+		Title:  e.styles.Title,
+		Muted:  e.styles.Muted,
+		Border: e.styles.FocusBorder,
+	}, "Errors", msg, e.width, e.height)
+}
+
+func (e *ErrorsDetails) resetData() {
+	e.ready = false
+	e.groupJobs = nil
+	e.table.SetRows(nil)
+	e.table.SetCursor(0)
+}
+
+func (e *ErrorsDetails) reset() {
+	e.resetData()
+	e.groupKey = errorSummaryKey{}
 }
 
 var errorDetailsColumns = []table.Column{

@@ -54,54 +54,6 @@ func NewScheduled(client *sidekiq.Client) *Scheduled {
 	}
 }
 
-// fetchDataCmd fetches scheduled jobs data from Redis.
-func (s *Scheduled) fetchDataCmd() tea.Cmd {
-	return func() tea.Msg {
-		ctx := context.Background()
-
-		if s.filter.Query() != "" {
-			jobs, err := s.client.ScanScheduledJobs(ctx, s.filter.Query())
-			if err != nil {
-				return ConnectionErrorMsg{Err: err}
-			}
-
-			return scheduledDataMsg{
-				jobs:        jobs,
-				currentPage: 1,
-				totalPages:  1,
-				totalSize:   int64(len(jobs)),
-			}
-		}
-
-		currentPage := s.currentPage
-		totalPages := 1
-
-		start := (currentPage - 1) * scheduledPageSize
-		jobs, totalSize, err := s.client.GetScheduledJobs(ctx, start, scheduledPageSize)
-		if err != nil {
-			return ConnectionErrorMsg{Err: err}
-		}
-
-		if totalSize > 0 {
-			totalPages = int((totalSize + scheduledPageSize - 1) / scheduledPageSize)
-		}
-
-		if currentPage > totalPages {
-			currentPage = totalPages
-		}
-		if currentPage < 1 {
-			currentPage = 1
-		}
-
-		return scheduledDataMsg{
-			jobs:        jobs,
-			currentPage: currentPage,
-			totalPages:  totalPages,
-			totalSize:   totalSize,
-		}
-	}
-}
-
 // Init implements View.
 func (s *Scheduled) Init() tea.Cmd {
 	s.reset()
@@ -189,14 +141,6 @@ func (s *Scheduled) View() string {
 	return s.renderJobsBox()
 }
 
-func (s *Scheduled) renderMessage(msg string) string {
-	return messagebox.Render(messagebox.Styles{
-		Title:  s.styles.Title,
-		Muted:  s.styles.Muted,
-		Border: s.styles.FocusBorder,
-	}, "Scheduled", msg, s.width, s.height)
-}
-
 // Name implements View.
 func (s *Scheduled) Name() string {
 	return "Scheduled"
@@ -213,16 +157,6 @@ func (s *Scheduled) SetSize(width, height int) View {
 	s.height = height
 	s.updateTableSize()
 	return s
-}
-
-func (s *Scheduled) reset() {
-	s.currentPage = 1
-	s.totalPages = 1
-	s.totalSize = 0
-	s.jobs = nil
-	s.ready = false
-	s.table.SetRows(nil)
-	s.table.SetCursor(0)
 }
 
 // Dispose clears cached data when the view is removed from the stack.
@@ -255,6 +189,72 @@ func (s *Scheduled) SetStyles(styles Styles) View {
 		Cursor:      styles.Text,
 	})
 	return s
+}
+
+// fetchDataCmd fetches scheduled jobs data from Redis.
+func (s *Scheduled) fetchDataCmd() tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+
+		if s.filter.Query() != "" {
+			jobs, err := s.client.ScanScheduledJobs(ctx, s.filter.Query())
+			if err != nil {
+				return ConnectionErrorMsg{Err: err}
+			}
+
+			return scheduledDataMsg{
+				jobs:        jobs,
+				currentPage: 1,
+				totalPages:  1,
+				totalSize:   int64(len(jobs)),
+			}
+		}
+
+		currentPage := s.currentPage
+		totalPages := 1
+
+		start := (currentPage - 1) * scheduledPageSize
+		jobs, totalSize, err := s.client.GetScheduledJobs(ctx, start, scheduledPageSize)
+		if err != nil {
+			return ConnectionErrorMsg{Err: err}
+		}
+
+		if totalSize > 0 {
+			totalPages = int((totalSize + scheduledPageSize - 1) / scheduledPageSize)
+		}
+
+		if currentPage > totalPages {
+			currentPage = totalPages
+		}
+		if currentPage < 1 {
+			currentPage = 1
+		}
+
+		return scheduledDataMsg{
+			jobs:        jobs,
+			currentPage: currentPage,
+			totalPages:  totalPages,
+			totalSize:   totalSize,
+		}
+	}
+}
+
+func (s *Scheduled) renderMessage(msg string) string {
+	return messagebox.Render(messagebox.Styles{
+		Title:  s.styles.Title,
+		Muted:  s.styles.Muted,
+		Border: s.styles.FocusBorder,
+	}, "Scheduled", msg, s.width, s.height)
+}
+
+func (s *Scheduled) reset() {
+	s.currentPage = 1
+	s.totalPages = 1
+	s.totalSize = 0
+	s.jobs = nil
+	s.ready = false
+	s.table.SetRows(nil)
+	s.table.SetCursor(0)
 }
 
 // Table columns for scheduled job list.

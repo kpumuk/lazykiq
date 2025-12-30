@@ -183,103 +183,6 @@ func tickCmd() tea.Cmd {
 	})
 }
 
-// fetchStatsCmd fetches Sidekiq stats and returns a metrics.UpdateMsg or connectionErrorMsg.
-func (a App) fetchStatsCmd() tea.Msg {
-	ctx := context.Background()
-	stats, err := a.sidekiq.GetStats(ctx)
-	if err != nil {
-		// Return connection error message
-		return connectionErrorMsg{err: err}
-	}
-
-	return metrics.UpdateMsg{
-		Data: metrics.Data{
-			Processed: stats.Processed,
-			Failed:    stats.Failed,
-			Busy:      stats.Busy,
-			Enqueued:  stats.Enqueued,
-			Retries:   stats.Retries,
-			Scheduled: stats.Scheduled,
-			Dead:      stats.Dead,
-		},
-	}
-}
-
-func (a App) activeViewID() viewID {
-	if len(a.viewStack) == 0 {
-		return viewDashboard
-	}
-	return a.viewStack[len(a.viewStack)-1]
-}
-
-func (a App) stackNames() []string {
-	if len(a.viewStack) == 0 {
-		return nil
-	}
-	names := make([]string, 0, len(a.viewStack))
-	for _, id := range a.viewStack {
-		if view, ok := a.viewRegistry[id]; ok {
-			names = append(names, view.Name())
-		}
-	}
-	return names
-}
-
-func (a *App) updateView(id viewID, msg tea.Msg) tea.Cmd {
-	view, ok := a.viewRegistry[id]
-	if !ok {
-		return nil
-	}
-	updatedView, cmd := view.Update(msg)
-	a.viewRegistry[id] = updatedView
-	return cmd
-}
-
-func (a *App) setActiveView(id viewID) tea.Cmd {
-	for _, existing := range a.viewStack {
-		if existing == viewDashboard || existing == id {
-			continue
-		}
-		if disposable, ok := a.viewRegistry[existing].(views.Disposable); ok {
-			disposable.Dispose()
-		}
-	}
-	a.viewStack = []viewID{id}
-	a.stackbar.SetStack(a.stackNames())
-	if view, ok := a.viewRegistry[id]; ok {
-		return view.Init()
-	}
-	return nil
-}
-
-func (a *App) pushView(id viewID) tea.Cmd {
-	if len(a.viewStack) > 0 && a.viewStack[len(a.viewStack)-1] == id {
-		a.stackbar.SetStack(a.stackNames())
-		return nil
-	}
-	a.viewStack = append(a.viewStack, id)
-	a.stackbar.SetStack(a.stackNames())
-	if view, ok := a.viewRegistry[id]; ok {
-		return view.Init()
-	}
-	return nil
-}
-
-func (a *App) popView() {
-	if len(a.viewStack) <= 1 {
-		return
-	}
-
-	popped := a.viewStack[len(a.viewStack)-1]
-	a.viewStack = a.viewStack[:len(a.viewStack)-1]
-	if popped != viewDashboard {
-		if disposable, ok := a.viewRegistry[popped].(views.Disposable); ok {
-			disposable.Dispose()
-		}
-	}
-	a.stackbar.SetStack(a.stackNames())
-}
-
 // Update implements tea.Model.
 func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
@@ -460,4 +363,101 @@ func (a App) View() tea.View {
 	))
 
 	return v
+}
+
+// fetchStatsCmd fetches Sidekiq stats and returns a metrics.UpdateMsg or connectionErrorMsg.
+func (a App) fetchStatsCmd() tea.Msg {
+	ctx := context.Background()
+	stats, err := a.sidekiq.GetStats(ctx)
+	if err != nil {
+		// Return connection error message
+		return connectionErrorMsg{err: err}
+	}
+
+	return metrics.UpdateMsg{
+		Data: metrics.Data{
+			Processed: stats.Processed,
+			Failed:    stats.Failed,
+			Busy:      stats.Busy,
+			Enqueued:  stats.Enqueued,
+			Retries:   stats.Retries,
+			Scheduled: stats.Scheduled,
+			Dead:      stats.Dead,
+		},
+	}
+}
+
+func (a App) activeViewID() viewID {
+	if len(a.viewStack) == 0 {
+		return viewDashboard
+	}
+	return a.viewStack[len(a.viewStack)-1]
+}
+
+func (a App) stackNames() []string {
+	if len(a.viewStack) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(a.viewStack))
+	for _, id := range a.viewStack {
+		if view, ok := a.viewRegistry[id]; ok {
+			names = append(names, view.Name())
+		}
+	}
+	return names
+}
+
+func (a *App) updateView(id viewID, msg tea.Msg) tea.Cmd {
+	view, ok := a.viewRegistry[id]
+	if !ok {
+		return nil
+	}
+	updatedView, cmd := view.Update(msg)
+	a.viewRegistry[id] = updatedView
+	return cmd
+}
+
+func (a *App) setActiveView(id viewID) tea.Cmd {
+	for _, existing := range a.viewStack {
+		if existing == viewDashboard || existing == id {
+			continue
+		}
+		if disposable, ok := a.viewRegistry[existing].(views.Disposable); ok {
+			disposable.Dispose()
+		}
+	}
+	a.viewStack = []viewID{id}
+	a.stackbar.SetStack(a.stackNames())
+	if view, ok := a.viewRegistry[id]; ok {
+		return view.Init()
+	}
+	return nil
+}
+
+func (a *App) pushView(id viewID) tea.Cmd {
+	if len(a.viewStack) > 0 && a.viewStack[len(a.viewStack)-1] == id {
+		a.stackbar.SetStack(a.stackNames())
+		return nil
+	}
+	a.viewStack = append(a.viewStack, id)
+	a.stackbar.SetStack(a.stackNames())
+	if view, ok := a.viewRegistry[id]; ok {
+		return view.Init()
+	}
+	return nil
+}
+
+func (a *App) popView() {
+	if len(a.viewStack) <= 1 {
+		return
+	}
+
+	popped := a.viewStack[len(a.viewStack)-1]
+	a.viewStack = a.viewStack[:len(a.viewStack)-1]
+	if popped != viewDashboard {
+		if disposable, ok := a.viewRegistry[popped].(views.Disposable); ok {
+			disposable.Dispose()
+		}
+	}
+	a.stackbar.SetStack(a.stackNames())
 }

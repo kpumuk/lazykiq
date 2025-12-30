@@ -54,54 +54,6 @@ func NewRetries(client *sidekiq.Client) *Retries {
 	}
 }
 
-// fetchDataCmd fetches retry jobs data from Redis.
-func (r *Retries) fetchDataCmd() tea.Cmd {
-	return func() tea.Msg {
-		ctx := context.Background()
-
-		if r.filter.Query() != "" {
-			jobs, err := r.client.ScanRetryJobs(ctx, r.filter.Query())
-			if err != nil {
-				return ConnectionErrorMsg{Err: err}
-			}
-
-			return retriesDataMsg{
-				jobs:        jobs,
-				currentPage: 1,
-				totalPages:  1,
-				totalSize:   int64(len(jobs)),
-			}
-		}
-
-		currentPage := r.currentPage
-		totalPages := 1
-
-		start := (currentPage - 1) * retriesPageSize
-		jobs, totalSize, err := r.client.GetRetryJobs(ctx, start, retriesPageSize)
-		if err != nil {
-			return ConnectionErrorMsg{Err: err}
-		}
-
-		if totalSize > 0 {
-			totalPages = int((totalSize + retriesPageSize - 1) / retriesPageSize)
-		}
-
-		if currentPage > totalPages {
-			currentPage = totalPages
-		}
-		if currentPage < 1 {
-			currentPage = 1
-		}
-
-		return retriesDataMsg{
-			jobs:        jobs,
-			currentPage: currentPage,
-			totalPages:  totalPages,
-			totalSize:   totalSize,
-		}
-	}
-}
-
 // Init implements View.
 func (r *Retries) Init() tea.Cmd {
 	r.reset()
@@ -190,14 +142,6 @@ func (r *Retries) View() string {
 	return r.renderJobsBox()
 }
 
-func (r *Retries) renderMessage(msg string) string {
-	return messagebox.Render(messagebox.Styles{
-		Title:  r.styles.Title,
-		Muted:  r.styles.Muted,
-		Border: r.styles.FocusBorder,
-	}, "Retries", msg, r.width, r.height)
-}
-
 // Name implements View.
 func (r *Retries) Name() string {
 	return "Retries"
@@ -214,16 +158,6 @@ func (r *Retries) SetSize(width, height int) View {
 	r.height = height
 	r.updateTableSize()
 	return r
-}
-
-func (r *Retries) reset() {
-	r.currentPage = 1
-	r.totalPages = 1
-	r.totalSize = 0
-	r.jobs = nil
-	r.ready = false
-	r.table.SetRows(nil)
-	r.table.SetCursor(0)
 }
 
 // Dispose clears cached data when the view is removed from the stack.
@@ -256,6 +190,72 @@ func (r *Retries) SetStyles(styles Styles) View {
 		Cursor:      styles.Text,
 	})
 	return r
+}
+
+// fetchDataCmd fetches retry jobs data from Redis.
+func (r *Retries) fetchDataCmd() tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+
+		if r.filter.Query() != "" {
+			jobs, err := r.client.ScanRetryJobs(ctx, r.filter.Query())
+			if err != nil {
+				return ConnectionErrorMsg{Err: err}
+			}
+
+			return retriesDataMsg{
+				jobs:        jobs,
+				currentPage: 1,
+				totalPages:  1,
+				totalSize:   int64(len(jobs)),
+			}
+		}
+
+		currentPage := r.currentPage
+		totalPages := 1
+
+		start := (currentPage - 1) * retriesPageSize
+		jobs, totalSize, err := r.client.GetRetryJobs(ctx, start, retriesPageSize)
+		if err != nil {
+			return ConnectionErrorMsg{Err: err}
+		}
+
+		if totalSize > 0 {
+			totalPages = int((totalSize + retriesPageSize - 1) / retriesPageSize)
+		}
+
+		if currentPage > totalPages {
+			currentPage = totalPages
+		}
+		if currentPage < 1 {
+			currentPage = 1
+		}
+
+		return retriesDataMsg{
+			jobs:        jobs,
+			currentPage: currentPage,
+			totalPages:  totalPages,
+			totalSize:   totalSize,
+		}
+	}
+}
+
+func (r *Retries) renderMessage(msg string) string {
+	return messagebox.Render(messagebox.Styles{
+		Title:  r.styles.Title,
+		Muted:  r.styles.Muted,
+		Border: r.styles.FocusBorder,
+	}, "Retries", msg, r.width, r.height)
+}
+
+func (r *Retries) reset() {
+	r.currentPage = 1
+	r.totalPages = 1
+	r.totalSize = 0
+	r.jobs = nil
+	r.ready = false
+	r.table.SetRows(nil)
+	r.table.SetCursor(0)
 }
 
 // Table columns for retry job list.

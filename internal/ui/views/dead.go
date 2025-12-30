@@ -54,54 +54,6 @@ func NewDead(client *sidekiq.Client) *Dead {
 	}
 }
 
-// fetchDataCmd fetches dead jobs data from Redis.
-func (d *Dead) fetchDataCmd() tea.Cmd {
-	return func() tea.Msg {
-		ctx := context.Background()
-
-		if d.filter.Query() != "" {
-			jobs, err := d.client.ScanDeadJobs(ctx, d.filter.Query())
-			if err != nil {
-				return ConnectionErrorMsg{Err: err}
-			}
-
-			return deadDataMsg{
-				jobs:        jobs,
-				currentPage: 1,
-				totalPages:  1,
-				totalSize:   int64(len(jobs)),
-			}
-		}
-
-		currentPage := d.currentPage
-		totalPages := 1
-
-		start := (currentPage - 1) * deadPageSize
-		jobs, totalSize, err := d.client.GetDeadJobs(ctx, start, deadPageSize)
-		if err != nil {
-			return ConnectionErrorMsg{Err: err}
-		}
-
-		if totalSize > 0 {
-			totalPages = int((totalSize + deadPageSize - 1) / deadPageSize)
-		}
-
-		if currentPage > totalPages {
-			currentPage = totalPages
-		}
-		if currentPage < 1 {
-			currentPage = 1
-		}
-
-		return deadDataMsg{
-			jobs:        jobs,
-			currentPage: currentPage,
-			totalPages:  totalPages,
-			totalSize:   totalSize,
-		}
-	}
-}
-
 // Init implements View.
 func (d *Dead) Init() tea.Cmd {
 	d.reset()
@@ -189,14 +141,6 @@ func (d *Dead) View() string {
 	return d.renderJobsBox()
 }
 
-func (d *Dead) renderMessage(msg string) string {
-	return messagebox.Render(messagebox.Styles{
-		Title:  d.styles.Title,
-		Muted:  d.styles.Muted,
-		Border: d.styles.FocusBorder,
-	}, "Dead Jobs", msg, d.width, d.height)
-}
-
 // Name implements View.
 func (d *Dead) Name() string {
 	return "Dead"
@@ -213,16 +157,6 @@ func (d *Dead) SetSize(width, height int) View {
 	d.height = height
 	d.updateTableSize()
 	return d
-}
-
-func (d *Dead) reset() {
-	d.currentPage = 1
-	d.totalPages = 1
-	d.totalSize = 0
-	d.jobs = nil
-	d.ready = false
-	d.table.SetRows(nil)
-	d.table.SetCursor(0)
 }
 
 // Dispose clears cached data when the view is removed from the stack.
@@ -255,6 +189,72 @@ func (d *Dead) SetStyles(styles Styles) View {
 		Cursor:      styles.Text,
 	})
 	return d
+}
+
+// fetchDataCmd fetches dead jobs data from Redis.
+func (d *Dead) fetchDataCmd() tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+
+		if d.filter.Query() != "" {
+			jobs, err := d.client.ScanDeadJobs(ctx, d.filter.Query())
+			if err != nil {
+				return ConnectionErrorMsg{Err: err}
+			}
+
+			return deadDataMsg{
+				jobs:        jobs,
+				currentPage: 1,
+				totalPages:  1,
+				totalSize:   int64(len(jobs)),
+			}
+		}
+
+		currentPage := d.currentPage
+		totalPages := 1
+
+		start := (currentPage - 1) * deadPageSize
+		jobs, totalSize, err := d.client.GetDeadJobs(ctx, start, deadPageSize)
+		if err != nil {
+			return ConnectionErrorMsg{Err: err}
+		}
+
+		if totalSize > 0 {
+			totalPages = int((totalSize + deadPageSize - 1) / deadPageSize)
+		}
+
+		if currentPage > totalPages {
+			currentPage = totalPages
+		}
+		if currentPage < 1 {
+			currentPage = 1
+		}
+
+		return deadDataMsg{
+			jobs:        jobs,
+			currentPage: currentPage,
+			totalPages:  totalPages,
+			totalSize:   totalSize,
+		}
+	}
+}
+
+func (d *Dead) renderMessage(msg string) string {
+	return messagebox.Render(messagebox.Styles{
+		Title:  d.styles.Title,
+		Muted:  d.styles.Muted,
+		Border: d.styles.FocusBorder,
+	}, "Dead Jobs", msg, d.width, d.height)
+}
+
+func (d *Dead) reset() {
+	d.currentPage = 1
+	d.totalPages = 1
+	d.totalSize = 0
+	d.jobs = nil
+	d.ready = false
+	d.table.SetRows(nil)
+	d.table.SetCursor(0)
 }
 
 // Table columns for dead job list.

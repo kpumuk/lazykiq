@@ -46,25 +46,6 @@ func NewErrorsSummary(client *sidekiq.Client) *ErrorsSummary {
 	}
 }
 
-// fetchDataCmd fetches dead and retry jobs and builds summary data.
-func (e *ErrorsSummary) fetchDataCmd() tea.Cmd {
-	return func() tea.Msg {
-		ctx := context.Background()
-		deadJobs, retryJobs, err := fetchErrorJobs(ctx, e.client, e.filter.Query())
-		if err != nil {
-			return ConnectionErrorMsg{Err: err}
-		}
-
-		rows, _ := buildErrorSummary(deadJobs, retryJobs)
-
-		return errorsSummaryDataMsg{
-			rows:       rows,
-			deadCount:  len(deadJobs),
-			retryCount: len(retryJobs),
-		}
-	}
-}
-
 // Init implements View.
 func (e *ErrorsSummary) Init() tea.Cmd {
 	e.reset()
@@ -138,14 +119,6 @@ func (e *ErrorsSummary) View() string {
 	return e.renderSummaryBox()
 }
 
-func (e *ErrorsSummary) renderMessage(msg string) string {
-	return messagebox.Render(messagebox.Styles{
-		Title:  e.styles.Title,
-		Muted:  e.styles.Muted,
-		Border: e.styles.FocusBorder,
-	}, "Errors", msg, e.width, e.height)
-}
-
 // Name implements View.
 func (e *ErrorsSummary) Name() string {
 	return "Errors"
@@ -162,15 +135,6 @@ func (e *ErrorsSummary) SetSize(width, height int) View {
 	e.height = height
 	e.updateTableSize()
 	return e
-}
-
-func (e *ErrorsSummary) reset() {
-	e.ready = false
-	e.rows = nil
-	e.deadCount = 0
-	e.retryCount = 0
-	e.table.SetRows(nil)
-	e.table.SetCursor(0)
 }
 
 // Dispose clears cached data when the view is removed from the stack.
@@ -203,6 +167,42 @@ func (e *ErrorsSummary) SetStyles(styles Styles) View {
 		Cursor:      styles.Text,
 	})
 	return e
+}
+
+// fetchDataCmd fetches dead and retry jobs and builds summary data.
+func (e *ErrorsSummary) fetchDataCmd() tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+		deadJobs, retryJobs, err := fetchErrorJobs(ctx, e.client, e.filter.Query())
+		if err != nil {
+			return ConnectionErrorMsg{Err: err}
+		}
+
+		rows, _ := buildErrorSummary(deadJobs, retryJobs)
+
+		return errorsSummaryDataMsg{
+			rows:       rows,
+			deadCount:  len(deadJobs),
+			retryCount: len(retryJobs),
+		}
+	}
+}
+
+func (e *ErrorsSummary) renderMessage(msg string) string {
+	return messagebox.Render(messagebox.Styles{
+		Title:  e.styles.Title,
+		Muted:  e.styles.Muted,
+		Border: e.styles.FocusBorder,
+	}, "Errors", msg, e.width, e.height)
+}
+
+func (e *ErrorsSummary) reset() {
+	e.ready = false
+	e.rows = nil
+	e.deadCount = 0
+	e.retryCount = 0
+	e.table.SetRows(nil)
+	e.table.SetCursor(0)
 }
 
 var errorsSummaryColumns = []table.Column{
