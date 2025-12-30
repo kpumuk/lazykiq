@@ -172,8 +172,8 @@ func (a App) Init() tea.Cmd {
 	return tea.Batch(
 		a.viewRegistry[activeID].Init(),
 		a.metrics.Init(),
-		func() tea.Msg { return a.fetchStatsCmd() }, // Fetch stats immediately
-		tickCmd(), // Start the ticker for subsequent updates
+		a.fetchStatsCmd, // Fetch stats immediately
+		tickCmd(),       // Start the ticker for subsequent updates
 	)
 }
 
@@ -191,9 +191,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tickMsg:
 		// Always fetch stats for metrics bar
-		cmds = append(cmds, func() tea.Msg {
-			return a.fetchStatsCmd()
-		})
+		cmds = append(cmds, a.fetchStatsCmd)
 
 		// Broadcast refresh to active view (views now fetch their own data)
 		cmds = append(cmds, a.updateView(a.activeViewID(), views.RefreshMsg{}))

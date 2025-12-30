@@ -312,7 +312,7 @@ func metricsRollupKeySidekiq8(t time.Time, granularity MetricsGranularity) strin
 	hour := t.Hour()
 	minute := t.Minute()
 	if granularity == MetricsGranularityHourly {
-		minute = minute / 10
+		minute /= 10
 		return fmt.Sprintf("j|%s|%d:%d", date, hour, minute)
 	}
 	return fmt.Sprintf("j|%s|%d:%02d", date, hour, minute)

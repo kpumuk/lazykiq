@@ -459,7 +459,7 @@ func (m Model) renderHeader() string {
 
 	// Pad header to match body width
 	if headerWidth < totalWidth {
-		header = header + strings.Repeat(" ", totalWidth-headerWidth)
+		header += strings.Repeat(" ", totalWidth-headerWidth)
 	}
 
 	// Apply horizontal scroll to header
@@ -530,7 +530,7 @@ func (m *Model) renderBody() string {
 		// Pad row to max width for consistent selection highlight
 		rowWidth := lipgloss.Width(row)
 		if rowWidth < maxWidth {
-			row = row + strings.Repeat(" ", maxWidth-rowWidth)
+			row += strings.Repeat(" ", maxWidth-rowWidth)
 		}
 
 		// Apply horizontal scroll offset (before styling)

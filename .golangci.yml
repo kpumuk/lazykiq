@@ -5,6 +5,7 @@ linters:
     - exhaustive
     - funcorder
     - godot
+    - gocritic
     - gomoddirectives
     - goprintffuncname
     - gosec
@@ -28,6 +29,10 @@ linters:
     generated: lax
     presets:
       - common-false-positives
+  settings:
+    gocritic:
+      disabled-checks:
+        - singleCaseSwitch
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
