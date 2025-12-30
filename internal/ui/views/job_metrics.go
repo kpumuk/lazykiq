@@ -18,6 +18,7 @@ import (
 	"github.com/NimbleMarkets/ntcharts/canvas/graph"
 	"github.com/NimbleMarkets/ntcharts/linechart"
 	oldgloss "github.com/charmbracelet/lipgloss"
+
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
 	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"

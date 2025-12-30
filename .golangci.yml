@@ -36,3 +36,7 @@ formatters:
     - goimports
   exclusions:
     generated: lax
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/kpumuk/lazykiq

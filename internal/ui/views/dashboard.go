@@ -11,6 +11,7 @@ import (
 	"charm.land/lipgloss/v2"
 	tslc "github.com/NimbleMarkets/ntcharts/linechart/timeserieslinechart"
 	oldgloss "github.com/charmbracelet/lipgloss"
+
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
 	"github.com/kpumuk/lazykiq/internal/ui/format"
