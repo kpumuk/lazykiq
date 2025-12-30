@@ -112,10 +112,10 @@ func (c *Client) GetMetricsTopJobs(ctx context.Context, period MetricsPeriod, cl
 		return result, nil
 	}
 
-	keys := make([]string, 0, count)
+	keys := make([]string, 0, count*2)
 	cursor := now
 	for range count {
-		keys = append(keys, metricsRollupKey(cursor, granularity))
+		keys = append(keys, metricsRollupKeys(cursor, granularity)...)
 		cursor = cursor.Add(-stride)
 	}
 	result.StartsAt = cursor.Add(stride)
@@ -185,32 +185,48 @@ func (c *Client) GetMetricsJobDetail(ctx context.Context, className string, peri
 		return result, nil
 	}
 
-	keys := make([]string, 0, count)
-	histKeys := make([]string, 0, count)
+	type metricsBucketCmd struct {
+		at         time.Time
+		rollupKeys []string
+		histKeys   []string
+		hmCmds     []*redis.SliceCmd
+		histCmds   []*redis.IntSliceCmd
+	}
+
+	bucketCmds := make([]metricsBucketCmd, 0, count)
 	cursor := now
 	for range count {
-		keys = append(keys, metricsRollupKey(cursor, granularity))
+		rollupKeys := metricsRollupKeys(cursor, granularity)
+		histKeys := make([]string, 0, 2)
 		if granularity == MetricsGranularityMinutely {
-			histKeys = append(histKeys, metricsHistogramKey(className, cursor))
+			histKeys = metricsHistogramKeys(className, cursor)
 		}
+		bucketCmds = append(bucketCmds, metricsBucketCmd{
+			at:         cursor,
+			rollupKeys: rollupKeys,
+			histKeys:   histKeys,
+			hmCmds:     make([]*redis.SliceCmd, 0, len(rollupKeys)),
+			histCmds:   make([]*redis.IntSliceCmd, 0, len(histKeys)),
+		})
 		cursor = cursor.Add(-stride)
 	}
 	result.StartsAt = cursor.Add(stride)
 
 	pipe := c.redis.Pipeline()
-	hmCmds := make([]*redis.SliceCmd, 0, len(keys))
-	var histCmds []*redis.IntSliceCmd
 	var histFetchArgs []any
 	if granularity == MetricsGranularityMinutely {
-		histCmds = make([]*redis.IntSliceCmd, 0, len(keys))
 		histFetchArgs = metricsHistogramFetchArgs()
 	}
-
-	for i, key := range keys {
-		hmCmds = append(hmCmds, pipe.HMGet(ctx, key, className+"|ms", className+"|p", className+"|f"))
-		if granularity == MetricsGranularityMinutely {
-			histCmds = append(histCmds, pipe.BitFieldRO(ctx, histKeys[i], histFetchArgs...))
+	for i, cmd := range bucketCmds {
+		for _, key := range cmd.rollupKeys {
+			cmd.hmCmds = append(cmd.hmCmds, pipe.HMGet(ctx, key, className+"|ms", className+"|p", className+"|f"))
 		}
+		if granularity == MetricsGranularityMinutely {
+			for _, key := range cmd.histKeys {
+				cmd.histCmds = append(cmd.histCmds, pipe.BitFieldRO(ctx, key, histFetchArgs...))
+			}
+		}
+		bucketCmds[i] = cmd
 	}
 
 	_, err := pipe.Exec(ctx)
@@ -218,40 +234,59 @@ func (c *Client) GetMetricsJobDetail(ctx context.Context, className string, peri
 		return result, err
 	}
 
-	cursor = now
-	for i, cmd := range hmCmds {
-		if cmd.Err() != nil && cmd.Err() != redis.Nil {
-			return result, cmd.Err()
-		}
-		values := cmd.Val()
-		ms, ok := parseMetricsValue(values, 0)
-		if ok {
-			result.Totals.Milliseconds += ms
-			result.Totals.Seconds += float64(ms) / 1000.0
-		}
-		if p, ok := parseMetricsValue(values, 1); ok {
-			result.Totals.Processed += p
-		}
-		if f, ok := parseMetricsValue(values, 2); ok {
-			result.Totals.Failed += f
+	for _, bucket := range bucketCmds {
+		var msTotal int64
+		var pTotal int64
+		var fTotal int64
+		for _, cmd := range bucket.hmCmds {
+			if cmd.Err() != nil && cmd.Err() != redis.Nil {
+				return result, cmd.Err()
+			}
+			values := cmd.Val()
+			if ms, ok := parseMetricsValue(values, 0); ok {
+				msTotal += ms
+			}
+			if p, ok := parseMetricsValue(values, 1); ok {
+				pTotal += p
+			}
+			if f, ok := parseMetricsValue(values, 2); ok {
+				fTotal += f
+			}
 		}
 
-		bucketTime := metricsBucketTime(cursor, granularity)
+		result.Totals.Milliseconds += msTotal
+		result.Totals.Seconds += float64(msTotal) / 1000.0
+		result.Totals.Processed += pTotal
+		result.Totals.Failed += fTotal
+
+		bucketTime := metricsBucketTime(bucket.at, granularity)
 		if granularity == MetricsGranularityMinutely {
-			histCmd := histCmds[i]
-			if histCmd.Err() != nil && histCmd.Err() != redis.Nil {
-				return result, histCmd.Err()
+			var merged []int64
+			histFound := false
+			for _, histCmd := range bucket.histCmds {
+				if histCmd.Err() != nil && histCmd.Err() != redis.Nil {
+					return result, histCmd.Err()
+				}
+				hist := histCmd.Val()
+				if len(hist) == 0 {
+					continue
+				}
+				if merged == nil {
+					merged = make([]int64, len(hist))
+				}
+				for i, value := range hist {
+					merged[i] += value
+				}
+				histFound = true
 			}
-			hist := histCmd.Val()
-			if len(hist) > 0 {
-				reversed := slices.Clone(hist)
+			if histFound {
+				reversed := slices.Clone(merged)
 				slices.Reverse(reversed)
 				result.Hist[bucketTime] = reversed
 			}
 		}
 
-		result.Buckets = append(result.Buckets, cursor)
-		cursor = cursor.Add(-stride)
+		result.Buckets = append(result.Buckets, bucket.at)
 	}
 
 	return result, nil
@@ -271,7 +306,7 @@ func metricsRollup(period MetricsPeriod) (MetricsGranularity, int, time.Duration
 	return MetricsGranularityMinutely, minutes, time.Minute
 }
 
-func metricsRollupKey(t time.Time, granularity MetricsGranularity) string {
+func metricsRollupKeySidekiq8(t time.Time, granularity MetricsGranularity) string {
 	t = t.UTC()
 	date := t.Format("060102")
 	hour := t.Hour()
@@ -283,9 +318,45 @@ func metricsRollupKey(t time.Time, granularity MetricsGranularity) string {
 	return fmt.Sprintf("j|%s|%d:%02d", date, hour, minute)
 }
 
-func metricsHistogramKey(className string, t time.Time) string {
+func metricsRollupKeys(t time.Time, granularity MetricsGranularity) []string {
+	keys := []string{
+		metricsRollupKeySidekiq8(t, granularity),
+	}
+	if sidekiq7Key := metricsRollupKeySidekiq7(t, granularity); sidekiq7Key != "" && sidekiq7Key != keys[0] {
+		keys = append(keys, sidekiq7Key)
+	}
+	return keys
+}
+
+func metricsRollupKeySidekiq7(t time.Time, granularity MetricsGranularity) string {
+	// Sidekiq 7 only writes minute buckets (no 10-minute rollups).
+	if granularity == MetricsGranularityHourly {
+		return ""
+	}
+	t = t.UTC()
+	date := t.Format("20060102")
+	return fmt.Sprintf("j|%s|%d:%d", date, t.Hour(), t.Minute())
+}
+
+func metricsHistogramKeySidekiq8(className string, t time.Time) string {
 	t = t.UTC()
 	return fmt.Sprintf("h|%s-%d-%d:%d", className, t.Day(), t.Hour(), t.Minute())
+}
+
+func metricsHistogramKeys(className string, t time.Time) []string {
+	keys := []string{
+		metricsHistogramKeySidekiq8(className, t),
+	}
+	if sidekiq7Key := metricsHistogramKeySidekiq7(className, t); sidekiq7Key != keys[0] {
+		keys = append(keys, sidekiq7Key)
+	}
+	return keys
+}
+
+func metricsHistogramKeySidekiq7(className string, t time.Time) string {
+	// Sidekiq 7 stores histograms without the "h|" prefix and zero-pads day/hour.
+	t = t.UTC()
+	return fmt.Sprintf("%s-%02d-%02d:%d", className, t.Day(), t.Hour(), t.Minute())
 }
 
 func metricsBucketTime(t time.Time, granularity MetricsGranularity) string {
