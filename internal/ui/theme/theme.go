@@ -32,6 +32,10 @@ type Theme struct {
 	// Metrics colors
 	MetricsText compat.CompleteAdaptiveColor
 
+	// Stack bar colors
+	StackBarBg   compat.CompleteAdaptiveColor
+	StackBarText compat.CompleteAdaptiveColor
+
 	// JSON colors
 	JSONKey         compat.CompleteAdaptiveColor
 	JSONString      compat.CompleteAdaptiveColor
@@ -103,6 +107,16 @@ var DefaultTheme = Theme{
 		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#f8f9fa"), ANSI256: lipgloss.Color("255"), ANSI: lipgloss.Color("15")},
 	},
 
+	// Stack bar
+	StackBarBg: compat.CompleteAdaptiveColor{
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#F59F00"), ANSI256: lipgloss.Color("208"), ANSI: lipgloss.Color("3")},
+		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#F59F00"), ANSI256: lipgloss.Color("208"), ANSI: lipgloss.Color("3")},
+	},
+	StackBarText: compat.CompleteAdaptiveColor{
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#111827"), ANSI256: lipgloss.Color("0"), ANSI: lipgloss.Color("0")},
+		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#111827"), ANSI256: lipgloss.Color("0"), ANSI: lipgloss.Color("0")},
+	},
+
 	// JSON
 	JSONKey: compat.CompleteAdaptiveColor{
 		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#364FC7"), ANSI256: lipgloss.Color("62"), ANSI: lipgloss.Color("4")},
@@ -146,6 +160,12 @@ type Styles struct {
 	NavItem lipgloss.Style
 	NavKey  lipgloss.Style
 	NavQuit lipgloss.Style
+
+	// Stack bar
+	StackBar        lipgloss.Style
+	StackItem       lipgloss.Style
+	StackArrowLeft  lipgloss.Style
+	StackArrowRight lipgloss.Style
 
 	// Content
 	ViewTitle lipgloss.Style
@@ -224,6 +244,22 @@ func NewStyles() Styles {
 		NavQuit: lipgloss.NewStyle().
 			Foreground(t.TextMuted).
 			PaddingRight(1),
+
+		// Stack bar
+		StackBar: lipgloss.NewStyle().
+			Padding(0, 1),
+
+		StackItem: lipgloss.NewStyle().
+			Foreground(t.StackBarText).
+			Background(t.StackBarBg).
+			Padding(0, 1),
+
+		StackArrowLeft: lipgloss.NewStyle().
+			Foreground(t.Bg).
+			Background(t.StackBarBg),
+
+		StackArrowRight: lipgloss.NewStyle().
+			Foreground(t.StackBarBg),
 
 		// Content
 		ViewTitle: lipgloss.NewStyle().

@@ -110,8 +110,7 @@ func (d *Dead) fetchDataCmd() tea.Cmd {
 
 // Init implements View.
 func (d *Dead) Init() tea.Cmd {
-	d.currentPage = 1
-	d.showDetail = false
+	d.reset()
 	d.filter.Init()
 	return d.fetchDataCmd()
 }
@@ -238,6 +237,26 @@ func (d *Dead) SetSize(width, height int) View {
 	// Update job detail size (full size, component handles its own borders)
 	d.jobDetail.SetSize(width, height)
 	return d
+}
+
+func (d *Dead) reset() {
+	d.currentPage = 1
+	d.totalPages = 1
+	d.totalSize = 0
+	d.jobs = nil
+	d.ready = false
+	d.table.SetRows(nil)
+	d.table.SetCursor(0)
+	d.showDetail = false
+	d.jobDetail.SetJob(nil)
+}
+
+// Dispose clears cached data when the view is removed from the stack.
+func (d *Dead) Dispose() {
+	d.reset()
+	d.filter = filterinput.New()
+	d.SetStyles(d.styles)
+	d.updateTableSize()
 }
 
 // FilterFocused reports whether the filter input is capturing keys.

@@ -64,3 +64,8 @@ type View interface {
 	// SetStyles updates the view styles
 	SetStyles(styles Styles) View
 }
+
+// Disposable allows views to clean up when removed from the stack.
+type Disposable interface {
+	Dispose()
+}

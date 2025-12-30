@@ -130,9 +130,7 @@ func (e *Errors) fetchJobs(ctx context.Context) ([]*sidekiq.SortedEntry, []*side
 
 // Init implements View.
 func (e *Errors) Init() tea.Cmd {
-	e.ready = false
-	e.state = errorsStateSummary
-	e.groupJobs = nil
+	e.reset()
 	e.filter.Init()
 	return e.fetchDataCmd()
 }
@@ -275,6 +273,28 @@ func (e *Errors) SetSize(width, height int) View {
 	e.updateTableSize()
 	e.jobDetail.SetSize(width, height)
 	return e
+}
+
+func (e *Errors) reset() {
+	e.ready = false
+	e.state = errorsStateSummary
+	e.groupJobs = nil
+	e.groupKey = errorSummaryKey{}
+	e.rows = nil
+	e.groups = nil
+	e.deadCount = 0
+	e.retryCount = 0
+	e.table.SetRows(nil)
+	e.table.SetCursor(0)
+	e.jobDetail.SetJob(nil)
+}
+
+// Dispose clears cached data when the view is removed from the stack.
+func (e *Errors) Dispose() {
+	e.reset()
+	e.filter = filterinput.New()
+	e.SetStyles(e.styles)
+	e.updateTableSize()
 }
 
 // FilterFocused reports whether the filter input is capturing keys.
