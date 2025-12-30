@@ -118,7 +118,7 @@ func (c *Client) GetMetricsTopJobs(ctx context.Context, period MetricsPeriod, cl
 		keys = append(keys, metricsRollupKey(cursor, granularity))
 		cursor = cursor.Add(-stride)
 	}
-	result.StartsAt = cursor
+	result.StartsAt = cursor.Add(stride)
 
 	var filter string
 	if classFilter != "" {
@@ -195,7 +195,7 @@ func (c *Client) GetMetricsJobDetail(ctx context.Context, className string, peri
 		}
 		cursor = cursor.Add(-stride)
 	}
-	result.StartsAt = cursor
+	result.StartsAt = cursor.Add(stride)
 
 	pipe := c.redis.Pipeline()
 	hmCmds := make([]*redis.SliceCmd, 0, len(keys))
