@@ -2,7 +2,7 @@
 package navbar
 
 import (
-	"fmt"
+	"strconv"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -117,7 +117,7 @@ func (m Model) View() string {
 
 	var items strings.Builder
 	for i, v := range m.views {
-		key := m.styles.Key.Render(fmt.Sprintf("%d", i+1))
+		key := m.styles.Key.Render(strconv.Itoa(i + 1))
 		name := m.styles.Item.Render(v.Name)
 		items.WriteString(key + name)
 	}

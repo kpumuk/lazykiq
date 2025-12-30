@@ -3,6 +3,7 @@ package views
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"charm.land/bubbles/v2/key"
@@ -294,7 +295,7 @@ func (r *Retries) updateTableRows() {
 		nextRetry := format.Duration(now - job.At())
 
 		// Format retry count
-		retryCount := fmt.Sprintf("%d", job.RetryCount())
+		retryCount := strconv.Itoa(job.RetryCount())
 
 		// Format error
 		errorStr := ""

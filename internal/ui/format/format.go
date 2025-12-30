@@ -4,6 +4,7 @@ package format
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -75,7 +76,7 @@ func Number(n int64) string {
 	case n >= 1_000:
 		return fmt.Sprintf("%.1fK", float64(n)/1_000)
 	default:
-		return fmt.Sprintf("%d", n)
+		return strconv.FormatInt(n, 10)
 	}
 }
 
@@ -83,7 +84,7 @@ func Number(n int64) string {
 func ShortNumber(n int64) string {
 	switch {
 	case n < 1_000:
-		return fmt.Sprintf("%d", n)
+		return strconv.FormatInt(n, 10)
 	case n < 10_000:
 		return fmt.Sprintf("%.1fK", float64(n)/1_000)
 	case n < 1_000_000:

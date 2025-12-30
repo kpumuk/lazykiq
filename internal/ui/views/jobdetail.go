@@ -1,8 +1,8 @@
 package views
 
 import (
-	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -220,7 +220,7 @@ func (j *JobDetail) View() string {
 // Name implements View.
 func (j *JobDetail) Name() string {
 	if j.job != nil {
-		return fmt.Sprintf("Job: %s", j.job.JID())
+		return "Job: " + j.job.JID()
 	}
 	return "Job Detail"
 }
@@ -427,7 +427,7 @@ func (j *JobDetail) extractProperties() {
 	if retryCount := j.job.RetryCount(); retryCount > 0 {
 		j.properties = append(j.properties, PropertyRow{
 			Label: "Retry Count",
-			Value: fmt.Sprintf("%d", retryCount),
+			Value: strconv.Itoa(retryCount),
 		})
 	}
 	if failedAt := j.job.FailedAt(); failedAt > 0 {

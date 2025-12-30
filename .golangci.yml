@@ -15,6 +15,7 @@ linters:
     - nilerr
     - noctx
     - nolintlint
+    - perfsprint
     - prealloc
     - revive
     - rowserrcheck

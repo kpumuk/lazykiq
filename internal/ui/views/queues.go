@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
@@ -257,7 +258,7 @@ func (q *Queues) renderQueueList() string {
 		if len(queue.Name) > maxNameLen {
 			maxNameLen = len(queue.Name)
 		}
-		sizeStr := fmt.Sprintf("%d", queue.Size)
+		sizeStr := strconv.FormatInt(queue.Size, 10)
 		if len(sizeStr) > maxSizeLen {
 			maxSizeLen = len(sizeStr)
 		}
@@ -270,7 +271,7 @@ func (q *Queues) renderQueueList() string {
 	lines := make([]string, 0, len(q.queues))
 	for i, queue := range q.queues {
 		// Hotkey with grey background (like navbar), bold if selected
-		hotkeyText := fmt.Sprintf("%d", i+1)
+		hotkeyText := strconv.Itoa(i + 1)
 		var hotkey string
 		if i == q.selectedQueue {
 			hotkey = q.styles.NavKey.Bold(true).Render(hotkeyText)
@@ -323,7 +324,7 @@ func (q *Queues) updateTableRows() {
 	rows := make([]table.Row, 0, len(q.jobs))
 	for _, job := range q.jobs {
 		row := table.Row{
-			fmt.Sprintf("%d", job.Position),
+			strconv.Itoa(job.Position),
 			job.DisplayClass(),
 			format.Args(job.DisplayArgs()),
 			formatContext(job.Context()),
@@ -355,7 +356,7 @@ func (q *Queues) renderJobsBox() string {
 		queueName = q.queues[q.selectedQueue].Name
 		queueSize = q.queues[q.selectedQueue].Size
 	}
-	title := fmt.Sprintf("Jobs in %s", queueName)
+	title := "Jobs in " + queueName
 
 	// Build meta: SIZE and PAGE info
 	sep := q.styles.Muted.Render(" • ")

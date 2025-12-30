@@ -3,6 +3,7 @@ package views
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -234,7 +235,7 @@ func (b *Busy) renderProcessList() string {
 	lines := make([]string, 0, len(rows))
 	for i, row := range rows {
 		// Hotkey with NavKey style, bold if selected
-		hotkeyText := fmt.Sprintf("%d", i+1)
+		hotkeyText := strconv.Itoa(i + 1)
 		var hotkey string
 		if i == b.selectedProcess {
 			hotkey = b.styles.NavKey.Bold(true).Render(hotkeyText)
@@ -342,7 +343,7 @@ func (b *Busy) renderJobsBox() string {
 
 	// Build meta: PRC, THR, RSS info
 	sep := b.styles.Muted.Render(" • ")
-	meta := b.styles.MetricLabel.Render("PRC: ") + b.styles.MetricValue.Render(fmt.Sprintf("%d", processCount)) +
+	meta := b.styles.MetricLabel.Render("PRC: ") + b.styles.MetricValue.Render(strconv.Itoa(processCount)) +
 		sep + b.styles.MetricLabel.Render("THR: ") + b.styles.MetricValue.Render(fmt.Sprintf("%d/%d (%d%%)", busyThreads, totalThreads, percentage)) +
 		sep + b.styles.MetricLabel.Render("RSS: ") + b.styles.MetricValue.Render(format.Bytes(totalRSS))
 

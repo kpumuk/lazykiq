@@ -5,8 +5,8 @@ import (
 	"compress/zlib"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"reflect"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -271,7 +271,7 @@ func encodeBacktrace(t *testing.T, backtrace []string) string {
 }
 
 func jsonNumber(n int64) string {
-	return fmt.Sprintf("%d", n)
+	return strconv.FormatInt(n, 10)
 }
 
 type serializedActiveJobTest struct {

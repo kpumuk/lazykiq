@@ -3,6 +3,7 @@ package views
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -265,7 +266,7 @@ func (d *Dashboard) fetchHistoryCmd() tea.Cmd {
 func (d *Dashboard) renderRedisInfoLine() string {
 	parts := []string{
 		d.styles.MetricLabel.Render("Redis Version: ") + d.styles.MetricValue.Render(orFallback(d.redisInfo.Version, "n/a")),
-		d.styles.MetricLabel.Render("Uptime: ") + d.styles.MetricValue.Render(fmt.Sprintf("%d", d.redisInfo.UptimeDays)) + d.styles.MetricLabel.Render(" days"),
+		d.styles.MetricLabel.Render("Uptime: ") + d.styles.MetricValue.Render(strconv.FormatInt(d.redisInfo.UptimeDays, 10)) + d.styles.MetricLabel.Render(" days"),
 		d.styles.MetricLabel.Render("Connections: ") + d.styles.MetricValue.Render(format.Number(d.redisInfo.Connections)),
 		d.styles.MetricLabel.Render("Memory: ") + d.styles.MetricValue.Render(orFallback(d.redisInfo.UsedMemory, "n/a")),
 		d.styles.MetricLabel.Render("Peak: ") + d.styles.MetricValue.Render(orFallback(d.redisInfo.UsedMemoryPeak, "n/a")),
