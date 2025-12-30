@@ -12,6 +12,7 @@ type KeyMap struct {
 	View5    key.Binding
 	View6    key.Binding
 	View7    key.Binding
+	View8    key.Binding
 	Tab      key.Binding
 	ShiftTab key.Binding
 	Help     key.Binding
@@ -30,11 +31,11 @@ func DefaultKeyMap() KeyMap {
 		),
 		View2: key.NewBinding(
 			key.WithKeys("2"),
-			key.WithHelp("2", "queues"),
+			key.WithHelp("2", "busy"),
 		),
 		View3: key.NewBinding(
 			key.WithKeys("3"),
-			key.WithHelp("3", "busy"),
+			key.WithHelp("3", "queues"),
 		),
 		View4: key.NewBinding(
 			key.WithKeys("4"),
@@ -51,6 +52,10 @@ func DefaultKeyMap() KeyMap {
 		View7: key.NewBinding(
 			key.WithKeys("7"),
 			key.WithHelp("7", "errors"),
+		),
+		View8: key.NewBinding(
+			key.WithKeys("8"),
+			key.WithHelp("8", "metrics"),
 		),
 		Tab: key.NewBinding(
 			key.WithKeys("tab"),
@@ -69,13 +74,13 @@ func DefaultKeyMap() KeyMap {
 
 // ShortHelp returns keybindings to show in the mini help view.
 func (k KeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.View1, k.View2, k.View3, k.View4, k.View5, k.View6, k.View7, k.Quit}
+	return []key.Binding{k.View1, k.View2, k.View3, k.View4, k.View5, k.View6, k.View7, k.View8, k.Quit}
 }
 
 // FullHelp returns keybindings for the expanded help view.
 func (k KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
-		{k.View1, k.View2, k.View3, k.View4, k.View5, k.View6, k.View7},
+		{k.View1, k.View2, k.View3, k.View4, k.View5, k.View6, k.View7, k.View8},
 		{k.Tab, k.ShiftTab, k.Help, k.Quit},
 	}
 }

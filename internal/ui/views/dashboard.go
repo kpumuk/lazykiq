@@ -440,7 +440,7 @@ func (d *Dashboard) renderTimeSeriesChart(width, height int, times []time.Time, 
 	if width < 1 || height < 1 {
 		return ""
 	}
-	n := minInt(len(times), len(processed), len(failed))
+	n := min(len(times), len(processed), len(failed))
 	if n == 0 {
 		return renderCenteredLoading(width, height)
 	}
@@ -544,19 +544,6 @@ func trimTimes(values []time.Time, maxItems int) []time.Time {
 		return values
 	}
 	return values[len(values)-maxItems:]
-}
-
-func minInt(values ...int) int {
-	if len(values) == 0 {
-		return 0
-	}
-	minValue := values[0]
-	for _, v := range values[1:] {
-		if v < minValue {
-			minValue = v
-		}
-	}
-	return minValue
 }
 
 func (d *Dashboard) seedRealtimeSeries() {
