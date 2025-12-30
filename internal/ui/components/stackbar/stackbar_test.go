@@ -10,14 +10,13 @@ import (
 func TestViewRendersSingleItemWithArrows(t *testing.T) {
 	const arrow = ""
 	label := "Dashboard"
-	expected := arrow + label + arrow
+	expected := label + arrow
 
 	m := New(
 		WithStyles(Styles{
-			Bar:        lipgloss.NewStyle(),
-			Item:       lipgloss.NewStyle(),
-			ArrowLeft:  lipgloss.NewStyle(),
-			ArrowRight: lipgloss.NewStyle(),
+			Bar:   lipgloss.NewStyle(),
+			Item:  lipgloss.NewStyle(),
+			Arrow: lipgloss.NewStyle(),
 		}),
 		WithStack([]string{label}),
 	)
@@ -31,17 +30,16 @@ func TestViewRendersMultipleItemsSeparatedBySpace(t *testing.T) {
 	const arrow = ""
 	labels := []string{"Errors", "Detail"}
 	items := []string{
-		arrow + labels[0] + arrow,
-		arrow + labels[1] + arrow,
+		labels[0] + arrow,
+		labels[1] + arrow,
 	}
-	expected := strings.Join(items, "")
+	expected := strings.Join(items, " ")
 
 	m := New(
 		WithStyles(Styles{
-			Bar:        lipgloss.NewStyle(),
-			Item:       lipgloss.NewStyle(),
-			ArrowLeft:  lipgloss.NewStyle(),
-			ArrowRight: lipgloss.NewStyle(),
+			Bar:   lipgloss.NewStyle(),
+			Item:  lipgloss.NewStyle(),
+			Arrow: lipgloss.NewStyle(),
 		}),
 		WithStack(labels),
 	)
