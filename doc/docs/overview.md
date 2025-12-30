@@ -22,4 +22,4 @@ clear summaries.
 
 ## Screenshots
 
-{{< assetimg src="assets/dashboard.png" alt="Dashboard view" >}}
+{{< lightbox src="assets/dashboard.png" alt="Dashboard view" >}}

@@ -11,7 +11,7 @@ toc: true
 
 Dead jobs have failed permanently and need intervention.
 
-{{< assetimg src="assets/dead.png" alt="Dead screen" >}}
+{{< lightbox src="assets/dead.png" alt="Dead screen" >}}
 
 ## Key bindings
 

@@ -1,0 +1,19 @@
+{{- $src := .Get "src" -}}
+{{- if not $src -}}
+  {{- errorf "lightbox shortcode: src is required" -}}
+{{- end -}}
+{{- $alt := .Get "alt" | default "" -}}
+{{- $class := .Get "class" | default "" -}}
+{{- $thumbClass := .Get "thumbClass" | default "" -}}
+{{- $close := .Get "close" | default "#" -}}
+{{- $id := .Get "id" | default "" -}}
+
+{{- partial "lightbox.html" (dict
+  "src" $src
+  "alt" $alt
+  "class" $class
+  "thumbClass" $thumbClass
+  "close" $close
+  "id" $id
+  "page" $.Page
+) -}}

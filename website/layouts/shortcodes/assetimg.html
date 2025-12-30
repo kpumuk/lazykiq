@@ -1,4 +1,0 @@
-{{- $src := .Get "src" -}}
-{{- $alt := .Get "alt" | default "" -}}
-{{- $class := .Get "class" | default "" -}}
-<img src="{{ $src | absURL }}" alt="{{ $alt }}"{{ if $class }} class="{{ $class }}"{{ end }} />

@@ -12,7 +12,7 @@ toc: true
 The metrics view tracks processed, failed, busy, enqueued, retries, scheduled,
 and dead counts in real time, plus per-job metrics.
 
-{{< assetimg src="assets/metrics.png" alt="Metrics screen" >}}
+{{< lightbox src="assets/metrics.png" alt="Metrics screen" >}}
 
 ## Key bindings
 
@@ -29,7 +29,7 @@ and dead counts in real time, plus per-job metrics.
 
 Job metrics show per-job performance and breakdowns.
 
-{{< assetimg src="assets/job_metrics.png" alt="Job metrics screen" >}}
+{{< lightbox src="assets/job_metrics.png" alt="Job metrics screen" >}}
 
 ## Key bindings
 

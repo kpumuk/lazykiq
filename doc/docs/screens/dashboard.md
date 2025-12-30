@@ -12,7 +12,7 @@ toc: true
 The dashboard provides a quick health check of your Sidekiq system. It shows
 throughput, failures, and queue depth over time.
 
-{{< assetimg src="assets/dashboard.png" alt="Dashboard screen" >}}
+{{< lightbox src="assets/dashboard.png" alt="Dashboard screen" >}}
 
 ## Key bindings
 

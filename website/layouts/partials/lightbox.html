@@ -1,0 +1,36 @@
+{{- $src := .src -}}
+{{- if not $src -}}
+  {{- errorf "lightbox partial: src is required" -}}
+{{- end -}}
+{{- $alt := .alt | default "" -}}
+{{- $class := .class | default "" -}}
+{{- $thumbClass := .thumbClass | default "" -}}
+{{- $close := .close | default "#" -}}
+{{- $id := .id | default "" -}}
+{{- $page := .page -}}
+
+{{- if not $id -}}
+  {{- $pageKey := "" -}}
+  {{- if $page -}}
+    {{- $pageKey = $page.RelPermalink -}}
+  {{- end -}}
+  {{- $id = printf "lightbox-%s" (md5 (printf "%s-%s-%s" $pageKey $src $alt)) -}}
+{{- end -}}
+
+{{- $thumbClasses := "lightbox-thumb" -}}
+{{- if $thumbClass -}}
+  {{- $thumbClasses = printf "%s %s" $thumbClasses $thumbClass -}}
+{{- end -}}
+
+{{- $ariaAlt := $alt -}}
+{{- if not $ariaAlt -}}
+  {{- $ariaAlt = "image" -}}
+{{- end -}}
+{{- $aria := printf "Close %s" $ariaAlt -}}
+
+<a href="#{{ $id }}" class="{{ $thumbClasses }}">
+  <img src="{{ $src | absURL }}" alt="{{ $alt }}"{{ if $class }} class="{{ $class }}"{{ end }} />
+</a>
+<a href="{{ $close }}" class="lightbox" id="{{ $id }}" aria-label="{{ $aria }}">
+  <span style="background-image: url('{{ $src | absURL }}');"></span>
+</a>

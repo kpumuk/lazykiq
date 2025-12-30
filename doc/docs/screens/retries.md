@@ -11,7 +11,7 @@ toc: true
 
 Retries list jobs that failed and will be retried by Sidekiq.
 
-{{< assetimg src="assets/retries.png" alt="Retries screen" >}}
+{{< lightbox src="assets/retries.png" alt="Retries screen" >}}
 
 ## Key bindings
 

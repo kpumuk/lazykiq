@@ -11,7 +11,7 @@ toc: true
 
 Queues show the backlog waiting to be processed, with per-queue counts.
 
-{{< assetimg src="assets/queues.png" alt="Queues screen" >}}
+{{< lightbox src="assets/queues.png" alt="Queues screen" >}}
 
 ## Key bindings
 

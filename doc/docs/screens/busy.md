@@ -11,7 +11,7 @@ toc: true
 
 The Busy screen lists active workers and the jobs they are executing.
 
-{{< assetimg src="assets/busy.png" alt="Busy screen" >}}
+{{< lightbox src="assets/busy.png" alt="Busy screen" >}}
 
 ## Key bindings
 

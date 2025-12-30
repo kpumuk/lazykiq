@@ -11,7 +11,7 @@ toc: true
 
 Errors group failures by exception so you can spot the biggest problems fast.
 
-{{< assetimg src="assets/errors_summary.png" alt="Errors screen" >}}
+{{< lightbox src="assets/errors_summary.png" alt="Errors screen" >}}
 
 ## Key bindings
 
@@ -29,7 +29,7 @@ Errors group failures by exception so you can spot the biggest problems fast.
 
 Drill into a specific error to see its backtrace, payload, and occurrence data.
 
-{{< assetimg src="assets/errors_details.png" alt="Error details screen" >}}
+{{< lightbox src="assets/errors_details.png" alt="Error details screen" >}}
 
 ## Key bindings
 

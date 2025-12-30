@@ -11,7 +11,7 @@ toc: true
 
 Scheduled jobs are queued to run at a specific time.
 
-{{< assetimg src="assets/scheduled.png" alt="Scheduled screen" >}}
+{{< lightbox src="assets/scheduled.png" alt="Scheduled screen" >}}
 
 ## Key bindings
 
