@@ -1,1 +1,59 @@
 // Put your custom SCSS code here
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.lightbox-thumb {
+  display: inline-block;
+}
+
+.lightbox-thumb img {
+  cursor: zoom-in;
+}
+
+.lightbox {
+  position: fixed;
+  z-index: 999;
+  inset: 0;
+  padding: 1.5rem;
+  background: rgba(0, 0, 0, 0.85);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 160ms ease-out;
+}
+
+.lightbox:target {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.lightbox span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+  transform: scale(0.98);
+  transition: transform 160ms ease-out;
+}
+
+.lightbox:target span {
+  transform: scale(1);
+}
+
+html:has(.lightbox:target),
+body:has(.lightbox:target) {
+  overflow: hidden;
+}
