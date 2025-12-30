@@ -21,7 +21,7 @@ mainSections = ["docs"]
 
   ## Button
   navBarButton = true # false (default) or true
-  navBarButtonUrl = "/docs/getting-started/installation/"
+  navBarButtonUrl = "docs/getting-started/installation/"
   navBarButtonText = "Get started"
 
   # FlexSearch
