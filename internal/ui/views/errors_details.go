@@ -2,11 +2,13 @@ package views
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
+	"github.com/kpumuk/lazykiq/internal/ui/components/filterinput"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
 	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
@@ -27,9 +29,9 @@ type ErrorsDetails struct {
 
 	ready     bool
 	groupKey  errorSummaryKey
-	query     string
 	groupJobs []errorGroupJob
 	table     table.Model
+	filter    filterinput.Model
 }
 
 // NewErrorsDetails creates a new ErrorsDetails view.
@@ -40,6 +42,7 @@ func NewErrorsDetails(client *sidekiq.Client) *ErrorsDetails {
 			table.WithColumns(errorDetailsColumns),
 			table.WithEmptyMessage("No errors"),
 		),
+		filter: filterinput.New(),
 	}
 }
 
@@ -50,12 +53,15 @@ func (e *ErrorsDetails) SetErrorGroup(displayClass, errorClass, queue, query str
 		errorClass:   errorClass,
 		queue:        queue,
 	}
-	e.query = query
+	e.filter = filterinput.New(filterinput.WithQuery(query))
+	e.SetStyles(e.styles)
+	e.updateTableSize()
 }
 
 // Init implements View.
 func (e *ErrorsDetails) Init() tea.Cmd {
 	e.resetData()
+	e.filter.Init()
 	return e.fetchDataCmd()
 }
 
@@ -71,7 +77,21 @@ func (e *ErrorsDetails) Update(msg tea.Msg) (View, tea.Cmd) {
 	case RefreshMsg:
 		return e, e.fetchDataCmd()
 
+	case filterinput.ActionMsg:
+		if msg.Action != filterinput.ActionNone {
+			e.table.SetCursor(0)
+			return e, e.fetchDataCmd()
+		}
+		return e, nil
+
 	case tea.KeyMsg:
+		wasFocused := e.filter.Focused()
+		var cmd tea.Cmd
+		e.filter, cmd = e.filter.Update(msg)
+		if wasFocused || msg.String() == "/" || msg.String() == "ctrl+u" || msg.String() == "esc" {
+			return e, cmd
+		}
+
 		switch msg.String() {
 		case "enter":
 			if idx := e.table.Cursor(); idx >= 0 && idx < len(e.groupJobs) {
@@ -98,7 +118,7 @@ func (e *ErrorsDetails) View() string {
 		return e.renderMessage("Loading...")
 	}
 
-	if len(e.groupJobs) == 0 && e.query == "" {
+	if len(e.groupJobs) == 0 && e.filter.Query() == "" && !e.filter.Focused() {
 		return e.renderMessage("No errors")
 	}
 
@@ -116,7 +136,7 @@ func (e *ErrorsDetails) renderMessage(msg string) string {
 // Name implements View.
 func (e *ErrorsDetails) Name() string {
 	if e.groupKey.errorClass != "" {
-		return "Jobs: " + e.groupKey.errorClass
+		return e.groupKey.errorClass
 	}
 	return "Jobs"
 }
@@ -144,12 +164,12 @@ func (e *ErrorsDetails) resetData() {
 func (e *ErrorsDetails) reset() {
 	e.resetData()
 	e.groupKey = errorSummaryKey{}
-	e.query = ""
 }
 
 // Dispose clears cached data when the view is removed from the stack.
 func (e *ErrorsDetails) Dispose() {
 	e.reset()
+	e.filter = filterinput.New()
 	e.SetStyles(e.styles)
 	e.updateTableSize()
 }
@@ -163,6 +183,12 @@ func (e *ErrorsDetails) SetStyles(styles Styles) View {
 		Header:    styles.TableHeader,
 		Selected:  styles.TableSelected,
 		Separator: styles.TableSeparator,
+	})
+	e.filter.SetStyles(filterinput.Styles{
+		Prompt:      styles.MetricLabel,
+		Text:        styles.Text,
+		Placeholder: styles.Muted,
+		Cursor:      styles.Text,
 	})
 	return e
 }
@@ -178,14 +204,15 @@ var errorDetailsColumns = []table.Column{
 
 // updateTableSize updates the table dimensions based on current view size.
 func (e *ErrorsDetails) updateTableSize() {
-	tableHeight := max(e.height-2, 3)
+	tableHeight := max(e.height-3, 3)
 	tableWidth := e.width - 4
 	e.table.SetSize(tableWidth, tableHeight)
+	e.filter.SetWidth(tableWidth)
 }
 
 // updateTableRows converts group data to table rows.
 func (e *ErrorsDetails) updateTableRows() {
-	if e.query != "" {
+	if e.filter.Query() != "" {
 		e.table.SetEmptyMessage("No matches")
 	} else {
 		e.table.SetEmptyMessage("No errors")
@@ -221,7 +248,7 @@ func (e *ErrorsDetails) updateTableRows() {
 func (e *ErrorsDetails) fetchDataCmd() tea.Cmd {
 	return func() tea.Msg {
 		ctx := context.Background()
-		deadJobs, retryJobs, err := fetchErrorJobs(ctx, e.client, e.query)
+		deadJobs, retryJobs, err := fetchErrorJobs(ctx, e.client, e.filter.Query())
 		if err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}
@@ -235,7 +262,7 @@ func (e *ErrorsDetails) fetchDataCmd() tea.Cmd {
 
 // renderDetailsBox renders the bordered box containing the detail table.
 func (e *ErrorsDetails) renderDetailsBox() string {
-	content := e.table.View()
+	content := e.filter.View() + "\n" + e.table.View()
 
 	box := frame.New(
 		frame.WithStyles(frame.Styles{
@@ -248,7 +275,7 @@ func (e *ErrorsDetails) renderDetailsBox() string {
 				Border: e.styles.BorderStyle,
 			},
 		}),
-		frame.WithTitle("Errors"),
+		frame.WithTitle(fmt.Sprintf("Error %s in %s", e.groupKey.errorClass, e.groupKey.displayClass)),
 		frame.WithTitlePadding(0),
 		frame.WithContent(content),
 		frame.WithPadding(1),
