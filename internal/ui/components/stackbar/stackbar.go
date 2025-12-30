@@ -10,19 +10,17 @@ import (
 
 // Styles holds the styles needed by the stack bar.
 type Styles struct {
-	Bar        lipgloss.Style
-	Item       lipgloss.Style
-	ArrowLeft  lipgloss.Style
-	ArrowRight lipgloss.Style
+	Bar   lipgloss.Style
+	Item  lipgloss.Style
+	Arrow lipgloss.Style
 }
 
 // DefaultStyles returns default styles for the stack bar.
 func DefaultStyles() Styles {
 	return Styles{
-		Bar:        lipgloss.NewStyle().Padding(0, 1),
-		Item:       lipgloss.NewStyle().Padding(0, 1),
-		ArrowLeft:  lipgloss.NewStyle(),
-		ArrowRight: lipgloss.NewStyle(),
+		Bar:   lipgloss.NewStyle().Padding(0, 1),
+		Item:  lipgloss.NewStyle().Padding(0, 1),
+		Arrow: lipgloss.NewStyle(),
 	}
 }
 
@@ -113,7 +111,10 @@ func (m Model) View() string {
 	}
 
 	var items strings.Builder
-	for _, label := range m.stack {
+	for i, label := range m.stack {
+		if i > 0 {
+			items.WriteString(" ")
+		}
 		items.WriteString(formatLabel(m.styles, label))
 	}
 
@@ -121,6 +122,5 @@ func (m Model) View() string {
 }
 
 func formatLabel(styles Styles, label string) string {
-	const arrow = ""
-	return styles.ArrowLeft.Render(arrow) + styles.Item.Render(label) + styles.ArrowRight.Render(arrow)
+	return styles.Item.Render(label) + styles.Arrow.Render("")
 }

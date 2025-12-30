@@ -132,10 +132,9 @@ func New(client *sidekiq.Client) App {
 		),
 		stackbar: stackbar.New(
 			stackbar.WithStyles(stackbar.Styles{
-				Bar:        styles.StackBar,
-				Item:       styles.StackItem,
-				ArrowLeft:  styles.StackArrowLeft,
-				ArrowRight: styles.StackArrowRight,
+				Bar:   styles.StackBar,
+				Item:  styles.StackItem,
+				Arrow: styles.StackArrow,
 			}),
 			stackbar.WithStack([]string{viewRegistry[viewDashboard].Name()}),
 		),
