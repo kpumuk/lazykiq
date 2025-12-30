@@ -37,6 +37,8 @@ const (
 	viewErrorsSummary
 	viewErrorsDetails
 	viewJobDetail
+	viewMetrics
+	viewJobMetrics
 )
 
 // App is the main application model.
@@ -69,6 +71,7 @@ func New(client *sidekiq.Client) App {
 		viewScheduled,
 		viewDead,
 		viewErrorsSummary,
+		viewMetrics,
 	}
 	viewRegistry := map[viewID]views.View{
 		viewDashboard:     views.NewDashboard(client),
@@ -80,6 +83,8 @@ func New(client *sidekiq.Client) App {
 		viewErrorsSummary: views.NewErrorsSummary(client),
 		viewErrorsDetails: views.NewErrorsDetails(client),
 		viewJobDetail:     views.NewJobDetail(),
+		viewMetrics:       views.NewMetrics(client),
+		viewJobMetrics:    views.NewJobMetrics(client),
 	}
 
 	// Apply styles to views
@@ -110,6 +115,7 @@ func New(client *sidekiq.Client) App {
 	}
 	viewRegistry[viewErrorsDetails] = viewRegistry[viewErrorsDetails].SetStyles(viewStyles)
 	viewRegistry[viewJobDetail] = viewRegistry[viewJobDetail].SetStyles(viewStyles)
+	viewRegistry[viewJobMetrics] = viewRegistry[viewJobMetrics].SetStyles(viewStyles)
 
 	// Build navbar view infos
 	navViews := make([]navbar.ViewInfo, len(viewOrder))
@@ -319,6 +325,12 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		cmds = append(cmds, a.pushView(viewErrorsDetails))
 
+	case views.ShowJobMetricsMsg:
+		if setter, ok := a.viewRegistry[viewJobMetrics].(views.JobMetricsSetter); ok {
+			setter.SetJobMetrics(msg.Job, msg.Period)
+		}
+		cmds = append(cmds, a.pushView(viewJobMetrics))
+
 	case tea.KeyMsg:
 		activeID := a.activeViewID()
 		if view, ok := a.viewRegistry[activeID].(interface{ FilterFocused() bool }); ok && view.FilterFocused() {
@@ -355,6 +367,9 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case key.Matches(msg, a.keys.View7):
 			cmds = append(cmds, a.setActiveView(viewErrorsSummary))
+
+		case key.Matches(msg, a.keys.View8):
+			cmds = append(cmds, a.setActiveView(viewMetrics))
 
 		default:
 			// Pass to active view

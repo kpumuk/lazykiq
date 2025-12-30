@@ -79,6 +79,12 @@ type ShowErrorDetailsMsg struct {
 	Query        string
 }
 
+// ShowJobMetricsMsg requests a stacked job metrics view.
+type ShowJobMetricsMsg struct {
+	Job    string
+	Period string
+}
+
 // JobDetailSetter allows setting job data on a job detail view.
 type JobDetailSetter interface {
 	SetJob(job *sidekiq.JobRecord)
@@ -87,6 +93,11 @@ type JobDetailSetter interface {
 // ErrorDetailsSetter allows setting error group data on an error details view.
 type ErrorDetailsSetter interface {
 	SetErrorGroup(displayClass, errorClass, queue, query string)
+}
+
+// JobMetricsSetter allows setting job metrics data on a job metrics view.
+type JobMetricsSetter interface {
+	SetJobMetrics(jobName, period string)
 }
 
 // Disposable allows views to clean up when removed from the stack.
