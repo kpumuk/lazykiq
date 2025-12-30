@@ -103,6 +103,17 @@ func TestJobRecord_DisplayClass(t *testing.T) {
 	}
 }
 
+func TestJobRecord_DisplayClass_SerializedActiveJobs(t *testing.T) {
+	for _, tt := range serializedActiveJobTests() {
+		t.Run(tt.name, func(t *testing.T) {
+			record := NewJobRecord(tt.value, "")
+			if got := record.DisplayClass(); got != tt.wantClass {
+				t.Fatalf("DisplayClass() = %q, want %q", got, tt.wantClass)
+			}
+		})
+	}
+}
+
 func TestJobRecord_DisplayArgs(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -149,6 +160,17 @@ func TestJobRecord_DisplayArgs(t *testing.T) {
 			record := NewJobRecord(tt.value, "")
 			if got := record.DisplayArgs(); !reflect.DeepEqual(got, tt.want) {
 				t.Fatalf("DisplayArgs() = %#v, want %#v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestJobRecord_DisplayArgs_SerializedActiveJobs(t *testing.T) {
+	for _, tt := range serializedActiveJobTests() {
+		t.Run(tt.name, func(t *testing.T) {
+			record := NewJobRecord(tt.value, "")
+			if got := record.DisplayArgs(); !reflect.DeepEqual(got, tt.wantArgs) {
+				t.Fatalf("DisplayArgs() = %#v, want %#v", got, tt.wantArgs)
 			}
 		})
 	}
@@ -250,4 +272,58 @@ func encodeBacktrace(t *testing.T, backtrace []string) string {
 
 func jsonNumber(n int64) string {
 	return fmt.Sprintf("%d", n)
+}
+
+type serializedActiveJobTest struct {
+	name      string
+	value     string
+	wantClass string
+	wantArgs  []any
+}
+
+func serializedActiveJobTests() []serializedActiveJobTest {
+	return []serializedActiveJobTest{
+		{
+			name:      "5x_active_job",
+			value:     `{"class":"ActiveJob::QueueAdapters::SidekiqAdapter::JobWrapper","wrapped":"ApiAjJob","queue":"default","args":[{"job_class":"ApiAjJob","job_id":"f1bde53f-3852-4ae4-a879-c12eacebbbb0","provider_job_id":null,"queue_name":"default","priority":null,"arguments":[1,2,3],"executions":0,"locale":"en"}],"retry":true,"jid":"099eee72911085a511d0e312","created_at":1568305542.339916,"enqueued_at":1568305542.339947}`,
+			wantClass: "ApiAjJob",
+			wantArgs:  []any{float64(1), float64(2), float64(3)},
+		},
+		{
+			name:      "5x_mailer_delivery",
+			value:     `{"class":"ActiveJob::QueueAdapters::SidekiqAdapter::JobWrapper","wrapped":"ActionMailer::DeliveryJob","queue":"mailers","args":[{"job_class":"ActionMailer::DeliveryJob","job_id":"19cc0115-3d1c-4bbe-a51e-bfa1385895d1","provider_job_id":null,"queue_name":"mailers","priority":null,"arguments":["ApiMailer","test_email","deliver_now",1,2,3],"executions":0,"locale":"en"}],"retry":true,"jid":"37436e5504936400e8cf98db","created_at":1568305542.370133,"enqueued_at":1568305542.370241}`,
+			wantClass: "ApiMailer#test_email",
+			wantArgs:  []any{float64(1), float64(2), float64(3)},
+		},
+		{
+			name:      "6x_active_job",
+			value:     `{"class":"ActiveJob::QueueAdapters::SidekiqAdapter::JobWrapper","wrapped":"ApiAjJob","queue":"default","args":[{"job_class":"ApiAjJob","job_id":"ff2b48d4-bdce-4825-af6b-ef8c11ab651e","provider_job_id":null,"queue_name":"default","priority":null,"arguments":[1,2,3],"executions":0,"exception_executions":{},"locale":"en","timezone":"UTC","enqueued_at":"2019-09-12T16:28:37Z"}],"retry":true,"jid":"ce121bf77b37ae81fe61b6dc","created_at":1568305717.9469702,"enqueued_at":1568305717.947005}`,
+			wantClass: "ApiAjJob",
+			wantArgs:  []any{float64(1), float64(2), float64(3)},
+		},
+		{
+			name:      "6x_mailer_delivery",
+			value:     `{"class":"ActiveJob::QueueAdapters::SidekiqAdapter::JobWrapper","wrapped":"ActionMailer::MailDeliveryJob","queue":"mailers","args":[{"job_class":"ActionMailer::MailDeliveryJob","job_id":"2f967da1-a389-479c-9a4e-5cc059e6d65c","provider_job_id":null,"queue_name":"mailers","priority":null,"arguments":["ApiMailer","test_email","deliver_now",{"params":{"user":{"_aj_globalid":"gid://app/User/1"}, "_aj_symbol_keys":["user"]},"args":[1,2,3],"_aj_symbol_keys":["params", "args"]}],"executions":0,"exception_executions":{},"locale":"en","timezone":"UTC","enqueued_at":"2019-09-12T16:28:37Z"}],"retry":true,"jid":"469979df52bb9ef9f48b49e1","created_at":1568305717.9457421,"enqueued_at":1568305717.9457731}`,
+			wantClass: "ApiMailer#test_email",
+			wantArgs: []any{
+				map[string]any{"user": "gid://app/User/1"},
+				[]any{float64(1), float64(2), float64(3)},
+			},
+		},
+		{
+			name:      "8x_active_job",
+			value:     `{"class":"Sidekiq::ActiveJob::Wrapper","wrapped":"ApiAjJob","queue":"default","args":[{"job_class":"ApiAjJob","job_id":"37649eb0-c437-4e00-8a29-85cc12da1440","provider_job_id":null,"queue_name":"default","priority":null,"arguments":[1,2,3],"executions":0,"exception_executions":{},"locale":"en","timezone":null,"enqueued_at":"2024-09-19T16:39:26.609737000Z","scheduled_at":null}],"retry":true,"jid":"ec42f101ed1b16f27c6a6188","created_at":1726763966.610073,"enqueued_at":1726763966.6101718}`,
+			wantClass: "ApiAjJob",
+			wantArgs:  []any{float64(1), float64(2), float64(3)},
+		},
+		{
+			name:      "8x_mailer_delivery",
+			value:     `{"class":"Sidekiq::ActiveJob::Wrapper","wrapped":"ActionMailer::MailDeliveryJob","queue":"mailers","args":[{"job_class":"ActionMailer::MailDeliveryJob","job_id":"d6573e12-dd78-454a-83d5-67df94934c82","provider_job_id":null,"queue_name":"mailers","priority":null,"arguments":["ApiMailer","test_email","deliver_now",{"args":[1,2,3],"_aj_ruby2_keywords":["args"]}],"executions":0,"exception_executions":{},"locale":"en","timezone":null,"enqueued_at":"2024-09-19T16:45:38.673195000Z","scheduled_at":null}],"retry":true,"jid":"2cd7874f7651115f453d6315","created_at":1726764338.673335,"enqueued_at":1726764338.673404}`,
+			wantClass: "ApiMailer#test_email",
+			wantArgs: []any{
+				nil,
+				[]any{float64(1), float64(2), float64(3)},
+			},
+		},
+	}
 }
