@@ -110,8 +110,7 @@ func (r *Retries) fetchDataCmd() tea.Cmd {
 
 // Init implements View.
 func (r *Retries) Init() tea.Cmd {
-	r.currentPage = 1
-	r.showDetail = false
+	r.reset()
 	r.filter.Init()
 	return r.fetchDataCmd()
 }
@@ -239,6 +238,26 @@ func (r *Retries) SetSize(width, height int) View {
 	// Update job detail size (full size, component handles its own borders)
 	r.jobDetail.SetSize(width, height)
 	return r
+}
+
+func (r *Retries) reset() {
+	r.currentPage = 1
+	r.totalPages = 1
+	r.totalSize = 0
+	r.jobs = nil
+	r.ready = false
+	r.table.SetRows(nil)
+	r.table.SetCursor(0)
+	r.showDetail = false
+	r.jobDetail.SetJob(nil)
+}
+
+// Dispose clears cached data when the view is removed from the stack.
+func (r *Retries) Dispose() {
+	r.reset()
+	r.filter = filterinput.New()
+	r.SetStyles(r.styles)
+	r.updateTableSize()
 }
 
 // FilterFocused reports whether the filter input is capturing keys.

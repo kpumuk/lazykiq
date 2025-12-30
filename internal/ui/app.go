@@ -12,6 +12,7 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/components/errorpopup"
 	"github.com/kpumuk/lazykiq/internal/ui/components/metrics"
 	"github.com/kpumuk/lazykiq/internal/ui/components/navbar"
+	"github.com/kpumuk/lazykiq/internal/ui/components/stackbar"
 	"github.com/kpumuk/lazykiq/internal/ui/theme"
 	"github.com/kpumuk/lazykiq/internal/ui/views"
 )
@@ -24,7 +25,17 @@ type connectionErrorMsg struct {
 	err error
 }
 
-const dashboardViewIndex = 0
+type viewID int
+
+const (
+	viewDashboard viewID = iota
+	viewBusy
+	viewQueues
+	viewRetries
+	viewScheduled
+	viewDead
+	viewErrors
+)
 
 // App is the main application model.
 type App struct {
@@ -32,9 +43,11 @@ type App struct {
 	width           int
 	height          int
 	ready           bool
-	activeView      int
-	views           []views.View
+	viewStack       []viewID
+	viewOrder       []viewID
+	viewRegistry    map[viewID]views.View
 	metrics         metrics.Model
+	stackbar        stackbar.Model
 	navbar          navbar.Model
 	errorPopup      errorpopup.Model
 	styles          theme.Styles
@@ -46,14 +59,23 @@ type App struct {
 func New(client *sidekiq.Client) App {
 	styles := theme.NewStyles()
 
-	viewList := []views.View{
-		views.NewDashboard(client),
-		views.NewBusy(client),
-		views.NewQueues(client),
-		views.NewRetries(client),
-		views.NewScheduled(client),
-		views.NewDead(client),
-		views.NewErrors(client),
+	viewOrder := []viewID{
+		viewDashboard,
+		viewBusy,
+		viewQueues,
+		viewRetries,
+		viewScheduled,
+		viewDead,
+		viewErrors,
+	}
+	viewRegistry := map[viewID]views.View{
+		viewDashboard: views.NewDashboard(client),
+		viewBusy:      views.NewBusy(client),
+		viewQueues:    views.NewQueues(client),
+		viewRetries:   views.NewRetries(client),
+		viewScheduled: views.NewScheduled(client),
+		viewDead:      views.NewDead(client),
+		viewErrors:    views.NewErrors(client),
 	}
 
 	// Apply styles to views
@@ -79,20 +101,21 @@ func New(client *sidekiq.Client) App {
 		JSONNull:        styles.JSONNull,
 		JSONPunctuation: styles.JSONPunctuation,
 	}
-	for i := range viewList {
-		viewList[i] = viewList[i].SetStyles(viewStyles)
+	for _, id := range viewOrder {
+		viewRegistry[id] = viewRegistry[id].SetStyles(viewStyles)
 	}
 
 	// Build navbar view infos
-	navViews := make([]navbar.ViewInfo, len(viewList))
-	for i, v := range viewList {
-		navViews[i] = navbar.ViewInfo{Name: v.Name()}
+	navViews := make([]navbar.ViewInfo, len(viewOrder))
+	for i, id := range viewOrder {
+		navViews[i] = navbar.ViewInfo{Name: viewRegistry[id].Name()}
 	}
 
 	return App{
-		keys:       DefaultKeyMap(),
-		activeView: 0,
-		views:      viewList,
+		keys:         DefaultKeyMap(),
+		viewStack:    []viewID{viewDashboard},
+		viewOrder:    viewOrder,
+		viewRegistry: viewRegistry,
 		metrics: metrics.New(
 			metrics.WithStyles(metrics.Styles{
 				Bar:   styles.MetricsBar,
@@ -100,6 +123,15 @@ func New(client *sidekiq.Client) App {
 				Label: styles.MetricsLabel,
 				Value: styles.MetricsValue,
 			}),
+		),
+		stackbar: stackbar.New(
+			stackbar.WithStyles(stackbar.Styles{
+				Bar:        styles.StackBar,
+				Item:       styles.StackItem,
+				ArrowLeft:  styles.StackArrowLeft,
+				ArrowRight: styles.StackArrowRight,
+			}),
+			stackbar.WithStack([]string{viewRegistry[viewDashboard].Name()}),
 		),
 		navbar: navbar.New(
 			navbar.WithStyles(navbar.Styles{
@@ -124,8 +156,9 @@ func New(client *sidekiq.Client) App {
 
 // Init implements tea.Model.
 func (a App) Init() tea.Cmd {
+	activeID := a.activeViewID()
 	return tea.Batch(
-		a.views[a.activeView].Init(),
+		a.viewRegistry[activeID].Init(),
 		a.metrics.Init(),
 		func() tea.Msg { return a.fetchStatsCmd() }, // Fetch stats immediately
 		tickCmd(), // Start the ticker for subsequent updates
@@ -161,6 +194,60 @@ func (a App) fetchStatsCmd() tea.Msg {
 	}
 }
 
+func (a App) activeViewID() viewID {
+	if len(a.viewStack) == 0 {
+		return viewDashboard
+	}
+	return a.viewStack[len(a.viewStack)-1]
+}
+
+func (a App) stackNames() []string {
+	if len(a.viewStack) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(a.viewStack))
+	for _, id := range a.viewStack {
+		if view, ok := a.viewRegistry[id]; ok {
+			names = append(names, view.Name())
+		}
+	}
+	return names
+}
+
+func (a *App) updateView(id viewID, msg tea.Msg) tea.Cmd {
+	view, ok := a.viewRegistry[id]
+	if !ok {
+		return nil
+	}
+	updatedView, cmd := view.Update(msg)
+	a.viewRegistry[id] = updatedView
+	return cmd
+}
+
+func (a *App) setActiveView(id viewID) tea.Cmd {
+	a.viewStack = []viewID{id}
+	a.stackbar.SetStack(a.stackNames())
+	if view, ok := a.viewRegistry[id]; ok {
+		return view.Init()
+	}
+	return nil
+}
+
+func (a *App) popView() {
+	if len(a.viewStack) <= 1 {
+		return
+	}
+
+	popped := a.viewStack[len(a.viewStack)-1]
+	a.viewStack = a.viewStack[:len(a.viewStack)-1]
+	if popped != viewDashboard {
+		if disposable, ok := a.viewRegistry[popped].(views.Disposable); ok {
+			disposable.Dispose()
+		}
+	}
+	a.stackbar.SetStack(a.stackNames())
+}
+
 // Update implements tea.Model.
 func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
@@ -173,9 +260,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		})
 
 		// Broadcast refresh to active view (views now fetch their own data)
-		updatedView, cmd := a.views[a.activeView].Update(views.RefreshMsg{})
-		a.views[a.activeView] = updatedView
-		cmds = append(cmds, cmd)
+		cmds = append(cmds, a.updateView(a.activeViewID(), views.RefreshMsg{}))
 
 		cmds = append(cmds, tickCmd())
 
@@ -188,25 +273,23 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.connectionError = msg.Err
 
 	case views.DashboardTickMsg:
-		updatedView, cmd := a.views[dashboardViewIndex].Update(msg)
-		a.views[dashboardViewIndex] = updatedView
-		cmds = append(cmds, cmd)
+		cmds = append(cmds, a.updateView(viewDashboard, msg))
 
 	case views.DashboardRealtimeMsg:
-		updatedView, cmd := a.views[dashboardViewIndex].Update(msg)
-		a.views[dashboardViewIndex] = updatedView
-		cmds = append(cmds, cmd)
+		cmds = append(cmds, a.updateView(viewDashboard, msg))
 
 	case views.DashboardHistoryMsg:
-		updatedView, cmd := a.views[dashboardViewIndex].Update(msg)
-		a.views[dashboardViewIndex] = updatedView
-		cmds = append(cmds, cmd)
+		cmds = append(cmds, a.updateView(viewDashboard, msg))
 
 	case tea.KeyMsg:
-		if view, ok := a.views[a.activeView].(interface{ FilterFocused() bool }); ok && view.FilterFocused() {
-			updatedView, cmd := a.views[a.activeView].Update(msg)
-			a.views[a.activeView] = updatedView
-			return a, cmd
+		activeID := a.activeViewID()
+		if view, ok := a.viewRegistry[activeID].(interface{ FilterFocused() bool }); ok && view.FilterFocused() {
+			return a, a.updateView(activeID, msg)
+		}
+
+		if msg.String() == "esc" && len(a.viewStack) > 1 {
+			a.popView()
+			return a, tea.Batch(cmds...)
 		}
 
 		// Handle global keybindings first
@@ -215,38 +298,29 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, tea.Quit
 
 		case key.Matches(msg, a.keys.View1):
-			a.activeView = 0
-			cmds = append(cmds, a.views[a.activeView].Init())
+			cmds = append(cmds, a.setActiveView(viewDashboard))
 
 		case key.Matches(msg, a.keys.View2):
-			a.activeView = 1
-			cmds = append(cmds, a.views[a.activeView].Init())
+			cmds = append(cmds, a.setActiveView(viewBusy))
 
 		case key.Matches(msg, a.keys.View3):
-			a.activeView = 2
-			cmds = append(cmds, a.views[a.activeView].Init())
+			cmds = append(cmds, a.setActiveView(viewQueues))
 
 		case key.Matches(msg, a.keys.View4):
-			a.activeView = 3
-			cmds = append(cmds, a.views[a.activeView].Init())
+			cmds = append(cmds, a.setActiveView(viewRetries))
 
 		case key.Matches(msg, a.keys.View5):
-			a.activeView = 4
-			cmds = append(cmds, a.views[a.activeView].Init())
+			cmds = append(cmds, a.setActiveView(viewScheduled))
 
 		case key.Matches(msg, a.keys.View6):
-			a.activeView = 5
-			cmds = append(cmds, a.views[a.activeView].Init())
+			cmds = append(cmds, a.setActiveView(viewDead))
 
 		case key.Matches(msg, a.keys.View7):
-			a.activeView = 6
-			cmds = append(cmds, a.views[a.activeView].Init())
+			cmds = append(cmds, a.setActiveView(viewErrors))
 
 		default:
 			// Pass to active view
-			updatedView, cmd := a.views[a.activeView].Update(msg)
-			a.views[a.activeView] = updatedView
-			cmds = append(cmds, cmd)
+			cmds = append(cmds, a.updateView(activeID, msg))
 		}
 
 	case tea.WindowSizeMsg:
@@ -256,13 +330,14 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Update component dimensions
 		a.metrics.SetWidth(msg.Width)
+		a.stackbar.SetWidth(msg.Width)
 		a.navbar.SetWidth(msg.Width)
 
-		// Calculate content size (total - metrics - navbar)
-		contentHeight := msg.Height - a.metrics.Height() - a.navbar.Height()
+		// Calculate content size (total - metrics - stackbar - navbar)
+		contentHeight := msg.Height - a.metrics.Height() - a.stackbar.Height() - a.navbar.Height()
 		contentWidth := msg.Width
-		for i := range a.views {
-			a.views[i] = a.views[i].SetSize(contentWidth, contentHeight)
+		for _, id := range a.viewOrder {
+			a.viewRegistry[id] = a.viewRegistry[id].SetSize(contentWidth, contentHeight)
 		}
 		a.errorPopup.SetSize(contentWidth, contentHeight)
 
@@ -278,9 +353,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 
 		// Pass to active view
-		updatedView, cmd := a.views[a.activeView].Update(msg)
-		a.views[a.activeView] = updatedView
-		cmds = append(cmds, cmd)
+		cmds = append(cmds, a.updateView(a.activeViewID(), msg))
 	}
 
 	return a, tea.Batch(cmds...)
@@ -296,7 +369,7 @@ func (a App) View() tea.View {
 		return v
 	}
 
-	content := a.views[a.activeView].View()
+	content := a.viewRegistry[a.activeViewID()].View()
 
 	// If there's a connection error, overlay the error popup
 	if a.connectionError != nil {
@@ -305,7 +378,7 @@ func (a App) View() tea.View {
 		if errorPanel != "" {
 			panelWidth := lipgloss.Width(errorPanel)
 			panelHeight := lipgloss.Height(errorPanel)
-			contentHeight := a.height - a.metrics.Height() - a.navbar.Height()
+			contentHeight := a.height - a.metrics.Height() - a.stackbar.Height() - a.navbar.Height()
 			panelX := max((a.width-panelWidth)/2, 0)
 			panelY := a.metrics.Height() + max((contentHeight-panelHeight)/2, 0)
 
@@ -314,6 +387,7 @@ func (a App) View() tea.View {
 					lipgloss.Left,
 					a.metrics.View(),
 					content,
+					a.stackbar.View(),
 					a.navbar.View(),
 				)),
 				lipgloss.NewLayer(errorPanel).X(panelX).Y(panelY).Z(1),
@@ -328,6 +402,7 @@ func (a App) View() tea.View {
 		lipgloss.Left,
 		a.metrics.View(),
 		content,
+		a.stackbar.View(),
 		a.navbar.View(),
 	))
 

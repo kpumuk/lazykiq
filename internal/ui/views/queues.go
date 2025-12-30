@@ -128,9 +128,7 @@ func (q *Queues) fetchDataCmd() tea.Cmd {
 
 // Init implements View.
 func (q *Queues) Init() tea.Cmd {
-	q.currentPage = 1
-	q.selectedQueue = 0
-	q.showDetail = false
+	q.reset()
 	return q.fetchDataCmd()
 }
 
@@ -236,6 +234,25 @@ func (q *Queues) SetSize(width, height int) View {
 	// Update job detail size (full size, component handles its own borders)
 	q.jobDetail.SetSize(width, height)
 	return q
+}
+
+func (q *Queues) reset() {
+	q.ready = false
+	q.currentPage = 1
+	q.totalPages = 1
+	q.selectedQueue = 0
+	q.queues = nil
+	q.jobs = nil
+	q.table.SetRows(nil)
+	q.table.SetCursor(0)
+	q.showDetail = false
+	q.jobDetail.SetJob(nil)
+}
+
+// Dispose clears cached data when the view is removed from the stack.
+func (q *Queues) Dispose() {
+	q.reset()
+	q.updateTableSize()
 }
 
 // SetStyles implements View.

@@ -66,7 +66,7 @@ func (b *Busy) fetchDataCmd() tea.Cmd {
 
 // Init implements View.
 func (b *Busy) Init() tea.Cmd {
-	b.showDetail = false
+	b.reset()
 	return b.fetchDataCmd()
 }
 
@@ -168,6 +168,23 @@ func (b *Busy) SetSize(width, height int) View {
 	// Update job detail size (full size, component handles its own borders)
 	b.jobDetail.SetSize(width, height)
 	return b
+}
+
+func (b *Busy) reset() {
+	b.ready = false
+	b.data = sidekiq.BusyData{}
+	b.filteredJobs = nil
+	b.selectedProcess = -1
+	b.table.SetRows(nil)
+	b.table.SetCursor(0)
+	b.showDetail = false
+	b.jobDetail.SetJob(nil)
+}
+
+// Dispose clears cached data when the view is removed from the stack.
+func (b *Busy) Dispose() {
+	b.reset()
+	b.updateTableSize()
 }
 
 // SetStyles implements View.
