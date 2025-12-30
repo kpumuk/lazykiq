@@ -10,7 +10,6 @@ import (
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/filterinput"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
-	"github.com/kpumuk/lazykiq/internal/ui/components/jobdetail"
 	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 	"github.com/kpumuk/lazykiq/internal/ui/format"
@@ -39,10 +38,6 @@ type Dead struct {
 	totalPages  int
 	totalSize   int64
 	filter      filterinput.Model
-
-	// Job detail state
-	showDetail bool
-	jobDetail  jobdetail.Model
 }
 
 // NewDead creates a new Dead view.
@@ -56,7 +51,6 @@ func NewDead(client *sidekiq.Client) *Dead {
 			table.WithColumns(deadJobColumns),
 			table.WithEmptyMessage("No dead jobs"),
 		),
-		jobDetail: jobdetail.New(),
 	}
 }
 
@@ -117,19 +111,6 @@ func (d *Dead) Init() tea.Cmd {
 
 // Update implements View.
 func (d *Dead) Update(msg tea.Msg) (View, tea.Cmd) {
-	// If showing detail, delegate to detail component
-	if d.showDetail {
-		switch msg := msg.(type) {
-		case tea.KeyMsg:
-			if msg.String() == "esc" {
-				d.showDetail = false
-				return d, nil
-			}
-		}
-		d.jobDetail, _ = d.jobDetail.Update(msg)
-		return d, nil
-	}
-
 	switch msg := msg.(type) {
 	case deadDataMsg:
 		d.jobs = msg.jobs
@@ -181,8 +162,9 @@ func (d *Dead) Update(msg tea.Msg) (View, tea.Cmd) {
 		case "enter":
 			// Show detail for selected job
 			if idx := d.table.Cursor(); idx >= 0 && idx < len(d.jobs) {
-				d.jobDetail.SetJob(d.jobs[idx].JobRecord)
-				d.showDetail = true
+				return d, func() tea.Msg {
+					return ShowJobDetailMsg{Job: d.jobs[idx].JobRecord}
+				}
 			}
 			return d, nil
 		}
@@ -196,10 +178,6 @@ func (d *Dead) Update(msg tea.Msg) (View, tea.Cmd) {
 
 // View implements View.
 func (d *Dead) View() string {
-	if d.showDetail {
-		return d.renderJobDetail()
-	}
-
 	if !d.ready {
 		return d.renderMessage("Loading...")
 	}
@@ -234,8 +212,6 @@ func (d *Dead) SetSize(width, height int) View {
 	d.width = width
 	d.height = height
 	d.updateTableSize()
-	// Update job detail size (full size, component handles its own borders)
-	d.jobDetail.SetSize(width, height)
 	return d
 }
 
@@ -247,8 +223,6 @@ func (d *Dead) reset() {
 	d.ready = false
 	d.table.SetRows(nil)
 	d.table.SetCursor(0)
-	d.showDetail = false
-	d.jobDetail.SetJob(nil)
 }
 
 // Dispose clears cached data when the view is removed from the stack.
@@ -279,22 +253,6 @@ func (d *Dead) SetStyles(styles Styles) View {
 		Text:        styles.Text,
 		Placeholder: styles.Muted,
 		Cursor:      styles.Text,
-	})
-	d.jobDetail.SetStyles(jobdetail.Styles{
-		Title:           styles.Title,
-		Label:           styles.Muted,
-		Value:           styles.Text,
-		JSON:            styles.Text,
-		JSONKey:         styles.JSONKey,
-		JSONString:      styles.JSONString,
-		JSONNumber:      styles.JSONNumber,
-		JSONBool:        styles.JSONBool,
-		JSONNull:        styles.JSONNull,
-		JSONPunctuation: styles.JSONPunctuation,
-		Border:          styles.BorderStyle,
-		PanelTitle:      styles.Title,
-		FocusBorder:     styles.FocusBorder,
-		Muted:           styles.Muted,
 	})
 	return d
 }
@@ -390,6 +348,3 @@ func (d *Dead) renderJobsBox() string {
 }
 
 // renderJobDetail renders the job detail view.
-func (d *Dead) renderJobDetail() string {
-	return d.jobDetail.View()
-}

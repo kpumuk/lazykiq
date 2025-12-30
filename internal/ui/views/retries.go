@@ -10,7 +10,6 @@ import (
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/filterinput"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
-	"github.com/kpumuk/lazykiq/internal/ui/components/jobdetail"
 	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 	"github.com/kpumuk/lazykiq/internal/ui/format"
@@ -39,10 +38,6 @@ type Retries struct {
 	totalPages  int
 	totalSize   int64
 	filter      filterinput.Model
-
-	// Job detail state
-	showDetail bool
-	jobDetail  jobdetail.Model
 }
 
 // NewRetries creates a new Retries view.
@@ -56,7 +51,6 @@ func NewRetries(client *sidekiq.Client) *Retries {
 			table.WithColumns(retryJobColumns),
 			table.WithEmptyMessage("No retries"),
 		),
-		jobDetail: jobdetail.New(),
 	}
 }
 
@@ -117,19 +111,6 @@ func (r *Retries) Init() tea.Cmd {
 
 // Update implements View.
 func (r *Retries) Update(msg tea.Msg) (View, tea.Cmd) {
-	// If showing detail, delegate to detail component
-	if r.showDetail {
-		switch msg := msg.(type) {
-		case tea.KeyMsg:
-			if msg.String() == "esc" {
-				r.showDetail = false
-				return r, nil
-			}
-		}
-		r.jobDetail, _ = r.jobDetail.Update(msg)
-		return r, nil
-	}
-
 	switch msg := msg.(type) {
 	case retriesDataMsg:
 		r.jobs = msg.jobs
@@ -181,8 +162,9 @@ func (r *Retries) Update(msg tea.Msg) (View, tea.Cmd) {
 		case "enter":
 			// Show detail for selected job
 			if idx := r.table.Cursor(); idx >= 0 && idx < len(r.jobs) {
-				r.jobDetail.SetJob(r.jobs[idx].JobRecord)
-				r.showDetail = true
+				return r, func() tea.Msg {
+					return ShowJobDetailMsg{Job: r.jobs[idx].JobRecord}
+				}
 			}
 			return r, nil
 		}
@@ -197,10 +179,6 @@ func (r *Retries) Update(msg tea.Msg) (View, tea.Cmd) {
 
 // View implements View.
 func (r *Retries) View() string {
-	if r.showDetail {
-		return r.renderJobDetail()
-	}
-
 	if !r.ready {
 		return r.renderMessage("Loading...")
 	}
@@ -235,8 +213,6 @@ func (r *Retries) SetSize(width, height int) View {
 	r.width = width
 	r.height = height
 	r.updateTableSize()
-	// Update job detail size (full size, component handles its own borders)
-	r.jobDetail.SetSize(width, height)
 	return r
 }
 
@@ -248,8 +224,6 @@ func (r *Retries) reset() {
 	r.ready = false
 	r.table.SetRows(nil)
 	r.table.SetCursor(0)
-	r.showDetail = false
-	r.jobDetail.SetJob(nil)
 }
 
 // Dispose clears cached data when the view is removed from the stack.
@@ -280,22 +254,6 @@ func (r *Retries) SetStyles(styles Styles) View {
 		Text:        styles.Text,
 		Placeholder: styles.Muted,
 		Cursor:      styles.Text,
-	})
-	r.jobDetail.SetStyles(jobdetail.Styles{
-		Title:           styles.Title,
-		Label:           styles.Muted,
-		Value:           styles.Text,
-		JSON:            styles.Text,
-		JSONKey:         styles.JSONKey,
-		JSONString:      styles.JSONString,
-		JSONNumber:      styles.JSONNumber,
-		JSONBool:        styles.JSONBool,
-		JSONNull:        styles.JSONNull,
-		JSONPunctuation: styles.JSONPunctuation,
-		Border:          styles.BorderStyle,
-		PanelTitle:      styles.Title,
-		FocusBorder:     styles.FocusBorder,
-		Muted:           styles.Muted,
 	})
 	return r
 }
@@ -396,6 +354,3 @@ func (r *Retries) renderJobsBox() string {
 }
 
 // renderJobDetail renders the job detail view.
-func (r *Retries) renderJobDetail() string {
-	return r.jobDetail.View()
-}

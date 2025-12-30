@@ -107,7 +107,10 @@ func (m Model) Update(_ tea.Msg) (Model, tea.Cmd) {
 
 // View renders the stack bar.
 func (m Model) View() string {
-	barStyle := m.styles.Bar.Width(m.width)
+	barStyle := m.styles.Bar
+	if m.width > 0 {
+		barStyle = barStyle.Width(m.width)
+	}
 
 	var items strings.Builder
 	for i, label := range m.stack {
