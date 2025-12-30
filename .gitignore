@@ -8,3 +8,6 @@
 
 # IDE configurations
 /.idea
+
+# Website build files
+website/hugo_stats.json

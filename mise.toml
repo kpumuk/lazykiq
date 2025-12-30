@@ -1,6 +1,7 @@
 [tools]
 golang = "1.25.5"
 golangci-lint = "2.7.2"
+hugo-extended = "0.152.2"
 
 [tasks.ci]
 description = "Format code and run all CI checks"
@@ -22,3 +23,8 @@ run = "go test ./..."
 [tasks.deps]
 description = "Update development dependencies"
 run = "go get -u ./... && go mod tidy"
+
+[tasks.website-dev]
+description = "Run Hugo in development mode"
+run = "bun dev --baseURL http://localhost:1313/lazykiq"
+dir = "website"
