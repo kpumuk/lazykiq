@@ -8,6 +8,8 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
+var maxWidthStyle = lipgloss.NewStyle()
+
 func clampInt(value, maxValue int) int {
 	return min(max(value, 0), maxValue)
 }
@@ -37,7 +39,7 @@ func renderCentered(width, height int, value string) string {
 	if width <= 0 {
 		return strings.Join(lines, "\n")
 	}
-	trimmed := lipgloss.NewStyle().MaxWidth(width).Render(value)
+	trimmed := maxWidthStyle.MaxWidth(width).Render(value)
 	pad := max((width-lipgloss.Width(trimmed))/2, 0)
 	lines[height/2] = strings.Repeat(" ", pad) + trimmed
 	return strings.Join(lines, "\n")

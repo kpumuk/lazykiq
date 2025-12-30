@@ -44,16 +44,25 @@ type JobMetrics struct {
 	periodIdx int
 	result    sidekiq.MetricsJobDetailResult
 	focused   int
+
+	maxWidthStyle     lipgloss.Style
+	chartAxisStyle    oldgloss.Style
+	chartBarStyle     oldgloss.Style
+	scatterAxisStyle  oldgloss.Style
+	scatterLabelStyle oldgloss.Style
+	scatterPointStyle oldgloss.Style
 }
 
 // NewJobMetrics creates a new job metrics view.
 func NewJobMetrics(client *sidekiq.Client) *JobMetrics {
 	periods := []string{"1h", "2h", "4h", "8h"}
-	return &JobMetrics{
+	m := &JobMetrics{
 		client:  client,
 		periods: periods,
 		period:  periods[0],
 	}
+	m.initChartStyles()
+	return m
 }
 
 // Init implements View.
@@ -219,6 +228,7 @@ func (j *JobMetrics) SetSize(width, height int) View {
 // SetStyles implements View.
 func (j *JobMetrics) SetStyles(styles Styles) View {
 	j.styles = styles
+	j.initChartStyles()
 	return j
 }
 
@@ -351,7 +361,7 @@ func (j *JobMetrics) renderColumnsChart(width, height int, totals []int64, label
 
 	canvasWidth := len(series) + 1
 	c := canvas.New(canvasWidth, chartHeight, canvas.WithViewWidth(canvasWidth), canvas.WithViewHeight(chartHeight))
-	axisStyle, barStyle := j.metricsChartStyles()
+	axisStyle, barStyle := j.chartAxisStyle, j.chartBarStyle
 	origin := canvas.Point{X: 0, Y: chartHeight - 1}
 	graph.DrawXYAxis(&c, origin, axisStyle)
 	baseline := max(chartHeight-2, 0)
@@ -418,7 +428,7 @@ func (j *JobMetrics) renderScatter(width, height int, buckets []time.Time, hist 
 	if showLabels && chartHeight >= 2 {
 		xStep = 1
 	}
-	axisStyle, labelStyle, pointStyle := j.scatterChartStyles()
+	axisStyle, labelStyle, pointStyle := j.scatterAxisStyle, j.scatterLabelStyle, j.scatterPointStyle
 	lc := linechart.New(
 		width, chartHeight,
 		minX, maxX,
@@ -459,17 +469,13 @@ func (j *JobMetrics) renderScatter(width, height int, buckets []time.Time, hist 
 	return strings.Join(chartLines, "\n")
 }
 
-func (j *JobMetrics) metricsChartStyles() (oldgloss.Style, oldgloss.Style) {
-	axis := oldgloss.NewStyle().Foreground(adaptiveColor(theme.DefaultTheme.TextMuted))
-	bars := oldgloss.NewStyle().Foreground(adaptiveColor(theme.DefaultTheme.Primary))
-	return axis, bars
-}
-
-func (j *JobMetrics) scatterChartStyles() (oldgloss.Style, oldgloss.Style, oldgloss.Style) {
-	axis := oldgloss.NewStyle().Foreground(adaptiveColor(theme.DefaultTheme.TextMuted))
-	labels := oldgloss.NewStyle().Foreground(adaptiveColor(theme.DefaultTheme.TextMuted))
-	points := oldgloss.NewStyle().Foreground(adaptiveColor(theme.DefaultTheme.Primary))
-	return axis, labels, points
+func (j *JobMetrics) initChartStyles() {
+	j.maxWidthStyle = lipgloss.NewStyle()
+	j.chartAxisStyle = oldgloss.NewStyle().Foreground(adaptiveColor(theme.DefaultTheme.TextMuted))
+	j.chartBarStyle = oldgloss.NewStyle().Foreground(adaptiveColor(theme.DefaultTheme.Primary))
+	j.scatterAxisStyle = oldgloss.NewStyle().Foreground(adaptiveColor(theme.DefaultTheme.TextMuted))
+	j.scatterLabelStyle = oldgloss.NewStyle().Foreground(adaptiveColor(theme.DefaultTheme.TextMuted))
+	j.scatterPointStyle = oldgloss.NewStyle().Foreground(adaptiveColor(theme.DefaultTheme.Primary))
 }
 
 func sortedMetricBuckets(hist map[string][]int64) []time.Time {
@@ -709,7 +715,7 @@ func (j *JobMetrics) renderBucketsLegend(width int) string {
 	failed := j.styles.MetricLabel.Render("Failed: ") + j.styles.MetricValue.Render(format.Number(j.result.Totals.Failed))
 	avg := j.styles.MetricLabel.Render("Avg: ") + j.styles.MetricValue.Render(fmt.Sprintf("%.2fs", j.result.Totals.AvgSeconds()))
 	line := success + sep + failed + sep + avg
-	return lipgloss.NewStyle().MaxWidth(width).Render(line)
+	return j.maxWidthStyle.MaxWidth(width).Render(line)
 }
 
 func (j *JobMetrics) renderScatterLegend(width int) string {
@@ -721,7 +727,7 @@ func (j *JobMetrics) renderScatterLegend(width int) string {
 		return ""
 	}
 	line := j.styles.MetricLabel.Render("Range: ") + j.styles.MetricValue.Render(rangeText)
-	return lipgloss.NewStyle().MaxWidth(width).Render(line)
+	return j.maxWidthStyle.MaxWidth(width).Render(line)
 }
 
 func buildTimeBucketLabels(buckets []time.Time) []string {
