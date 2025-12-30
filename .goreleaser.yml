@@ -64,3 +64,16 @@ changelog:
       - Merge remote-tracking branch
       - Merge branch
       - go mod tidy
+
+aurs:
+  - name: lazykiq-bin
+    git_url: "ssh://aur@aur.archlinux.org/lazykiq-bin.git"
+    private_key: "{{ .Env.AUR_KEY }}"
+    maintainers:
+      - "Dmytro Shteflyuk <kpumuk@kpumuk.info>"
+    description: "A rich terminal UI for Sidekiq."
+    homepage: "https://github.com/kpumuk/lazykiq"
+    license: "MIT"
+    package: |-
+      install -Dm755 "./lazykiq" "${pkgdir}/usr/bin/lazykiq"
+      install -Dm644 "./LICENSE" "${pkgdir}/usr/share/licenses/lazykiq/LICENSE"
