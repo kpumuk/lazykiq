@@ -113,10 +113,7 @@ func (m Model) View() string {
 	}
 
 	var items strings.Builder
-	for i, label := range m.stack {
-		if i > 0 {
-			items.WriteString(" ")
-		}
+	for _, label := range m.stack {
 		items.WriteString(formatLabel(m.styles, label))
 	}
 
