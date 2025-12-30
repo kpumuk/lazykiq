@@ -14,6 +14,12 @@ toc: true
 Download the latest release for your platform from the
 [GitHub Releases page](https://github.com/kpumuk/lazykiq/releases).
 
+## AUR
+
+```bash
+yay -S --noconfirm lazykiq-bin
+```
+
 ## Install from source
 
 Install the current development version with Go 1.25:
