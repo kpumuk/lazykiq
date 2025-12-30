@@ -5,6 +5,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/kpumuk/lazykiq/internal/sidekiq"
 )
 
 // Styles holds the view-related styles from the theme.
@@ -63,6 +64,16 @@ type View interface {
 
 	// SetStyles updates the view styles
 	SetStyles(styles Styles) View
+}
+
+// ShowJobDetailMsg requests a stacked job detail view.
+type ShowJobDetailMsg struct {
+	Job *sidekiq.JobRecord
+}
+
+// JobDetailSetter allows setting job data on a job detail view.
+type JobDetailSetter interface {
+	SetJob(job *sidekiq.JobRecord)
 }
 
 // Disposable allows views to clean up when removed from the stack.

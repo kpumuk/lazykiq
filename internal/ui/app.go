@@ -35,6 +35,7 @@ const (
 	viewScheduled
 	viewDead
 	viewErrors
+	viewJobDetail
 )
 
 // App is the main application model.
@@ -76,6 +77,7 @@ func New(client *sidekiq.Client) App {
 		viewScheduled: views.NewScheduled(client),
 		viewDead:      views.NewDead(client),
 		viewErrors:    views.NewErrors(client),
+		viewJobDetail: views.NewJobDetail(),
 	}
 
 	// Apply styles to views
@@ -104,6 +106,7 @@ func New(client *sidekiq.Client) App {
 	for _, id := range viewOrder {
 		viewRegistry[id] = viewRegistry[id].SetStyles(viewStyles)
 	}
+	viewRegistry[viewJobDetail] = viewRegistry[viewJobDetail].SetStyles(viewStyles)
 
 	// Build navbar view infos
 	navViews := make([]navbar.ViewInfo, len(viewOrder))
@@ -225,7 +228,28 @@ func (a *App) updateView(id viewID, msg tea.Msg) tea.Cmd {
 }
 
 func (a *App) setActiveView(id viewID) tea.Cmd {
+	for _, existing := range a.viewStack {
+		if existing == viewDashboard || existing == id {
+			continue
+		}
+		if disposable, ok := a.viewRegistry[existing].(views.Disposable); ok {
+			disposable.Dispose()
+		}
+	}
 	a.viewStack = []viewID{id}
+	a.stackbar.SetStack(a.stackNames())
+	if view, ok := a.viewRegistry[id]; ok {
+		return view.Init()
+	}
+	return nil
+}
+
+func (a *App) pushView(id viewID) tea.Cmd {
+	if len(a.viewStack) > 0 && a.viewStack[len(a.viewStack)-1] == id {
+		a.stackbar.SetStack(a.stackNames())
+		return nil
+	}
+	a.viewStack = append(a.viewStack, id)
 	a.stackbar.SetStack(a.stackNames())
 	if view, ok := a.viewRegistry[id]; ok {
 		return view.Init()
@@ -280,6 +304,12 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case views.DashboardHistoryMsg:
 		cmds = append(cmds, a.updateView(viewDashboard, msg))
+
+	case views.ShowJobDetailMsg:
+		if setter, ok := a.viewRegistry[viewJobDetail].(views.JobDetailSetter); ok {
+			setter.SetJob(msg.Job)
+		}
+		cmds = append(cmds, a.pushView(viewJobDetail))
 
 	case tea.KeyMsg:
 		activeID := a.activeViewID()
@@ -336,8 +366,8 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Calculate content size (total - metrics - stackbar - navbar)
 		contentHeight := msg.Height - a.metrics.Height() - a.stackbar.Height() - a.navbar.Height()
 		contentWidth := msg.Width
-		for _, id := range a.viewOrder {
-			a.viewRegistry[id] = a.viewRegistry[id].SetSize(contentWidth, contentHeight)
+		for id, view := range a.viewRegistry {
+			a.viewRegistry[id] = view.SetSize(contentWidth, contentHeight)
 		}
 		a.errorPopup.SetSize(contentWidth, contentHeight)
 

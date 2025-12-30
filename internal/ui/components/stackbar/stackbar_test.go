@@ -20,7 +20,6 @@ func TestViewRendersSingleItemWithArrows(t *testing.T) {
 			ArrowRight: lipgloss.NewStyle(),
 		}),
 		WithStack([]string{label}),
-		WithWidth(lipgloss.Width(expected)),
 	)
 
 	if got := m.View(); got != expected {
@@ -45,7 +44,6 @@ func TestViewRendersMultipleItemsSeparatedBySpace(t *testing.T) {
 			ArrowRight: lipgloss.NewStyle(),
 		}),
 		WithStack(labels),
-		WithWidth(lipgloss.Width(expected)),
 	)
 
 	if got := m.View(); got != expected {

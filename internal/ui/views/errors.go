@@ -12,7 +12,6 @@ import (
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/filterinput"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
-	"github.com/kpumuk/lazykiq/internal/ui/components/jobdetail"
 	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 	"github.com/kpumuk/lazykiq/internal/ui/format"
@@ -44,7 +43,6 @@ type errorsState int
 const (
 	errorsStateSummary errorsState = iota
 	errorsStateGroup
-	errorsStateDetail
 )
 
 // Errors shows a summary of errors grouped by job and error class.
@@ -63,7 +61,6 @@ type Errors struct {
 	filter     filterinput.Model
 	state      errorsState
 	groupKey   errorSummaryKey
-	jobDetail  jobdetail.Model
 }
 
 // NewErrors creates a new Errors view.
@@ -75,7 +72,6 @@ func NewErrors(client *sidekiq.Client) *Errors {
 			table.WithColumns(errorsSummaryColumns),
 			table.WithEmptyMessage("No errors"),
 		),
-		jobDetail: jobdetail.New(),
 	}
 }
 
@@ -149,7 +145,6 @@ func (e *Errors) Update(msg tea.Msg) (View, tea.Cmd) {
 			e.refreshGroupRows()
 		case errorsStateSummary:
 			e.updateTableRows()
-		case errorsStateDetail:
 		}
 		return e, nil
 
@@ -166,17 +161,6 @@ func (e *Errors) Update(msg tea.Msg) (View, tea.Cmd) {
 		return e, nil
 
 	case tea.KeyMsg:
-		switch e.state {
-		case errorsStateDetail:
-			if msg.String() == "esc" {
-				e.state = errorsStateGroup
-				return e, nil
-			}
-			e.jobDetail, _ = e.jobDetail.Update(msg)
-			return e, nil
-		case errorsStateGroup, errorsStateSummary:
-		}
-
 		wasFocused := e.filter.Focused()
 		var cmd tea.Cmd
 		e.filter, cmd = e.filter.Update(msg)
@@ -196,8 +180,9 @@ func (e *Errors) Update(msg tea.Msg) (View, tea.Cmd) {
 				if idx := e.table.Cursor(); idx >= 0 && idx < len(e.groupJobs) {
 					job := e.groupJobs[idx]
 					if job.entry != nil {
-						e.jobDetail.SetJob(job.entry.JobRecord)
-						e.state = errorsStateDetail
+						return e, func() tea.Msg {
+							return ShowJobDetailMsg{Job: job.entry.JobRecord}
+						}
 					}
 				}
 				return e, nil
@@ -220,7 +205,6 @@ func (e *Errors) Update(msg tea.Msg) (View, tea.Cmd) {
 				}
 				return e, nil
 			}
-		case errorsStateDetail:
 		}
 
 		e.table, _ = e.table.Update(msg)
@@ -232,10 +216,6 @@ func (e *Errors) Update(msg tea.Msg) (View, tea.Cmd) {
 
 // View implements View.
 func (e *Errors) View() string {
-	if e.state == errorsStateDetail {
-		return e.jobDetail.View()
-	}
-
 	if !e.ready {
 		return e.renderMessage("Loading...")
 	}
@@ -271,7 +251,6 @@ func (e *Errors) SetSize(width, height int) View {
 	e.width = width
 	e.height = height
 	e.updateTableSize()
-	e.jobDetail.SetSize(width, height)
 	return e
 }
 
@@ -286,7 +265,6 @@ func (e *Errors) reset() {
 	e.retryCount = 0
 	e.table.SetRows(nil)
 	e.table.SetCursor(0)
-	e.jobDetail.SetJob(nil)
 }
 
 // Dispose clears cached data when the view is removed from the stack.
@@ -317,22 +295,6 @@ func (e *Errors) SetStyles(styles Styles) View {
 		Text:        styles.Text,
 		Placeholder: styles.Muted,
 		Cursor:      styles.Text,
-	})
-	e.jobDetail.SetStyles(jobdetail.Styles{
-		Title:           styles.Title,
-		Label:           styles.Muted,
-		Value:           styles.Text,
-		JSON:            styles.Text,
-		JSONKey:         styles.JSONKey,
-		JSONString:      styles.JSONString,
-		JSONNumber:      styles.JSONNumber,
-		JSONBool:        styles.JSONBool,
-		JSONNull:        styles.JSONNull,
-		JSONPunctuation: styles.JSONPunctuation,
-		Border:          styles.BorderStyle,
-		PanelTitle:      styles.Title,
-		FocusBorder:     styles.FocusBorder,
-		Muted:           styles.Muted,
 	})
 	return e
 }
