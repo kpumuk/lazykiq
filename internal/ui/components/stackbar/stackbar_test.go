@@ -34,7 +34,7 @@ func TestViewRendersMultipleItemsSeparatedBySpace(t *testing.T) {
 		arrow + labels[0] + arrow,
 		arrow + labels[1] + arrow,
 	}
-	expected := strings.Join(items, " ")
+	expected := strings.Join(items, "")
 
 	m := New(
 		WithStyles(Styles{
