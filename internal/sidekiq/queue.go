@@ -3,6 +3,7 @@ package sidekiq
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sort"
 	"time"
 
@@ -28,7 +29,7 @@ func (c *Client) NewQueue(name string) *Queue {
 // Mirrors Sidekiq::Queue.all.
 func (c *Client) GetQueues(ctx context.Context) ([]*Queue, error) {
 	names, err := c.redis.SMembers(ctx, "queues").Result()
-	if err != nil && err != redis.Nil {
+	if err != nil && !errors.Is(err, redis.Nil) {
 		return nil, err
 	}
 
@@ -58,7 +59,7 @@ func (q *Queue) Size(ctx context.Context) (int64, error) {
 // Mirrors Sidekiq::Queue#latency.
 func (q *Queue) Latency(ctx context.Context) (float64, error) {
 	entry, err := q.client.redis.LIndex(ctx, "queue:"+q.name, -1).Result()
-	if err == redis.Nil || entry == "" {
+	if errors.Is(err, redis.Nil) || entry == "" {
 		return 0.0, nil
 	}
 	if err != nil {

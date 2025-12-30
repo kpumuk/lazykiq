@@ -2,6 +2,7 @@ package sidekiq
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"strings"
 	"time"
@@ -37,7 +38,7 @@ type StatsHistory struct {
 func (c *Client) GetRedisInfo(ctx context.Context) (RedisInfo, error) {
 	info := RedisInfo{}
 	raw, err := c.redis.Info(ctx, "server", "clients", "memory").Result()
-	if err != nil && err != redis.Nil {
+	if err != nil && !errors.Is(err, redis.Nil) {
 		return info, err
 	}
 
@@ -93,11 +94,11 @@ func (c *Client) GetStatsHistory(ctx context.Context, days int) (StatsHistory, e
 	}
 
 	processed, err := c.redis.MGet(ctx, processedKeys...).Result()
-	if err != nil && err != redis.Nil {
+	if err != nil && !errors.Is(err, redis.Nil) {
 		return StatsHistory{}, err
 	}
 	failed, err := c.redis.MGet(ctx, failedKeys...).Result()
-	if err != nil && err != redis.Nil {
+	if err != nil && !errors.Is(err, redis.Nil) {
 		return StatsHistory{}, err
 	}
 

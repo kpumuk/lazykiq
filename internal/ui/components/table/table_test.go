@@ -106,7 +106,7 @@ func assertANSIGrounded(t *testing.T, s string) {
 	t.Helper()
 
 	p := ansi.NewParser()
-	for i := 0; i < len(s); i++ {
+	for i := range len(s) {
 		p.Advance(s[i])
 	}
 	if p.State() != parser.GroundState {

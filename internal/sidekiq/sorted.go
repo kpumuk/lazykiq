@@ -2,6 +2,7 @@ package sidekiq
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"strconv"
 	"strings"
@@ -35,7 +36,7 @@ func (se *SortedEntry) At() int64 {
 // If reverse is true, returns highest scores first (ZREVRANGE), otherwise lowest first (ZRANGE).
 func (c *Client) getSortedSetJobs(ctx context.Context, key string, start, count int, reverse bool) ([]*SortedEntry, int64, error) {
 	size, err := c.redis.ZCard(ctx, key).Result()
-	if err != nil && err != redis.Nil {
+	if err != nil && !errors.Is(err, redis.Nil) {
 		return nil, 0, err
 	}
 

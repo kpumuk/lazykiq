@@ -2,6 +2,7 @@ package sidekiq
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strconv"
@@ -132,12 +133,12 @@ func (c *Client) GetMetricsTopJobs(ctx context.Context, period MetricsPeriod, cl
 	}
 
 	_, err := pipe.Exec(ctx)
-	if err != nil && err != redis.Nil {
+	if err != nil && !errors.Is(err, redis.Nil) {
 		return result, err
 	}
 
 	for _, cmd := range cmds {
-		if cmd.Err() != nil && cmd.Err() != redis.Nil {
+		if cmd.Err() != nil && !errors.Is(cmd.Err(), redis.Nil) {
 			return result, cmd.Err()
 		}
 		for key, value := range cmd.Val() {
@@ -230,7 +231,7 @@ func (c *Client) GetMetricsJobDetail(ctx context.Context, className string, peri
 	}
 
 	_, err := pipe.Exec(ctx)
-	if err != nil && err != redis.Nil {
+	if err != nil && !errors.Is(err, redis.Nil) {
 		return result, err
 	}
 
@@ -239,7 +240,7 @@ func (c *Client) GetMetricsJobDetail(ctx context.Context, className string, peri
 		var pTotal int64
 		var fTotal int64
 		for _, cmd := range bucket.hmCmds {
-			if cmd.Err() != nil && cmd.Err() != redis.Nil {
+			if cmd.Err() != nil && !errors.Is(cmd.Err(), redis.Nil) {
 				return result, cmd.Err()
 			}
 			values := cmd.Val()
@@ -264,7 +265,7 @@ func (c *Client) GetMetricsJobDetail(ctx context.Context, className string, peri
 			var merged []int64
 			histFound := false
 			for _, histCmd := range bucket.histCmds {
-				if histCmd.Err() != nil && histCmd.Err() != redis.Nil {
+				if histCmd.Err() != nil && !errors.Is(histCmd.Err(), redis.Nil) {
 					return result, histCmd.Err()
 				}
 				hist := histCmd.Val()

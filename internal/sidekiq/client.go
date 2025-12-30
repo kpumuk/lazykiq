@@ -4,6 +4,7 @@ package sidekiq
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -95,7 +96,7 @@ func (c *Client) GetStats(ctx context.Context) (Stats, error) {
 
 	// Get processed count
 	processed, err := c.redis.Get(ctx, "stat:processed").Result()
-	if err != nil && err != redis.Nil {
+	if err != nil && !errors.Is(err, redis.Nil) {
 		return stats, err
 	}
 	if err == nil {
@@ -104,7 +105,7 @@ func (c *Client) GetStats(ctx context.Context) (Stats, error) {
 
 	// Get failed count
 	failed, err := c.redis.Get(ctx, "stat:failed").Result()
-	if err != nil && err != redis.Nil {
+	if err != nil && !errors.Is(err, redis.Nil) {
 		return stats, err
 	}
 	if err == nil {
@@ -113,14 +114,14 @@ func (c *Client) GetStats(ctx context.Context) (Stats, error) {
 
 	// Get busy workers count by summing from all process hashes
 	processes, err := c.redis.SMembers(ctx, "processes").Result()
-	if err != nil && err != redis.Nil {
+	if err != nil && !errors.Is(err, redis.Nil) {
 		return stats, err
 	}
 	var busy int64
 	for _, processKey := range processes {
 		// Get the "busy" field directly from the process hash
 		busyStr, err := c.redis.HGet(ctx, processKey, "busy").Result()
-		if err != nil && err != redis.Nil {
+		if err != nil && !errors.Is(err, redis.Nil) {
 			continue
 		}
 		if err == nil {
@@ -132,7 +133,7 @@ func (c *Client) GetStats(ctx context.Context) (Stats, error) {
 
 	// Get enqueued count by summing all queue sizes
 	queues, err := c.redis.SMembers(ctx, "queues").Result()
-	if err != nil && err != redis.Nil {
+	if err != nil && !errors.Is(err, redis.Nil) {
 		return stats, err
 	}
 	var enqueued int64
@@ -146,21 +147,21 @@ func (c *Client) GetStats(ctx context.Context) (Stats, error) {
 
 	// Get retries count
 	retries, err := c.redis.ZCard(ctx, "retry").Result()
-	if err != nil && err != redis.Nil {
+	if err != nil && !errors.Is(err, redis.Nil) {
 		return stats, err
 	}
 	stats.Retries = retries
 
 	// Get scheduled count
 	scheduled, err := c.redis.ZCard(ctx, "schedule").Result()
-	if err != nil && err != redis.Nil {
+	if err != nil && !errors.Is(err, redis.Nil) {
 		return stats, err
 	}
 	stats.Scheduled = scheduled
 
 	// Get dead count
 	dead, err := c.redis.ZCard(ctx, "dead").Result()
-	if err != nil && err != redis.Nil {
+	if err != nil && !errors.Is(err, redis.Nil) {
 		return stats, err
 	}
 	stats.Dead = dead
@@ -174,7 +175,7 @@ func (c *Client) GetBusyData(ctx context.Context) (BusyData, error) {
 
 	// Get all process identities
 	processes, err := c.redis.SMembers(ctx, "processes").Result()
-	if err != nil && err != redis.Nil {
+	if err != nil && !errors.Is(err, redis.Nil) {
 		return data, err
 	}
 

@@ -2,6 +2,7 @@ version: "2"
 linters:
   enable:
     - bodyclose
+    - errorlint
     - exhaustive
     - funcorder
     - godot
@@ -9,6 +10,7 @@ linters:
     - gomoddirectives
     - goprintffuncname
     - gosec
+    - intrange
     - misspell
     - modernize
     - nakedret
