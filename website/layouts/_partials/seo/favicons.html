@@ -1,6 +1,4 @@
 {{/* Favicon generator */}}
-{{- $svgIconName := default "favicon.svg" .Site.Params.seo.favicons.svgIcon -}}
-{{- $svgIco := resources.Get $svgIconName -}}
 {{- $required := slice
   (dict "name" "favicon.ico" "target" "/favicon.ico" "rel" "icon" "sizes" "32x32")
   (dict "name" "apple-touch-icon.png" "target" "/apple-touch-icon.png" "rel" "apple-touch-icon" "sizes" "180x180")
@@ -16,15 +14,7 @@
   <link rel="{{ .rel }}" href="{{ $img.RelPermalink }}" sizes="{{ .sizes }}" {{ $img.MediaType.Type | printf "type=%q" | safeHTMLAttr }}>
 {{- end }}
 
-{{/* SVG favicon */}}
-{{- if $svgIconName }}
-  {{- with $svgIco }}
-    {{- $svg := . | resources.Copy ("/favicon.svg" | relURL) }}
-    <link rel="icon" href="{{ $svg.RelPermalink }}" {{ .MediaType.Type | printf "type=%q" | safeHTMLAttr }}>
-  {{- else }}
-    {{- errorf "[Thulite SEO] assets/%s is required. Provide an SVG favicon or remove seo.favicons.svgIcon." $svgIconName }}
-  {{- end }}
-{{- end }}
+{{/* SVG favicon intentionally omitted. */}}
 
 {{- $templ := `
 {
