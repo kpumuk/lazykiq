@@ -1,0 +1,54 @@
+{{/* Favicon generator */}}
+{{- $svgIconName := default "favicon.svg" .Site.Params.seo.favicons.svgIcon -}}
+{{- $svgIco := resources.Get $svgIconName -}}
+{{- $required := slice
+  (dict "name" "favicon.ico" "target" "/favicon.ico" "rel" "icon" "sizes" "32x32")
+  (dict "name" "apple-touch-icon.png" "target" "/apple-touch-icon.png" "rel" "apple-touch-icon" "sizes" "180x180")
+  (dict "name" "favicon-192x192.png" "target" "/favicon-192x192.png" "rel" "icon" "sizes" "192x192")
+  (dict "name" "favicon-512x512.png" "target" "/favicon-512x512.png" "rel" "icon" "sizes" "512x512")
+-}}
+{{- range $required }}
+  {{- $asset := resources.Get .name -}}
+  {{- if not $asset }}
+    {{- errorf "[Thulite SEO] assets/%s is required. Provide a pre-sized file." .name -}}
+  {{- end }}
+  {{- $img := $asset | resources.Copy (.target | relURL) -}}
+  <link rel="{{ .rel }}" href="{{ $img.RelPermalink }}" sizes="{{ .sizes }}" {{ $img.MediaType.Type | printf "type=%q" | safeHTMLAttr }}>
+{{- end }}
+
+{{/* SVG favicon */}}
+{{- if $svgIconName }}
+  {{- with $svgIco }}
+    {{- $svg := . | resources.Copy ("/favicon.svg" | relURL) }}
+    <link rel="icon" href="{{ $svg.RelPermalink }}" {{ .MediaType.Type | printf "type=%q" | safeHTMLAttr }}>
+  {{- else }}
+    {{- errorf "[Thulite SEO] assets/%s is required. Provide an SVG favicon or remove seo.favicons.svgIcon." $svgIconName }}
+  {{- end }}
+{{- end }}
+
+{{- $templ := `
+{
+  "name": "{{ site.Title }}",
+  "short_name": "{{ site.Title }}",
+  "lang": "{{ site.LanguageCode | default "en-us" }}",
+  "icons": [
+    {
+      "src": "{{ "favicon-192x192.png" | relURL }}",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "{{ "favicon-512x512.png" | relURL }}",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "theme_color": "#ffffff",
+  "background_color": "#ffffff",
+  "display": "standalone",
+  "start_url": "{{ site.Home.RelPermalink }}"
+}
+` }}
+{{- $targetPath := "/manifest.webmanifest" }}
+{{- $res := $templ | resources.FromString $targetPath | resources.ExecuteAsTemplate $targetPath . }}
+<link rel="manifest" href="{{ $res.RelPermalink }}">

@@ -125,8 +125,8 @@ mainSections = ["docs"]
   [seo.favicons]
     sizes = []
     icon = "favicon.png" # favicon.png (default)
-    svgIcon = "icon.svg" # favicon.svg (default)
-    maskIcon = "icon.svg" # mask-icon.svg (default)
+    svgIcon = "favicon.svg" # favicon.svg (default)
+    maskIcon = "favicon.svg" # mask-icon.svg (default)
     maskIconColor = "white" # white (default)
   [seo.schemas]
     type = "Organization" # Organization (default) or Person
