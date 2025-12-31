@@ -2,6 +2,7 @@
 
 class WebhookDeliveryJob
   include Sidekiq::Job
+
   sidekiq_options queue: :default, retry: 2
 
   class ConnectionRefusedError < StandardError; end

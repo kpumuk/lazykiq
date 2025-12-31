@@ -2,6 +2,7 @@
 
 class ReportGenerationJob
   include Sidekiq::Job
+
   sidekiq_options queue: :batch, retry: 1
 
   def perform(report_type, date_range, user_id)

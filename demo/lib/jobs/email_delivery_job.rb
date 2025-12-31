@@ -2,6 +2,7 @@
 
 class EmailDeliveryJob
   include Sidekiq::Job
+
   sidekiq_options queue: :mailers, retry: 3
 
   def perform(recipient, subject, template)

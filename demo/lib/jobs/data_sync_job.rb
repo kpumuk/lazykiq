@@ -2,6 +2,7 @@
 
 class DataSyncJob
   include Sidekiq::Job
+
   sidekiq_options queue: :batch, retry: 1  # Only 1 retry - quickly goes to dead
 
   class APIRateLimitError < StandardError; end

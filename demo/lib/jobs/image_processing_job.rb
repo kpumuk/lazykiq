@@ -2,6 +2,7 @@
 
 class ImageProcessingJob
   include Sidekiq::Job
+
   sidekiq_options queue: :default, retry: 0  # No retries - goes straight to dead
 
   class ImageCorruptedError < StandardError; end

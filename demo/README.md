@@ -12,7 +12,7 @@ Web UI: http://localhost:9292
 
 ## Structure
 
-**10 Jobs** with varying performance (10-1000ms):
+**10 Base Jobs** with varying performance (10-1000ms):
 
 | Job | Queue | Fail Rate | Retries |
 |-----|-------|-----------|---------|
@@ -30,6 +30,11 @@ Web UI: http://localhost:9292
 **5 Queues** (by priority): critical, default, mailers, batch, low
 
 **Limits**: 10k jobs/queue, 20k retry queue max
+
+**Extra cases**:
+- ActiveJob-wrapped jobs with GlobalID-serialized arguments
+- ActionMailer-wrapped jobs with arguments (including GlobalID)
+- Tagged jobs sharing the same 5 tags (intersection)
 
 ## Files
 

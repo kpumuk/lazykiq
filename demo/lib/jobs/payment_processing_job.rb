@@ -2,6 +2,7 @@
 
 class PaymentProcessingJob
   include Sidekiq::Job
+
   sidekiq_options queue: :critical, retry: 2
 
   class PaymentDeclinedError < StandardError; end

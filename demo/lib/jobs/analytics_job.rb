@@ -2,6 +2,7 @@
 
 class AnalyticsJob
   include Sidekiq::Job
+
   sidekiq_options queue: :low, retry: 1
 
   def perform(event_type, properties, timestamp)

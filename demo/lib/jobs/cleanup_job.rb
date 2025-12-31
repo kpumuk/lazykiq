@@ -2,6 +2,7 @@
 
 class CleanupJob
   include Sidekiq::Job
+
   sidekiq_options queue: :low, retry: 0
 
   def perform(resource_type, older_than_days)

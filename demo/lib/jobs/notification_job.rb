@@ -2,6 +2,7 @@
 
 class NotificationJob
   include Sidekiq::Job
+
   sidekiq_options queue: :critical, retry: 3
 
   def perform(user_id, notification_type, payload)
