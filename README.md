@@ -11,20 +11,24 @@
   <a href="https://github.com/kpumuk/lazykiq/blob/main/LICENSE"><img alt="GitHub License" src="https://img.shields.io/github/license/kpumuk/lazykiq"></a>
 </p>
 
-* View Sidekiq processes and currently running jobs
-* Explore Sidekiq queues and jobs
-* Inspect job arguments and error backtraces
-* View Sidekiq retries, scheduled, and dead jobs
-* Analyze errors in dead and retry queues
-* ... more to come!
+- View Sidekiq processes and currently running jobs
+- Explore Sidekiq queues and jobs
+- Inspect job arguments and error backtraces
+- View Sidekiq retries, scheduled, and dead jobs
+- Analyze errors in dead and retry queues
+- Check job execution metrics
+- ... more to come!
 
 ![lazykiq demo](./doc/assets/demo.gif)
 
 ## Usage
 
+> [!TIP]
+> Latest installation instructions for different platforms are available on the [Lazykiq website](https://kpumuk.github.io/lazykiq/docs/getting-started/installation/).
+
 You can download the latest release from the [Releases](https://github.com/kpumuk/lazykiq/releases) page for your platform.
 
-Alternatively, install current development version with `go install`:
+Alternatively, install the current development version with `go install`:
 
 ```bash
 go install github.com/kpumuk/lazykiq/cmd/lazykiq@latest
@@ -35,7 +39,7 @@ go install github.com/kpumuk/lazykiq/cmd/lazykiq@latest
 - `1-7` - switch views
 - `j` / `k` - navigate down / up (or `Down` / `Up`)
 - `Enter` - view job details, `Esc` to close
-- `[` / `]` - previous / next page (switch interval on the Dashboard)
+- `[` / `]` - previous / next page (switch interval on the dashboard)
 - `/` - filter job list (case-sensitive)
 - `q` - quit
 
@@ -77,11 +81,11 @@ docker-compose up --build
 
 This will:
 
-* Start a Redis server
-* Start a Sidekiq server with some demo jobs
-* Start a web server to monitor Sidekiq
+- Start a Redis server
+- Start a Sidekiq server with some demo jobs
+- Start a web server to monitor Sidekiq
 
-You can access the Sidekiq dashboard at http://localhost:9292 and connect `lazykiq` to Redis at `localhost:6379`.
+You can access the Sidekiq dashboard at `http://localhost:9292` and connect `lazykiq` to Redis at `localhost:6379`.
 
 ## Feedback
 
