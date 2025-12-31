@@ -284,7 +284,7 @@ func (m Model) renderTopBorder(state StyleState, innerWidth int) string {
 		}
 		if excess > 0 && titleWidth > 0 {
 			target := max(titleWidth-excess, 0)
-			title = lipgloss.NewStyle().Width(target).MaxWidth(target).Render(title)
+			title = state.Title.Width(target).MaxWidth(target).Render(title)
 			styledTitle = state.Title.Render(title)
 			titleWidth = lipgloss.Width(styledTitle)
 		}
