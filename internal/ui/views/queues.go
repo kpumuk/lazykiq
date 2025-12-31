@@ -397,7 +397,7 @@ func (q *Queues) renderJobsBox() string {
 func (q *Queues) renderMessage(msg string) string {
 	// Header: "No queues" placeholder
 	header := q.styles.BoxPadding.Render(q.styles.Muted.Render("No queues"))
-	headerHeight := 2 // placeholder line + newline
+	headerHeight := lipgloss.Height(header)
 
 	// Bordered box with centered message
 	boxHeight := q.height - headerHeight

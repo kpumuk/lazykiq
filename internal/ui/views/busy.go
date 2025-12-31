@@ -387,7 +387,7 @@ func (b *Busy) renderJobsBox() string {
 func (b *Busy) renderMessage(msg string) string {
 	// Header: "No processes" placeholder
 	header := b.styles.BoxPadding.Render(b.styles.Muted.Render("No processes"))
-	headerHeight := 2 // placeholder line + newline
+	headerHeight := lipgloss.Height(header)
 
 	// Bordered box with centered message
 	boxHeight := b.height - headerHeight
