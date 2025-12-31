@@ -2,6 +2,7 @@
 golang = "1.25.5"
 golangci-lint = "2.7.2"
 hugo-extended = "0.152.2"
+lefthook = "2.0.13"
 
 [tasks.ci]
 description = "Format code and run all CI checks"

@@ -1,0 +1,29 @@
+pre-push:
+  jobs:
+    - name: packages audit
+      tags:
+        - security
+      run: govulncheck ./...
+
+    - name: gems audit
+      tags:
+        - security
+      run: bundle audit
+      root: "demo/"
+
+pre-commit:
+  parallel: true
+  fail_on_changes: "always"
+  jobs:
+    - name: lint
+      glob:
+        - ".golangci.yml"
+        - "*.go"
+      run: mise run lint --fix
+
+    - name: rubocop
+      glob:
+        - "demo/**/*.rb"
+        - "demo/Gemfile.lock"
+      run: bundle exec standardrb --fix
+      root: "demo/"

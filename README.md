@@ -71,6 +71,16 @@ To update all dependencies:
 mise run deps
 ```
 
+### Git hooks
+
+Lefthook can be used to setup Git hooks:
+
+```bash
+lefthook install
+```
+
+This will ensure we do not push any dependencies with known vulnerabilities, and the code quality matches our standards.
+
 ### Test environment
 
 There is a test environment prepared in the `demo/` directory. Simply start it with:
@@ -86,6 +96,14 @@ This will:
 - Start a web server to monitor Sidekiq
 
 You can access the Sidekiq dashboard at `http://localhost:9292` and connect `lazykiq` to Redis at `localhost:6379`.
+
+### Website
+
+The documentation website is built with [Hugo](https://gohugo.io/). To run it locally:
+
+```bash
+mise run website-dev
+```
 
 ## Feedback
 

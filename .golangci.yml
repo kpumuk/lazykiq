@@ -31,6 +31,9 @@ linters:
     generated: lax
     presets:
       - common-false-positives
+    paths:
+      - "^tmp/"
+      - "^vendor/"
   settings:
     gocritic:
       disabled-checks:
@@ -44,6 +47,9 @@ formatters:
     - goimports
   exclusions:
     generated: lax
+    paths:
+      - "^tmp/"
+      - "^vendor/"
   settings:
     goimports:
       local-prefixes:
