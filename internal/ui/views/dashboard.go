@@ -273,9 +273,30 @@ func (d *Dashboard) renderRedisInfoLine() string {
 	}
 
 	sep := d.styles.Muted.Render(" │ ")
-	line := strings.Join(parts, sep)
+	left := strings.Join(parts, sep)
+	right := d.renderRedisURL()
+	innerWidth := max(d.width-2, 1)
+
+	leftWidth := lipgloss.Width(left)
+	if right == "" || leftWidth >= innerWidth-1 {
+		line := lipgloss.NewStyle().MaxWidth(innerWidth).Render(left)
+		line = d.styles.BoxPadding.Render(line)
+		return lipgloss.NewStyle().MaxWidth(d.width).Render(line)
+	}
+
+	spaceForRight := innerWidth - leftWidth - 1
+	right = lipgloss.PlaceHorizontal(spaceForRight, lipgloss.Right, right)
+	line := left + " " + right
 	line = d.styles.BoxPadding.Render(line)
 	return lipgloss.NewStyle().MaxWidth(d.width).Render(line)
+}
+
+func (d *Dashboard) renderRedisURL() string {
+	redisURL := d.client.DisplayRedisURL()
+	if redisURL == "" {
+		return ""
+	}
+	return d.styles.Muted.Render(redisURL)
 }
 
 func (d *Dashboard) renderRealtimeBox(height int) string {
