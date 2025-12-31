@@ -14,6 +14,12 @@ toc: true
 Download the latest release for your platform from the
 [GitHub Releases page](https://github.com/kpumuk/lazykiq/releases).
 
+## Homebrew Tap
+
+```bash
+brew install --cask kpumuk/tap/lazykiq
+```
+
 ## AUR
 
 ```bash
