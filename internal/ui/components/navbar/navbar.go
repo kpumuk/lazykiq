@@ -16,19 +16,21 @@ type ViewInfo struct {
 
 // Styles holds the styles needed by the navbar.
 type Styles struct {
-	Bar  lipgloss.Style
-	Key  lipgloss.Style
-	Item lipgloss.Style
-	Quit lipgloss.Style
+	Bar   lipgloss.Style
+	Key   lipgloss.Style
+	Item  lipgloss.Style
+	Quit  lipgloss.Style
+	Brand lipgloss.Style
 }
 
 // DefaultStyles returns default styles for the navbar.
 func DefaultStyles() Styles {
 	return Styles{
-		Bar:  lipgloss.NewStyle().Padding(0, 1),
-		Key:  lipgloss.NewStyle().Padding(0, 1),
-		Item: lipgloss.NewStyle().PaddingRight(1),
-		Quit: lipgloss.NewStyle().PaddingRight(1),
+		Bar:   lipgloss.NewStyle().Padding(0, 1),
+		Key:   lipgloss.NewStyle().Padding(0, 1),
+		Item:  lipgloss.NewStyle().PaddingRight(1),
+		Quit:  lipgloss.NewStyle().PaddingRight(1),
+		Brand: lipgloss.NewStyle(),
 	}
 }
 
@@ -36,6 +38,7 @@ func DefaultStyles() Styles {
 type Model struct {
 	styles Styles
 	views  []ViewInfo
+	brand  string
 	width  int
 }
 
@@ -69,6 +72,13 @@ func WithViews(views []ViewInfo) Option {
 	}
 }
 
+// WithBrand sets the brand label shown on the right.
+func WithBrand(brand string) Option {
+	return func(m *Model) {
+		m.brand = brand
+	}
+}
+
 // WithWidth sets the width.
 func WithWidth(w int) Option {
 	return func(m *Model) {
@@ -84,6 +94,11 @@ func (m *Model) SetStyles(s Styles) {
 // SetViews sets the views to display.
 func (m *Model) SetViews(views []ViewInfo) {
 	m.views = views
+}
+
+// SetBrand sets the brand label shown on the right.
+func (m *Model) SetBrand(brand string) {
+	m.brand = brand
 }
 
 // SetWidth sets the width.
@@ -113,7 +128,16 @@ func (m Model) Update(_ tea.Msg) (Model, tea.Cmd) {
 
 // View renders the navbar.
 func (m Model) View() string {
+	if m.width <= 0 {
+		return ""
+	}
+
 	barStyle := m.styles.Bar.Width(m.width)
+	_, rightPad, _, leftPad := m.styles.Bar.GetPadding()
+	innerWidth := m.width - leftPad - rightPad
+	if innerWidth <= 0 {
+		return barStyle.Render("")
+	}
 
 	var items strings.Builder
 	for i, v := range m.views {
@@ -125,5 +149,21 @@ func (m Model) View() string {
 	// Add quit hint
 	items.WriteString(m.styles.Key.Render("q") + m.styles.Quit.Render("quit"))
 
-	return barStyle.Render(items.String())
+	left := items.String()
+	right := ""
+	if m.brand != "" {
+		right = m.styles.Brand.Render(m.brand)
+	}
+
+	leftWidth := lipgloss.Width(left)
+	if right == "" || leftWidth >= innerWidth-1 {
+		line := lipgloss.NewStyle().MaxWidth(innerWidth).Render(left)
+		return barStyle.Render(line)
+	}
+
+	spaceForRight := innerWidth - leftWidth - 1
+	right = lipgloss.NewStyle().MaxWidth(spaceForRight).Render(right)
+	right = lipgloss.PlaceHorizontal(spaceForRight, lipgloss.Right, right)
+	line := left + " " + right
+	return barStyle.Render(line)
 }

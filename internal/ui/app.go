@@ -61,8 +61,12 @@ type App struct {
 }
 
 // New creates a new App instance.
-func New(client *sidekiq.Client) App {
+func New(client *sidekiq.Client, version string) App {
 	styles := theme.NewStyles()
+	brand := "Lazykiq"
+	if version != "" {
+		brand = "Lazykiq v" + version
+	}
 
 	viewOrder := []viewID{
 		viewDashboard,
@@ -149,12 +153,14 @@ func New(client *sidekiq.Client) App {
 		),
 		navbar: navbar.New(
 			navbar.WithStyles(navbar.Styles{
-				Bar:  styles.NavBar,
-				Key:  styles.NavKey,
-				Item: styles.NavItem,
-				Quit: styles.NavQuit,
+				Bar:   styles.NavBar,
+				Key:   styles.NavKey,
+				Item:  styles.NavItem,
+				Quit:  styles.NavQuit,
+				Brand: styles.NavBrand,
 			}),
 			navbar.WithViews(navViews),
+			navbar.WithBrand(brand),
 		),
 		errorPopup: errorpopup.New(
 			errorpopup.WithStyles(errorpopup.Styles{

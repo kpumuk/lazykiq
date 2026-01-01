@@ -104,7 +104,7 @@ func Execute(version, commit, date, builtBy string) error {
 			}()
 		}
 
-		app := ui.New(client)
+		app := ui.New(client, version)
 		p := tea.NewProgram(app)
 		if _, err := p.Run(); err != nil {
 			return fmt.Errorf("run lazykiq: %w", err)

@@ -175,10 +175,11 @@ type Styles struct {
 	MetricValue  lipgloss.Style
 
 	// Navbar
-	NavBar  lipgloss.Style
-	NavItem lipgloss.Style
-	NavKey  lipgloss.Style
-	NavQuit lipgloss.Style
+	NavBar   lipgloss.Style
+	NavItem  lipgloss.Style
+	NavKey   lipgloss.Style
+	NavQuit  lipgloss.Style
+	NavBrand lipgloss.Style
 
 	// Stack bar
 	StackBar       lipgloss.Style
@@ -267,6 +268,9 @@ func NewStyles() Styles {
 		NavQuit: lipgloss.NewStyle().
 			Foreground(t.TextMuted).
 			PaddingRight(1),
+
+		NavBrand: lipgloss.NewStyle().
+			Foreground(t.TextMuted),
 
 		// Stack bar
 		StackBar: lipgloss.NewStyle().
