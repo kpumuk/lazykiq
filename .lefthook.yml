@@ -3,12 +3,12 @@ pre-push:
     - name: packages audit
       tags:
         - security
-      run: govulncheck ./...
+      run: mise exec golang -- govulncheck ./...
 
     - name: gems audit
       tags:
         - security
-      run: bundle audit
+      run: mise exec ruby -- bundle audit
       root: "demo/"
 
 pre-commit:
@@ -25,5 +25,5 @@ pre-commit:
       glob:
         - "demo/**/*.rb"
         - "demo/Gemfile.lock"
-      run: bundle exec standardrb --fix
+      run: mise exec ruby -- bundle exec standardrb --fix
       root: "demo/"
