@@ -324,10 +324,13 @@ func (q *Queues) updateTableRows() {
 	rows := make([]table.Row, 0, len(q.jobs))
 	for _, job := range q.jobs {
 		row := table.Row{
-			strconv.Itoa(job.Position),
-			job.DisplayClass(),
-			format.Args(job.DisplayArgs()),
-			formatContext(job.Context()),
+			ID: job.JID(),
+			Cells: []string{
+				strconv.Itoa(job.Position),
+				job.DisplayClass(),
+				format.Args(job.DisplayArgs()),
+				formatContext(job.Context()),
+			},
 		}
 		rows = append(rows, row)
 	}

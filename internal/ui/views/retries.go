@@ -308,12 +308,15 @@ func (r *Retries) updateTableRows() {
 		}
 
 		row := table.Row{
-			nextRetry,
-			retryCount,
-			job.Queue(),
-			job.DisplayClass(),
-			format.Args(job.DisplayArgs()),
-			errorStr,
+			ID: job.JID(),
+			Cells: []string{
+				nextRetry,
+				retryCount,
+				job.Queue(),
+				job.DisplayClass(),
+				format.Args(job.DisplayArgs()),
+				errorStr,
+			},
 		}
 		rows = append(rows, row)
 	}

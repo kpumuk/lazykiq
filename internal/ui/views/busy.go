@@ -285,7 +285,7 @@ func (b *Busy) updateTableRowsTree() {
 		}
 
 		processLine := b.renderProcessRow(proc, maxBusyLen, maxStartedLen, maxRSSLen)
-		rows = append(rows, make(table.Row, len(jobColumnsTree)))
+		rows = append(rows, table.Row{ID: proc.Identity, Cells: make([]string, len(jobColumnsTree))})
 		selectionSpans[len(rows)-1] = table.SelectionSpan{
 			Start: glyphWidth + 1,
 			End:   glyphWidth + 1 + lipgloss.Width(processIdentity(proc)),
@@ -306,12 +306,15 @@ func (b *Busy) updateTableRowsTree() {
 			jobIndex := len(b.filteredJobs) - 1
 
 			rows = append(rows, table.Row{
-				treeCell,
-				job.JID(),
-				b.styles.QueueText.Render(job.Queue()),
-				format.DurationSince(job.RunAt),
-				job.DisplayClass(),
-				format.Args(job.DisplayArgs()),
+				ID: job.JID(),
+				Cells: []string{
+					treeCell,
+					job.JID(),
+					b.styles.QueueText.Render(job.Queue()),
+					format.DurationSince(job.RunAt),
+					job.DisplayClass(),
+					format.Args(job.DisplayArgs()),
+				},
 			})
 			selectionSpans[len(rows)-1] = table.SelectionSpan{
 				Start: lipgloss.Width(prefix),
@@ -343,13 +346,16 @@ func (b *Busy) updateTableRowsFlat() {
 		jobIndex := len(b.filteredJobs) - 1
 
 		rows = append(rows, table.Row{
-			shortProcessIdentity(job.ProcessIdentity),
-			job.ThreadID,
-			job.JID(),
-			b.styles.QueueText.Render(job.Queue()),
-			format.DurationSince(job.RunAt),
-			job.DisplayClass(),
-			format.Args(job.DisplayArgs()),
+			ID: job.JID(),
+			Cells: []string{
+				shortProcessIdentity(job.ProcessIdentity),
+				job.ThreadID,
+				job.JID(),
+				b.styles.QueueText.Render(job.Queue()),
+				format.DurationSince(job.RunAt),
+				job.DisplayClass(),
+				format.Args(job.DisplayArgs()),
+			},
 		})
 		rowJobIndex = append(rowJobIndex, jobIndex)
 		selectionSpans[len(rows)-1] = table.SelectionSpan{Start: 0, End: -1}

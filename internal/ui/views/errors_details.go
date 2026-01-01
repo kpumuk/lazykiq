@@ -234,12 +234,15 @@ func (e *ErrorsDetails) updateTableRows() {
 		}
 		message := errorDisplay(job.entry)
 		rows = append(rows, table.Row{
-			job.source,
-			when,
-			queue,
-			job.entry.DisplayClass(),
-			format.Args(job.entry.DisplayArgs()),
-			message,
+			ID: job.entry.JID(),
+			Cells: []string{
+				job.source,
+				when,
+				queue,
+				job.entry.DisplayClass(),
+				format.Args(job.entry.DisplayArgs()),
+				message,
+			},
 		})
 	}
 	e.table.SetRows(rows)

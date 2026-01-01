@@ -291,10 +291,13 @@ func (s *Scheduled) updateTableRows() {
 		when := format.Duration(job.At() - now)
 
 		row := table.Row{
-			when,
-			job.Queue(),
-			job.DisplayClass(),
-			format.Args(job.DisplayArgs()),
+			ID: job.JID(),
+			Cells: []string{
+				when,
+				job.Queue(),
+				job.DisplayClass(),
+				format.Args(job.DisplayArgs()),
+			},
 		}
 		rows = append(rows, row)
 	}

@@ -234,12 +234,16 @@ func (e *ErrorsSummary) updateTableRows() {
 
 	rows := make([]table.Row, 0, len(e.rows))
 	for _, row := range e.rows {
+		rowID := row.displayClass + "\x1f" + row.errorClass + "\x1f" + row.queue
 		rows = append(rows, table.Row{
-			row.displayClass,
-			row.errorClass,
-			row.queue,
-			format.Number(row.count),
-			row.errorMessage,
+			ID: rowID,
+			Cells: []string{
+				row.displayClass,
+				row.errorClass,
+				row.queue,
+				format.Number(row.count),
+				row.errorMessage,
+			},
 		})
 	}
 	e.table.SetRows(rows)

@@ -10,8 +10,11 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// Row represents one line in the table.
-type Row []string
+// Row represents one line in the table. ID is used to preserve selection across refreshes.
+type Row struct {
+	ID    string
+	Cells []string
+}
 
 // SelectionSpan defines the visible selection range for a row.
 // End is exclusive; End < 0 means "to end of row".
@@ -223,9 +226,25 @@ func (m *Model) SetRows(rows []Row) {
 
 // SetRowsWithMeta sets rows with optional full-row overrides and selection spans.
 func (m *Model) SetRowsWithMeta(rows []Row, fullRows map[int]string, spans map[int]SelectionSpan) {
+	selectedID := ""
+	if m.cursor >= 0 && m.cursor < len(m.rows) {
+		selectedID = m.rows[m.cursor].ID
+	}
+
 	m.rows = rows
 	m.fullRows = fullRows
 	m.selectionSpans = spans
+
+	if len(m.rows) == 0 {
+		m.cursor = 0
+	} else if selectedID != "" {
+		if m.cursor < 0 || m.cursor >= len(m.rows) || m.rows[m.cursor].ID != selectedID {
+			if idx := indexRowByID(m.rows, selectedID); idx >= 0 {
+				m.cursor = idx
+			}
+		}
+	}
+
 	// Keep selection in bounds
 	if m.cursor >= len(m.rows) {
 		m.cursor = len(m.rows) - 1
@@ -233,6 +252,7 @@ func (m *Model) SetRowsWithMeta(rows []Row, fullRows map[int]string, spans map[i
 	if m.cursor < 0 {
 		m.cursor = 0
 	}
+	m.ensureSelectedVisible()
 	m.updateViewport()
 	m.clampScroll()
 }
@@ -277,7 +297,7 @@ func (m Model) Cursor() int {
 // SelectedRow returns the currently selected row.
 func (m Model) SelectedRow() Row {
 	if m.cursor < 0 || m.cursor >= len(m.rows) {
-		return nil
+		return Row{}
 	}
 	return m.rows[m.cursor]
 }
@@ -529,7 +549,7 @@ func (m *Model) renderBody() string {
 				continue
 			}
 		}
-		for i, cell := range row {
+		for i, cell := range row.Cells {
 			cellWidth := lipgloss.Width(cell)
 			if i < len(m.colWidths) && cellWidth > m.colWidths[i] {
 				m.colWidths[i] = cellWidth
@@ -554,7 +574,7 @@ func (m *Model) renderBody() string {
 			}
 		}
 		var cols []string
-		for i, cell := range row {
+		for i, cell := range row.Cells {
 			if i < lastCol {
 				cols = append(cols, padRight(cell, m.colWidths[i]))
 			} else {
@@ -732,4 +752,13 @@ func clamp(v, low, high int) int {
 		return low
 	}
 	return min(max(v, low), high)
+}
+
+func indexRowByID(rows []Row, id string) int {
+	for i, row := range rows {
+		if row.ID == id {
+			return i
+		}
+	}
+	return -1
 }

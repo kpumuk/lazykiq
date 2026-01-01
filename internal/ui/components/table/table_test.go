@@ -20,6 +20,10 @@ func blankStyles() Styles {
 	}
 }
 
+func row(id string, cells ...string) Row {
+	return Row{ID: id, Cells: cells}
+}
+
 func TestApplyHorizontalScroll(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -133,7 +137,7 @@ func TestRenderBody_LastColumnNotTruncated(t *testing.T) {
 			{Title: "B", Width: 3},
 		}),
 		WithRows([]Row{
-			{"foo", "this-is-long"},
+			row("row-1", "foo", "this-is-long"),
 		}),
 		WithStyles(blankStyles()),
 		WithWidth(80),
@@ -154,7 +158,7 @@ func TestRenderHeader_UsesDynamicWidth(t *testing.T) {
 			{Title: "Value", Width: 5},
 		}),
 		WithRows([]Row{
-			{"123456", "short"},
+			row("row-1", "123456", "short"),
 		}),
 		WithStyles(blankStyles()),
 		WithWidth(80),
@@ -180,11 +184,11 @@ func TestUpdate_KeyHandling(t *testing.T) {
 			{Title: "B", Width: 3},
 		}),
 		WithRows([]Row{
-			{"one", "twoooooo"},
-			{"three", "four"},
-			{"five", "six"},
-			{"seven", "eight"},
-			{"nine", "ten"},
+			row("row-1", "one", "twoooooo"),
+			row("row-2", "three", "four"),
+			row("row-3", "five", "six"),
+			row("row-4", "seven", "eight"),
+			row("row-5", "nine", "ten"),
 		}),
 		WithStyles(blankStyles()),
 		WithWidth(5),
@@ -340,11 +344,11 @@ func TestSelectionKeepsVisible(t *testing.T) {
 	table := New(
 		WithColumns([]Column{{Title: "A", Width: 1}}),
 		WithRows([]Row{
-			{"1"},
-			{"2"},
-			{"3"},
-			{"4"},
-			{"5"},
+			row("row-1", "1"),
+			row("row-2", "2"),
+			row("row-3", "3"),
+			row("row-4", "4"),
+			row("row-5", "5"),
 		}),
 		WithStyles(blankStyles()),
 		WithWidth(10),
@@ -408,11 +412,11 @@ func TestNavigationMethods(t *testing.T) {
 			{Title: "B", Width: 3},
 		}),
 		WithRows([]Row{
-			{"one", "twoooooo"},
-			{"three", "four"},
-			{"five", "six"},
-			{"seven", "eight"},
-			{"nine", "ten"},
+			row("row-1", "one", "twoooooo"),
+			row("row-2", "three", "four"),
+			row("row-3", "five", "six"),
+			row("row-4", "seven", "eight"),
+			row("row-5", "nine", "ten"),
 		}),
 		WithStyles(blankStyles()),
 		WithWidth(5),
@@ -448,7 +452,7 @@ func TestScrollRightClamps(t *testing.T) {
 			{Title: "B", Width: 1},
 		}),
 		WithRows([]Row{
-			{"a", "bbbbbbbbbb"},
+			row("row-1", "a", "bbbbbbbbbb"),
 		}),
 		WithStyles(blankStyles()),
 		WithWidth(5),
@@ -466,9 +470,9 @@ func TestSetRows_ClampsCursor(t *testing.T) {
 	table := New(
 		WithColumns([]Column{{Title: "A", Width: 1}}),
 		WithRows([]Row{
-			{"1"},
-			{"2"},
-			{"3"},
+			row("row-1", "1"),
+			row("row-2", "2"),
+			row("row-3", "3"),
 		}),
 		WithStyles(blankStyles()),
 		WithWidth(10),
@@ -476,17 +480,45 @@ func TestSetRows_ClampsCursor(t *testing.T) {
 	)
 
 	table.cursor = 2
-	table.SetRows([]Row{{"1"}})
+	table.SetRows([]Row{row("row-1", "1")})
 
 	if table.cursor != 0 {
 		t.Fatalf("want cursor 0, got %d", table.cursor)
 	}
 }
 
+func TestSetRows_PreservesSelectionByID(t *testing.T) {
+	table := New(
+		WithColumns([]Column{{Title: "A", Width: 1}}),
+		WithRows([]Row{
+			row("row-a", "a"),
+			row("row-b", "b"),
+			row("row-c", "c"),
+		}),
+		WithStyles(blankStyles()),
+		WithWidth(10),
+		WithHeight(4),
+	)
+
+	table.SetCursor(0)
+	table.SetRows([]Row{
+		row("row-b", "b"),
+		row("row-c", "c"),
+		row("row-a", "a"),
+	})
+
+	if table.cursor != 2 {
+		t.Fatalf("want cursor 2, got %d", table.cursor)
+	}
+	if table.yOffset != 1 {
+		t.Fatalf("want yOffset 1, got %d", table.yOffset)
+	}
+}
+
 func TestSetStyles_RefreshesContent(t *testing.T) {
 	table := New(
 		WithColumns([]Column{{Title: "A", Width: 1}}),
-		WithRows([]Row{{"1"}}),
+		WithRows([]Row{row("row-1", "1")}),
 		WithStyles(blankStyles()),
 		WithWidth(4),
 		WithHeight(3),
@@ -512,7 +544,7 @@ func TestSetRows_ClampsHorizontalScroll(t *testing.T) {
 			{Title: "B", Width: 2},
 		}),
 		WithRows([]Row{
-			{"a", "long-value"},
+			row("row-1", "a", "long-value"),
 		}),
 		WithStyles(blankStyles()),
 		WithWidth(4),
@@ -525,7 +557,7 @@ func TestSetRows_ClampsHorizontalScroll(t *testing.T) {
 	}
 
 	table.SetRows([]Row{
-		{"a", "b"},
+		row("row-1", "a", "b"),
 	})
 
 	if table.xOffset != 0 {
@@ -540,7 +572,7 @@ func TestSetColumns_ClampsHorizontalScroll(t *testing.T) {
 			{Title: "B", Width: 10},
 		}),
 		WithRows([]Row{
-			{"a", "bbbbbbbbbb"},
+			row("row-1", "a", "bbbbbbbbbb"),
 		}),
 		WithStyles(blankStyles()),
 		WithWidth(4),
@@ -557,7 +589,7 @@ func TestSetColumns_ClampsHorizontalScroll(t *testing.T) {
 		{Title: "B", Width: 2},
 	})
 	table.SetRows([]Row{
-		{"a", "b"},
+		row("row-1", "a", "b"),
 	})
 
 	if table.xOffset != 0 {
@@ -572,8 +604,8 @@ func TestView_BasicSnapshot(t *testing.T) {
 			{Title: "B", Width: 3},
 		}),
 		WithRows([]Row{
-			{"one", "two"},
-			{"three", "four"},
+			row("row-1", "one", "two"),
+			row("row-2", "three", "four"),
 		}),
 		WithStyles(blankStyles()),
 		WithWidth(10),
@@ -601,8 +633,8 @@ func TestView_HorizontalScrollSnapshot(t *testing.T) {
 			{Title: "B", Width: 3},
 		}),
 		WithRows([]Row{
-			{"one", "two"},
-			{"three", "four"},
+			row("row-1", "one", "two"),
+			row("row-2", "three", "four"),
 		}),
 		WithStyles(blankStyles()),
 		WithWidth(5),
@@ -632,9 +664,9 @@ func TestView_VerticalScrollSnapshot(t *testing.T) {
 			{Title: "B", Width: 3},
 		}),
 		WithRows([]Row{
-			{"one", "two"},
-			{"three", "four"},
-			{"five", "six"},
+			row("row-1", "one", "two"),
+			row("row-2", "three", "four"),
+			row("row-3", "five", "six"),
 		}),
 		WithStyles(blankStyles()),
 		WithWidth(10),
@@ -664,7 +696,7 @@ func TestView_LastColumnVariableWidthSnapshot(t *testing.T) {
 			{Title: "B", Width: 3},
 		}),
 		WithRows([]Row{
-			{"one", "this-is-long"},
+			row("row-1", "one", "this-is-long"),
 		}),
 		WithStyles(blankStyles()),
 		WithWidth(20),
@@ -691,8 +723,8 @@ func TestView_SetSizeSnapshot(t *testing.T) {
 			{Title: "B", Width: 3},
 		}),
 		WithRows([]Row{
-			{"one", "two"},
-			{"three", "four"},
+			row("row-1", "one", "two"),
+			row("row-2", "three", "four"),
 		}),
 		WithStyles(blankStyles()),
 		WithWidth(10),
@@ -718,7 +750,7 @@ func TestView_SetSizeSnapshot(t *testing.T) {
 func TestView_SetColumnsSnapshot(t *testing.T) {
 	table := New(
 		WithColumns([]Column{{Title: "A", Width: 2}}),
-		WithRows([]Row{{"x"}}),
+		WithRows([]Row{row("row-1", "x")}),
 		WithStyles(blankStyles()),
 		WithWidth(8),
 		WithHeight(3),
@@ -728,7 +760,7 @@ func TestView_SetColumnsSnapshot(t *testing.T) {
 		{Title: "ID", Width: 2},
 		{Title: "Name", Width: 4},
 	})
-	table.SetRows([]Row{{"1", "Bob"}})
+	table.SetRows([]Row{row("row-1", "1", "Bob")})
 
 	separator := strings.Repeat("\u2500", 8)
 	want := strings.Join([]string{

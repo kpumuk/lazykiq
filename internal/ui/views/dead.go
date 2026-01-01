@@ -302,11 +302,14 @@ func (d *Dead) updateTableRows() {
 		}
 
 		row := table.Row{
-			lastRetry,
-			job.Queue(),
-			job.DisplayClass(),
-			format.Args(job.DisplayArgs()),
-			errorStr,
+			ID: job.JID(),
+			Cells: []string{
+				lastRetry,
+				job.Queue(),
+				job.DisplayClass(),
+				format.Args(job.DisplayArgs()),
+				errorStr,
+			},
 		}
 		rows = append(rows, row)
 	}

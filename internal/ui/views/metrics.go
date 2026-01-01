@@ -270,11 +270,14 @@ func (m *Metrics) updateTableRows() {
 		totalSecs := fmt.Sprintf("%.2f", row.totals.Seconds)
 		avgSecs := fmt.Sprintf("%.2f", row.totals.AvgSeconds())
 		rows = append(rows, table.Row{
-			row.class,
-			success,
-			failure,
-			totalSecs,
-			avgSecs,
+			ID: row.class,
+			Cells: []string{
+				row.class,
+				success,
+				failure,
+				totalSecs,
+				avgSecs,
+			},
 		})
 	}
 
