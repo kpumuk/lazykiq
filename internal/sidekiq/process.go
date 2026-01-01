@@ -13,23 +13,24 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+// DefaultCapsuleName matches Sidekiq's implicit capsule name.
+const DefaultCapsuleName = "default"
+
 // Process represents a Sidekiq worker process.
 type Process struct {
-	client       *Client
-	Identity     string             // hostname:pid:nonce (e.g., "be4860dbdb68:14:96908d62200c")
-	Hostname     string             // Parsed from identity (e.g., "be4860dbdb68")
-	PID          int                // Parsed from identity (e.g., 14)
-	Tag          string             // From info.tag (e.g., "myapp")
-	Concurrency  int                // From info.concurrency
-	Busy         int                // From busy field (converted to int)
-	Beat         time.Time          // From beat field (heartbeat timestamp)
-	Quiet        bool               // From quiet field
-	Queues       []string           // From info.queues
-	QueueWeights map[string]int     // From info.weights or weighted queues
-	Capsules     map[string]Capsule // From info.capsules (Sidekiq 8+)
-	RSS          int64              // From rss field in KB, convert to bytes (*1024)
-	RTTUS        int64              // From rtt_us field (microseconds)
-	StartedAt    time.Time          // From info.started_at (timestamp)
+	client      *Client
+	Identity    string             // hostname:pid:nonce (e.g., "be4860dbdb68:14:96908d62200c")
+	Hostname    string             // Parsed from identity (e.g., "be4860dbdb68")
+	PID         int                // Parsed from identity (e.g., 14)
+	Tag         string             // From info.tag (e.g., "myapp")
+	Concurrency int                // From info.concurrency
+	Busy        int                // From busy field (converted to int)
+	Beat        time.Time          // From beat field (heartbeat timestamp)
+	Quiet       bool               // From quiet field
+	Capsules    map[string]Capsule // From info.capsules (Sidekiq 8+)
+	RSS         int64              // From rss field in KB, convert to bytes (*1024)
+	RTTUS       int64              // From rtt_us field (microseconds)
+	StartedAt   time.Time          // From info.started_at (timestamp)
 }
 
 // Job represents an active Sidekiq job (currently running).
@@ -146,8 +147,6 @@ func (p *Process) Refresh(ctx context.Context) error {
 	p.PID = 0
 	p.Tag = ""
 	p.Concurrency = 0
-	p.Queues = nil
-	p.QueueWeights = nil
 	p.Capsules = nil
 	p.StartedAt = time.Time{}
 
@@ -253,9 +252,18 @@ func parseProcessInfo(field any, process *Process) {
 	process.Concurrency = info.Concurrency
 	if len(info.Capsules) > 0 {
 		process.Capsules = parseProcessCapsules(info.Capsules)
-		process.Queues, process.QueueWeights = parseQueuesFromCapsules(process.Capsules)
 	} else {
-		process.Queues, process.QueueWeights = parseProcessQueues(info.Queues, info.Weights)
+		queues, weights := parseProcessQueues(info.Queues, info.Weights)
+		weights = normalizeCapsuleWeights(queues, weights)
+		if len(queues) > 0 || len(weights) > 0 {
+			process.Capsules = map[string]Capsule{
+				DefaultCapsuleName: {
+					Concurrency: info.Concurrency,
+					Mode:        capsuleModeFromWeights(weights),
+					Weights:     weights,
+				},
+			}
+		}
 	}
 	process.Tag = info.Tag
 	process.StartedAt = timeFromSeconds(info.StartedAt)
@@ -280,29 +288,55 @@ func parseProcessCapsules(capsules map[string]capsuleInfo) map[string]Capsule {
 	return parsed
 }
 
-func parseQueuesFromCapsules(capsules map[string]Capsule) ([]string, map[string]int) {
-	if len(capsules) == 0 {
-		return nil, nil
+// normalizeCapsuleWeights ensures each queue from legacy payloads has a weight.
+//
+// Sidekiq PR #6775 notes that process info now exposes capsule data and that the
+// top-level "queues" and "weights" entries are deprecated and expected to be
+// removed in a future release. Older payloads still rely on those fields, so we
+// normalize them into a consistent weights map for the synthesized default
+// capsule. See https://github.com/sidekiq/sidekiq/pull/6775 for details.
+func normalizeCapsuleWeights(queues []string, weights map[string]int) map[string]int {
+	if len(queues) == 0 && len(weights) == 0 {
+		return nil
 	}
 
-	weights := make(map[string]int)
-	for _, capsule := range capsules {
-		for name, weight := range capsule.Weights {
-			if existing, ok := weights[name]; !ok || weight > existing {
-				weights[name] = weight
-			}
+	normalized := make(map[string]int, len(queues)+len(weights))
+	if len(weights) > 0 {
+		maps.Copy(normalized, weights)
+	}
+	for _, queue := range queues {
+		if _, ok := normalized[queue]; !ok {
+			normalized[queue] = 0
 		}
 	}
+	if len(normalized) == 0 {
+		return nil
+	}
+	return normalized
+}
+
+func capsuleModeFromWeights(weights map[string]int) string {
 	if len(weights) == 0 {
-		return nil, nil
+		return ""
 	}
 
-	queues := make([]string, 0, len(weights))
-	for name := range weights {
-		queues = append(queues, name)
+	allZero := true
+	allOne := true
+	for _, weight := range weights {
+		if weight != 0 {
+			allZero = false
+		}
+		if weight != 1 {
+			allOne = false
+		}
 	}
-	sort.Strings(queues)
-	return queues, weights
+	if allZero {
+		return "strict"
+	}
+	if allOne {
+		return "random"
+	}
+	return "weighted"
 }
 
 func parseProcessQueues(queues []string, weights json.RawMessage) ([]string, map[string]int) {

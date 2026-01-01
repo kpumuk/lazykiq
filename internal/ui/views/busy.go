@@ -3,6 +3,8 @@ package views
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -517,7 +519,7 @@ func (b *Busy) renderProcessList() string {
 		rss := format.Bytes(proc.RSS)
 		stats := b.styles.Muted.Render(fmt.Sprintf("  %*s  %*s  %*s", maxBusyLen, busy, maxStartedLen, started, maxRSSLen, rss))
 
-		queues := formatProcessQueues(proc.Queues, proc.QueueWeights, b.styles.QueueText, b.styles.QueueWeight, b.styles.Muted)
+		queues := formatProcessCapsules(proc, b.styles.QueueText, b.styles.QueueWeight, b.styles.Muted)
 		if queues != "" {
 			queues = "  " + queues
 		}
@@ -545,7 +547,7 @@ func (b *Busy) renderProcessRow(proc sidekiq.Process, maxBusyLen, maxStartedLen,
 	rss := format.Bytes(proc.RSS)
 	stats := b.styles.Muted.Render(fmt.Sprintf("  %*s  %*s  %*s", maxBusyLen, busy, maxStartedLen, started, maxRSSLen, rss))
 
-	queues := formatProcessQueues(proc.Queues, proc.QueueWeights, b.styles.QueueText, b.styles.QueueWeight, b.styles.Muted)
+	queues := formatProcessCapsules(proc, b.styles.QueueText, b.styles.QueueWeight, b.styles.Muted)
 	if queues != "" {
 		queues = "  " + queues
 	}
@@ -568,6 +570,80 @@ func formatProcessQueues(queues []string, weights map[string]int, queueStyle, we
 		formatted = append(formatted, queueText)
 	}
 	return strings.Join(formatted, sepStyle.Render(", "))
+}
+
+type processCapsule struct {
+	queues  []string
+	weights map[string]int
+}
+
+func formatProcessCapsules(proc sidekiq.Process, queueStyle, weightStyle, sepStyle lipgloss.Style) string {
+	capsules := processCapsules(proc)
+	if len(capsules) == 0 {
+		return ""
+	}
+
+	formatted := make([]string, 0, len(capsules))
+	for _, capsule := range capsules {
+		queues := formatProcessQueues(capsule.queues, capsule.weights, queueStyle, weightStyle, sepStyle)
+		if queues == "" {
+			continue
+		}
+		formatted = append(formatted, queues)
+	}
+	if len(formatted) == 0 {
+		return ""
+	}
+	return strings.Join(formatted, sepStyle.Render("; "))
+}
+
+func processCapsules(proc sidekiq.Process) []processCapsule {
+	if len(proc.Capsules) == 0 {
+		return nil
+	}
+
+	// Build a stable capsule list (default first, then name) so the UI doesn't
+	// reorder queues between refreshes and cause visual jitter.
+	names := sortedCapsuleNames(proc.Capsules)
+	capsules := make([]processCapsule, 0, len(names))
+	for _, name := range names {
+		capsule := proc.Capsules[name]
+		queues := queuesFromWeights(capsule.Weights)
+		if len(queues) == 0 {
+			continue
+		}
+		capsules = append(capsules, processCapsule{
+			queues:  queues,
+			weights: capsule.Weights,
+		})
+	}
+	if len(capsules) == 0 {
+		return nil
+	}
+	return capsules
+}
+
+func queuesFromWeights(weights map[string]int) []string {
+	if len(weights) == 0 {
+		return nil
+	}
+	queues := slices.Collect(maps.Keys(weights))
+	slices.Sort(queues)
+	return queues
+}
+
+func sortedCapsuleNames(capsules map[string]sidekiq.Capsule) []string {
+	names := slices.Collect(maps.Keys(capsules))
+	slices.SortFunc(names, func(a, b string) int {
+		if a == sidekiq.DefaultCapsuleName {
+			return -1
+		}
+		if b == sidekiq.DefaultCapsuleName {
+			return 1
+		}
+		return strings.Compare(a, b)
+	})
+	return names
 }
 
 func (b *Busy) processStatWidths(selectedIdentity string) (int, int, int) {

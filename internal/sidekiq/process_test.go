@@ -48,19 +48,17 @@ func TestParseProcessInfoQueuesAndWeights(t *testing.T) {
 		t.Fatalf("StartedAt = %v, want %v", process.StartedAt, expectedStartedAt)
 	}
 
-	expectedQueues := []string{"high", "default", "low", "single"}
-	if !reflect.DeepEqual(process.Queues, expectedQueues) {
-		t.Fatalf("Queues = %#v, want %#v", process.Queues, expectedQueues)
-	}
-
 	expectedWeights := map[string]int{
 		"high":    3,
 		"default": 2,
 		"low":     1,
 		"single":  0,
 	}
-	if !reflect.DeepEqual(process.QueueWeights, expectedWeights) {
-		t.Fatalf("QueueWeights = %#v, want %#v", process.QueueWeights, expectedWeights)
+	if len(process.Capsules) != 1 {
+		t.Fatalf("Capsules len = %d, want %d", len(process.Capsules), 1)
+	}
+	if !reflect.DeepEqual(process.Capsules[DefaultCapsuleName].Weights, expectedWeights) {
+		t.Fatalf("Capsules[default].Weights = %#v, want %#v", process.Capsules[DefaultCapsuleName].Weights, expectedWeights)
 	}
 }
 
@@ -76,18 +74,13 @@ func TestParseProcessInfoQueueWeightsInline(t *testing.T) {
 	var process Process
 	parseProcessInfo(string(data), &process)
 
-	expectedQueues := []string{"high", "default", "low"}
-	if !reflect.DeepEqual(process.Queues, expectedQueues) {
-		t.Fatalf("Queues = %#v, want %#v", process.Queues, expectedQueues)
-	}
-
 	expectedWeights := map[string]int{
 		"high":    4,
 		"default": 2,
 		"low":     3,
 	}
-	if !reflect.DeepEqual(process.QueueWeights, expectedWeights) {
-		t.Fatalf("QueueWeights = %#v, want %#v", process.QueueWeights, expectedWeights)
+	if !reflect.DeepEqual(process.Capsules[DefaultCapsuleName].Weights, expectedWeights) {
+		t.Fatalf("Capsules[default].Weights = %#v, want %#v", process.Capsules[DefaultCapsuleName].Weights, expectedWeights)
 	}
 }
 
@@ -103,17 +96,12 @@ func TestParseProcessInfoLegacyWeights(t *testing.T) {
 	var process Process
 	parseProcessInfo(string(data), &process)
 
-	expectedQueues := []string{"alpha", "beta"}
-	if !reflect.DeepEqual(process.Queues, expectedQueues) {
-		t.Fatalf("Queues = %#v, want %#v", process.Queues, expectedQueues)
-	}
-
 	expectedWeights := map[string]int{
 		"alpha": 2,
 		"beta":  1,
 	}
-	if !reflect.DeepEqual(process.QueueWeights, expectedWeights) {
-		t.Fatalf("QueueWeights = %#v, want %#v", process.QueueWeights, expectedWeights)
+	if !reflect.DeepEqual(process.Capsules[DefaultCapsuleName].Weights, expectedWeights) {
+		t.Fatalf("Capsules[default].Weights = %#v, want %#v", process.Capsules[DefaultCapsuleName].Weights, expectedWeights)
 	}
 }
 
@@ -148,18 +136,39 @@ func TestParseProcessInfoCapsulesOverride(t *testing.T) {
 		t.Fatalf("Capsules[unsafe].Concurrency = %d, want %d", process.Capsules["unsafe"].Concurrency, 1)
 	}
 
-	expectedQueues := []string{"default", "low", "unsafe"}
-	if !reflect.DeepEqual(process.Queues, expectedQueues) {
-		t.Fatalf("Queues = %#v, want %#v", process.Queues, expectedQueues)
-	}
-
-	expectedWeights := map[string]int{
+	expectedDefaultWeights := map[string]int{
 		"default": 5,
 		"low":     1,
-		"unsafe":  0,
 	}
-	if !reflect.DeepEqual(process.QueueWeights, expectedWeights) {
-		t.Fatalf("QueueWeights = %#v, want %#v", process.QueueWeights, expectedWeights)
+	if !reflect.DeepEqual(process.Capsules[DefaultCapsuleName].Weights, expectedDefaultWeights) {
+		t.Fatalf("Capsules[default].Weights = %#v, want %#v", process.Capsules[DefaultCapsuleName].Weights, expectedDefaultWeights)
+	}
+	expectedUnsafeWeights := map[string]int{"unsafe": 0}
+	if !reflect.DeepEqual(process.Capsules["unsafe"].Weights, expectedUnsafeWeights) {
+		t.Fatalf("Capsules[unsafe].Weights = %#v, want %#v", process.Capsules["unsafe"].Weights, expectedUnsafeWeights)
+	}
+}
+
+func TestParseProcessInfoDefaultCapsuleFromQueues(t *testing.T) {
+	t.Parallel()
+
+	info := map[string]any{
+		"queues": []any{"default", "low"},
+	}
+
+	data := mustMarshalJSON(t, info)
+	var process Process
+	parseProcessInfo(string(data), &process)
+
+	expectedWeights := map[string]int{
+		"default": 0,
+		"low":     0,
+	}
+	if !reflect.DeepEqual(process.Capsules[DefaultCapsuleName].Weights, expectedWeights) {
+		t.Fatalf("Capsules[default].Weights = %#v, want %#v", process.Capsules[DefaultCapsuleName].Weights, expectedWeights)
+	}
+	if process.Capsules[DefaultCapsuleName].Mode != "strict" {
+		t.Fatalf("Capsules[default].Mode = %q, want %q", process.Capsules[DefaultCapsuleName].Mode, "strict")
 	}
 }
 
@@ -185,18 +194,13 @@ func TestParseProcessInfoCapsulesDuplicateQueues(t *testing.T) {
 	var process Process
 	parseProcessInfo(string(data), &process)
 
-	expectedQueues := []string{"critical", "default", "low"}
-	if !reflect.DeepEqual(process.Queues, expectedQueues) {
-		t.Fatalf("Queues = %#v, want %#v", process.Queues, expectedQueues)
+	expectedAlphaWeights := map[string]int{"default": 5, "low": 1}
+	if !reflect.DeepEqual(process.Capsules["alpha"].Weights, expectedAlphaWeights) {
+		t.Fatalf("Capsules[alpha].Weights = %#v, want %#v", process.Capsules["alpha"].Weights, expectedAlphaWeights)
 	}
-
-	expectedWeights := map[string]int{
-		"critical": 4,
-		"default":  5,
-		"low":      1,
-	}
-	if !reflect.DeepEqual(process.QueueWeights, expectedWeights) {
-		t.Fatalf("QueueWeights = %#v, want %#v", process.QueueWeights, expectedWeights)
+	expectedBetaWeights := map[string]int{"default": 2, "critical": 4}
+	if !reflect.DeepEqual(process.Capsules["beta"].Weights, expectedBetaWeights) {
+		t.Fatalf("Capsules[beta].Weights = %#v, want %#v", process.Capsules["beta"].Weights, expectedBetaWeights)
 	}
 }
 
