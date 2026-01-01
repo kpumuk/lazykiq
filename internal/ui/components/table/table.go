@@ -13,6 +13,13 @@ import (
 // Row represents one line in the table.
 type Row []string
 
+// SelectionSpan defines the visible selection range for a row.
+// End is exclusive; End < 0 means "to end of row".
+type SelectionSpan struct {
+	Start int
+	End   int
+}
+
 // Column defines a table column.
 type Column struct {
 	Title string
@@ -117,6 +124,8 @@ type Model struct {
 	emptyMessage   string
 	content        string // pre-rendered body content
 	viewportHeight int
+	fullRows       map[int]string // row index -> full-width content
+	selectionSpans map[int]SelectionSpan
 }
 
 // Option is used to set options in New.
@@ -197,6 +206,9 @@ func (m *Model) SetStyles(s Styles) {
 
 // SetSize sets the table dimensions.
 func (m *Model) SetSize(width, height int) {
+	if m.width == width && m.height == height {
+		return
+	}
 	m.width = width
 	m.height = height
 	m.viewportHeight = max(height-2, 1) // minus header and separator
@@ -206,7 +218,14 @@ func (m *Model) SetSize(width, height int) {
 
 // SetRows sets a new rows state.
 func (m *Model) SetRows(rows []Row) {
+	m.SetRowsWithMeta(rows, nil, nil)
+}
+
+// SetRowsWithMeta sets rows with optional full-row overrides and selection spans.
+func (m *Model) SetRowsWithMeta(rows []Row, fullRows map[int]string, spans map[int]SelectionSpan) {
 	m.rows = rows
+	m.fullRows = fullRows
+	m.selectionSpans = spans
 	// Keep selection in bounds
 	if m.cursor >= len(m.rows) {
 		m.cursor = len(m.rows) - 1
@@ -227,6 +246,20 @@ func (m *Model) SetColumns(cols []Column) {
 // SetEmptyMessage sets the message shown when there are no rows.
 func (m *Model) SetEmptyMessage(msg string) {
 	m.emptyMessage = msg
+}
+
+// SetFullRows sets full-width row content overrides (row index -> content).
+func (m *Model) SetFullRows(rows map[int]string) {
+	m.fullRows = rows
+	m.updateViewport()
+	m.clampScroll()
+}
+
+// SetSelectionSpans sets selection spans for specific rows.
+func (m *Model) SetSelectionSpans(spans map[int]SelectionSpan) {
+	m.selectionSpans = spans
+	m.updateViewport()
+	m.clampScroll()
 }
 
 // SetCursor sets the cursor position in the table.
@@ -490,7 +523,12 @@ func (m *Model) renderBody() string {
 			m.colWidths[i] = col.Width
 		}
 	}
-	for _, row := range m.rows {
+	for i, row := range m.rows {
+		if m.fullRows != nil {
+			if _, ok := m.fullRows[i]; ok {
+				continue
+			}
+		}
 		for i, cell := range row {
 			cellWidth := lipgloss.Width(cell)
 			if i < len(m.colWidths) && cellWidth > m.colWidths[i] {
@@ -504,7 +542,17 @@ func (m *Model) renderBody() string {
 	// Second pass: build all rows using actual column widths (no truncation)
 	rawRows := make([]string, 0, len(m.rows))
 	maxWidth := 0
-	for _, row := range m.rows {
+	for i, row := range m.rows {
+		if m.fullRows != nil {
+			if fullRow, ok := m.fullRows[i]; ok {
+				rawRows = append(rawRows, fullRow)
+				rowWidth := lipgloss.Width(fullRow)
+				if rowWidth > maxWidth {
+					maxWidth = rowWidth
+				}
+				continue
+			}
+		}
 		var cols []string
 		for i, cell := range row {
 			if i < lastCol {
@@ -527,6 +575,15 @@ func (m *Model) renderBody() string {
 	// Third pass: apply scroll and styling
 	lines := make([]string, 0, len(rawRows))
 	for i, row := range rawRows {
+		isFullRow := false
+		if m.fullRows != nil {
+			_, isFullRow = m.fullRows[i]
+		}
+		span, hasSpan := SelectionSpan{}, false
+		if m.selectionSpans != nil {
+			span, hasSpan = m.selectionSpans[i]
+		}
+
 		// Pad row to max width for consistent selection highlight
 		rowWidth := lipgloss.Width(row)
 		if rowWidth < maxWidth {
@@ -538,8 +595,12 @@ func (m *Model) renderBody() string {
 
 		// Apply selection highlight
 		if i == m.cursor {
-			row = m.styles.Selected.Render(row)
-		} else {
+			if hasSpan {
+				row = applySelection(row, span, maxWidth, m.xOffset, m.width, m.styles.Selected)
+			} else {
+				row = m.styles.Selected.Render(row)
+			}
+		} else if !isFullRow {
 			row = m.styles.Text.Render(row)
 		}
 
@@ -584,6 +645,41 @@ func applyHorizontalScroll(line string, offset, visibleWidth int) string {
 		cut += strings.Repeat(" ", visibleWidth-cutWidth)
 	}
 	return cut
+}
+
+func applySelection(line string, span SelectionSpan, maxWidth, xOffset, visibleWidth int, style lipgloss.Style) string {
+	lineWidth := lipgloss.Width(line)
+	if lineWidth == 0 {
+		return line
+	}
+
+	start := span.Start
+	end := span.End
+	if start < 0 {
+		start = 0
+	}
+	if end < 0 || end > maxWidth {
+		end = maxWidth
+	}
+	start -= xOffset
+	end -= xOffset
+	if start < 0 {
+		start = 0
+	}
+	if end > visibleWidth {
+		end = visibleWidth
+	}
+	if start >= end || start >= lineWidth {
+		return line
+	}
+
+	prefix := ansi.Cut(line, 0, start)
+	mid := ansi.Cut(line, start, end)
+	suffix := ansi.Cut(line, end, lineWidth)
+
+	mid = ansi.Strip(mid)
+
+	return prefix + style.Render(mid) + suffix
 }
 
 func (m Model) computeLastColWidth(colWidths []int) int {

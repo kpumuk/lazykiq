@@ -60,7 +60,7 @@ internal/
 - Theme uses AdaptiveColor; no runtime toggle
 - All color values must live in `theme.DefaultTheme`; no inline colors outside it (dashboard charts are the only temporary exception while ntcharts uses lipgloss v1)
 - Border title/meta: use `components/frame` (title is on the top border line)
-- NO EMOJIS in UI - keep text clean and professional
+- No emojis in UI except strategically placed glyphs from Nerd Font, such as "⚙" - keep text clean and professional
 - Shared components: no lipgloss.NewStyle() calls in render paths - pass all styles via struct/DefaultStyles
 - Table in `components/table/` subpackage to avoid import cycle (components ↔ views)
 - Table: last column not truncated/padded to allow horizontal scroll of variable content
