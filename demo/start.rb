@@ -34,7 +34,7 @@ when "all"
 
   pids = []
 
-  # Fork 4 worker processes with 8 workers each, different queues per process
+  # Fork worker processes with 8 workers each, different queues per process
   worker_queues = [
     # Process 1: default and low queues (weighted)
     ["default,5", "low,1"],
@@ -42,13 +42,19 @@ when "all"
     ["default,5", "low,1"],
     # Process 3: critical and mailers queues (weighted)
     ["critical,10", "mailers,5"],
-    # Process 4: batch queue only (weighted)
+    # Process 4: batch queue only (weighted) with unsafe capsule
     ["batch,3"]
   ]
 
   worker_queues.each_with_index do |queues, i|
     pids << fork do
-      exec("bundle", "exec", "sidekiq", "-r", "./boot.rb", "-C", "config/sidekiq.yml", *queues.flat_map { |q| ["-q", q] })
+      cmd = ["bundle", "exec", "sidekiq", "-r", "./boot.rb", "-C", "config/sidekiq.yml"] +
+        queues.flat_map { |q| ["-q", q] }
+      if i == 3
+        exec({"LAZYKIQ_UNSAFE_CAPSULE" => "1"}, *cmd)
+      else
+        exec(*cmd)
+      end
     end
   end
 

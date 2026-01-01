@@ -5,8 +5,9 @@ require "sidekiq/api"
 require "time"
 
 class JobScheduler
-  QUEUES = %w[critical default mailers batch low].freeze
+  QUEUES = %w[critical default mailers batch low unsafe].freeze
   MAX_JOBS_PER_QUEUE = 10_000
+  MAX_UNSAFE_JOBS = 42
   MAX_RETRY_QUEUE = 20_000
   MAX_SCHEDULED_JOBS = 5_000
   SCHEDULE_BATCH_SIZE = 100
@@ -35,6 +36,8 @@ class JobScheduler
      args: -> { [%w[temp_files sessions logs exports].sample, rand(7..90)] }},
     {job: "CleanupJob", queue: "low", weight: 1,
      args: -> { [] }},
+    {job: "PurgeUserDataJob", queue: "unsafe", weight: 2,
+     args: -> { [rand(1..100_000), %w[gdpr_request account_closure fraud_investigation].sample] }},
     {job: "WebhookDeliveryJob", queue: "default", weight: 10,
      args: -> { ["https://example.com/webhooks/#{rand(1..100)}", %w[order.created user.updated payment.completed].sample, {"id" => rand(1..10_000)}] }},
     {job: ACTIVEJOB_WRAPPER, queue: "default", weight: 3,
@@ -143,7 +146,7 @@ class JobScheduler
   def start
     @running = true
     puts "Starting job scheduler..."
-    puts "Max jobs per queue: #{MAX_JOBS_PER_QUEUE}"
+    puts "Max jobs per queue: #{MAX_JOBS_PER_QUEUE} (unsafe: #{MAX_UNSAFE_JOBS})"
     puts "Max retry queue: #{MAX_RETRY_QUEUE}"
     puts "Max scheduled jobs: #{MAX_SCHEDULED_JOBS}"
     puts "Queues: #{QUEUES.join(", ")}"
@@ -180,7 +183,7 @@ class JobScheduler
     QUEUES.each do |queue_name|
       current_size = queue_sizes[queue_name] || 0
       scheduled_size = scheduled_sizes[queue_name] || 0
-      available_capacity = MAX_JOBS_PER_QUEUE - current_size - scheduled_size
+      available_capacity = max_jobs_for_queue(queue_name) - current_size - scheduled_size
 
       next if available_capacity <= 0
 
@@ -229,7 +232,7 @@ class JobScheduler
       queue_name = job_def[:queue]
       current_size = queue_sizes[queue_name] || 0
       scheduled_size = scheduled_sizes[queue_name] || 0
-      next if current_size + scheduled_size >= MAX_JOBS_PER_QUEUE
+      next if current_size + scheduled_size >= max_jobs_for_queue(queue_name)
 
       delay = rand(1..86400) # Schedule between 1 second and 24 hours
       enqueue_job(job_def, delay: delay)
@@ -264,5 +267,11 @@ class JobScheduler
     else
       job_class.set(cattr: {tenanant_id: rand(1..10_000)}).perform_async(*job_def[:args].call)
     end
+  end
+
+  def max_jobs_for_queue(queue_name)
+    return MAX_UNSAFE_JOBS if queue_name == "unsafe"
+
+    MAX_JOBS_PER_QUEUE
   end
 end
