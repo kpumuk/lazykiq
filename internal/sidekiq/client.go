@@ -3,12 +3,10 @@ package sidekiq
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -29,33 +27,6 @@ type Stats struct {
 	Retries   int64
 	Scheduled int64
 	Dead      int64
-}
-
-// Process represents a Sidekiq worker process.
-type Process struct {
-	Identity    string   // hostname:pid:nonce (e.g., "be4860dbdb68:14:96908d62200c")
-	Hostname    string   // Parsed from identity (e.g., "be4860dbdb68")
-	PID         string   // Parsed from identity (e.g., "14")
-	Tag         string   // From info.tag (e.g., "myapp")
-	Concurrency int      // From info.concurrency
-	Busy        int      // From busy field (converted to int)
-	Queues      []string // From info.queues
-	RSS         int64    // From rss field in KB, convert to bytes (*1024)
-	StartedAt   int64    // From info.started_at (Unix timestamp)
-}
-
-// Job represents an active Sidekiq job (currently running).
-type Job struct {
-	*JobRecord             // embedded job data from payload
-	ProcessIdentity string // process identity running this job
-	ThreadID        string // Base-36 encoded TID
-	RunAt           int64  // Unix timestamp when job started
-}
-
-// BusyData holds process and job information.
-type BusyData struct {
-	Processes []Process
-	Jobs      []Job
 }
 
 // Client is a Sidekiq API client.
@@ -196,137 +167,4 @@ func (c *Client) GetStats(ctx context.Context) (Stats, error) {
 	stats.Dead = dead
 
 	return stats, nil
-}
-
-// GetBusyData fetches detailed process and active job information from Redis.
-func (c *Client) GetBusyData(ctx context.Context) (BusyData, error) {
-	var data BusyData
-
-	// Get all process identities
-	processes, err := c.redis.SMembers(ctx, "processes").Result()
-	if err != nil && !errors.Is(err, redis.Nil) {
-		return data, err
-	}
-
-	// Fetch each process details
-	for _, identity := range processes {
-		// Get process hash fields
-		fields, err := c.redis.HMGet(ctx, identity, "info", "busy", "rss").Result()
-		if err != nil {
-			continue
-		}
-
-		// Check if we got results
-		if len(fields) < 3 {
-			continue
-		}
-
-		// Parse process info
-		process := Process{
-			Identity: identity,
-		}
-
-		// Parse identity to extract hostname and PID (format: hostname:pid:nonce)
-		parts := strings.Split(identity, ":")
-		if len(parts) >= 2 {
-			process.Hostname = parts[0]
-			process.PID = parts[1]
-		}
-
-		// Parse info JSON
-		parseProcessInfo(fields[0], &process)
-
-		// Parse busy count
-		if busyCount, ok := parseOptionalInt64(fields[1]); ok {
-			process.Busy = int(busyCount)
-		}
-
-		// Parse RSS (in KB, convert to bytes)
-		if rss, ok := parseOptionalInt64(fields[2]); ok {
-			process.RSS = rss * 1024
-		}
-
-		data.Processes = append(data.Processes, process)
-
-		// Get active jobs for this process
-		workKey := identity + ":work"
-		work, err := c.redis.HGetAll(ctx, workKey).Result()
-		if err != nil {
-			continue
-		}
-
-		// Parse each job
-		for tid, workJSON := range work {
-			var workData map[string]any
-			if err := json.Unmarshal([]byte(workJSON), &workData); err != nil {
-				continue
-			}
-
-			job := Job{
-				ProcessIdentity: identity,
-				ThreadID:        tid,
-			}
-
-			// Get run_at from work data
-			if runAt, ok := workData["run_at"].(float64); ok {
-				job.RunAt = int64(runAt)
-			}
-
-			// Parse payload as JobRecord (queue is inside payload, fallback to workData)
-			if payloadStr, ok := workData["payload"].(string); ok {
-				queueName := ""
-				if q, ok := workData["queue"].(string); ok {
-					queueName = q
-				}
-				job.JobRecord = NewJobRecord(payloadStr, queueName)
-			}
-
-			data.Jobs = append(data.Jobs, job)
-		}
-	}
-
-	return data, nil
-}
-
-func parseProcessInfo(field any, process *Process) {
-	infoStr, ok := field.(string)
-	if !ok || infoStr == "" {
-		return
-	}
-
-	var info map[string]any
-	if err := json.Unmarshal([]byte(infoStr), &info); err != nil {
-		return
-	}
-
-	if concurrency, ok := info["concurrency"].(float64); ok {
-		process.Concurrency = int(concurrency)
-	}
-	if queues, ok := info["queues"].([]any); ok {
-		process.Queues = make([]string, 0, len(queues))
-		for _, q := range queues {
-			queueName, ok := q.(string)
-			if ok {
-				process.Queues = append(process.Queues, queueName)
-			}
-		}
-	}
-	if tag, ok := info["tag"].(string); ok {
-		process.Tag = tag
-	}
-	if startedAt, ok := info["started_at"].(float64); ok {
-		process.StartedAt = int64(startedAt)
-	}
-}
-
-func parseOptionalInt64(field any) (int64, bool) {
-	value, ok := field.(string)
-	if !ok || value == "" {
-		return 0, false
-	}
-	parsed, err := strconv.ParseInt(value, 10, 64)
-	if err != nil {
-		return 0, false
-	}
-	return parsed, true
 }

@@ -110,6 +110,8 @@ func New(client *sidekiq.Client) App {
 		JSONBool:        styles.JSONBool,
 		JSONNull:        styles.JSONNull,
 		JSONPunctuation: styles.JSONPunctuation,
+		QueueText:       styles.QueueText,
+		QueueWeight:     styles.QueueWeight,
 	}
 	for _, id := range viewOrder {
 		viewRegistry[id] = viewRegistry[id].SetStyles(viewStyles)

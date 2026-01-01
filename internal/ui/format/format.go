@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Duration formats elapsed seconds as "2m3s", "1h30m", etc. (max 2 segments).
@@ -29,6 +30,17 @@ func Duration(seconds int64) string {
 	default:
 		return fmt.Sprintf("%ds", secs)
 	}
+}
+
+var nowFunc = time.Now
+
+// DurationSince formats elapsed time since the given timestamp.
+// Returns "-" if time is zero.
+func DurationSince(start time.Time) string {
+	if start.IsZero() {
+		return "-"
+	}
+	return Duration(int64(nowFunc().Sub(start).Seconds()))
 }
 
 // Bytes formats bytes as "168 MB", "1.2 GB", etc.

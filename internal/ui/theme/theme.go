@@ -43,6 +43,11 @@ type Theme struct {
 	JSONBool        compat.CompleteAdaptiveColor
 	JSONNull        compat.CompleteAdaptiveColor
 	JSONPunctuation compat.CompleteAdaptiveColor
+
+	// Queue colors
+	QueueText     compat.CompleteAdaptiveColor
+	QueueWeightFg compat.CompleteAdaptiveColor
+	QueueWeightBg compat.CompleteAdaptiveColor
 }
 
 // DefaultTheme is the adaptive color scheme used by default.
@@ -142,6 +147,20 @@ var DefaultTheme = Theme{
 		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#495057"), ANSI256: lipgloss.Color("240"), ANSI: lipgloss.Color("8")},
 		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#DEE2E6"), ANSI256: lipgloss.Color("253"), ANSI: lipgloss.Color("7")},
 	},
+
+	// Queues
+	QueueText: compat.CompleteAdaptiveColor{
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#1098AD"), ANSI256: lipgloss.Color("30"), ANSI: lipgloss.Color("6")},
+		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#66D9E8"), ANSI256: lipgloss.Color("81"), ANSI: lipgloss.Color("6")},
+	},
+	QueueWeightFg: compat.CompleteAdaptiveColor{
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#F8F9FA"), ANSI256: lipgloss.Color("255"), ANSI: lipgloss.Color("15")},
+		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#F8F9FA"), ANSI256: lipgloss.Color("255"), ANSI: lipgloss.Color("15")},
+	},
+	QueueWeightBg: compat.CompleteAdaptiveColor{
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#1098AD"), ANSI256: lipgloss.Color("30"), ANSI: lipgloss.Color("6")},
+		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#66D9E8"), ANSI256: lipgloss.Color("81"), ANSI: lipgloss.Color("6")},
+	},
 }
 
 // Styles holds all lipgloss styles derived from a theme.
@@ -193,6 +212,10 @@ type Styles struct {
 	JSONBool        lipgloss.Style
 	JSONNull        lipgloss.Style
 	JSONPunctuation lipgloss.Style
+
+	// Queues
+	QueueText   lipgloss.Style
+	QueueWeight lipgloss.Style
 
 	// Errors
 	ErrorTitle  lipgloss.Style
@@ -313,6 +336,13 @@ func NewStyles() Styles {
 
 		JSONPunctuation: lipgloss.NewStyle().
 			Foreground(t.JSONPunctuation),
+
+		QueueText: lipgloss.NewStyle().
+			Foreground(t.QueueText),
+
+		QueueWeight: lipgloss.NewStyle().
+			Foreground(t.QueueWeightFg).
+			Background(t.QueueWeightBg),
 
 		ErrorTitle: lipgloss.NewStyle().
 			Foreground(t.Error).

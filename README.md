@@ -26,6 +26,9 @@
 > [!TIP]
 > Latest installation instructions for different platforms are available on the [Lazykiq website](https://kpumuk.github.io/lazykiq/docs/getting-started/installation/).
 
+> [!NOTE]
+> Lazykiq uses special glyphs in the UI; without a Nerd Font in your terminal some characters may render incorrectly.
+
 You can download the latest release from the [Releases](https://github.com/kpumuk/lazykiq/releases) page for your platform.
 
 Alternatively, install the current development version with `go install`:

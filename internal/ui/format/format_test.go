@@ -3,6 +3,7 @@ package format
 import (
 	"errors"
 	"testing"
+	"time"
 )
 
 type badJSON struct{}
@@ -31,6 +32,32 @@ func TestDuration(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := Duration(tt.seconds); got != tt.want {
 				t.Fatalf("Duration(%d) = %q, want %q", tt.seconds, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDurationSince(t *testing.T) {
+	fixedNow := time.Date(2025, time.January, 1, 12, 0, 0, 0, time.UTC)
+	restoreNow := nowFunc
+	nowFunc = func() time.Time { return fixedNow }
+	t.Cleanup(func() { nowFunc = restoreNow })
+
+	tests := []struct {
+		name string
+		at   time.Time
+		want string
+	}{
+		{name: "zero", at: time.Time{}, want: "-"},
+		{name: "seconds", at: fixedNow.Add(-59 * time.Second), want: "59s"},
+		{name: "minute", at: fixedNow.Add(-90 * time.Second), want: "1m30s"},
+		{name: "future", at: fixedNow.Add(10 * time.Second), want: "0s"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := DurationSince(tt.at); got != tt.want {
+				t.Fatalf("DurationSince(%v) = %q, want %q", tt.at, got, tt.want)
 			}
 		})
 	}

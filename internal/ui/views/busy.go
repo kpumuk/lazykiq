@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
@@ -199,7 +198,8 @@ func (b *Busy) renderProcessList() string {
 
 	for i, proc := range b.data.Processes {
 		// Name: hostname:pid + tag
-		name := fmt.Sprintf("%s:%s", proc.Hostname, proc.PID)
+		pidText := formatPID(proc.PID)
+		name := fmt.Sprintf("%s:%s", proc.Hostname, pidText)
 		if proc.Tag != "" {
 			name += " [" + proc.Tag + "]"
 		}
@@ -208,13 +208,13 @@ func (b *Busy) renderProcessList() string {
 		busy := fmt.Sprintf("%d/%d", proc.Busy, proc.Concurrency)
 
 		// Started: relative time
-		started := format.Duration(time.Now().Unix() - proc.StartedAt)
+		started := format.DurationSince(proc.StartedAt)
 
 		// RSS: memory usage
 		rss := format.Bytes(proc.RSS)
 
 		// Queues
-		queues := strings.Join(proc.Queues, ", ")
+		queues := formatQueues(proc.Queues, proc.QueueWeights, b.styles.QueueText, b.styles.QueueWeight, b.styles.Muted)
 
 		rows[i] = processRow{name, busy, started, rss, queues}
 
@@ -252,13 +252,33 @@ func (b *Busy) renderProcessList() string {
 		rss := fmt.Sprintf("%*s", maxRSSLen, row.rss)
 		stats := b.styles.Muted.Render(fmt.Sprintf("  %s  %s  %s", busy, started, rss))
 
-		// Queues (muted)
-		queues := b.styles.Muted.Render("  " + row.queues)
+		// Queues
+		queues := row.queues
+		if queues != "" {
+			queues = "  " + queues
+		}
 
 		lines = append(lines, hotkey+name+stats+queues)
 	}
 
 	return b.styles.BoxPadding.Render(strings.Join(lines, "\n"))
+}
+
+func formatQueues(queues []string, weights map[string]int, queueStyle, weightStyle, sepStyle lipgloss.Style) string {
+	if len(queues) == 0 {
+		return ""
+	}
+
+	formatted := make([]string, 0, len(queues))
+	for _, queue := range queues {
+		queueText := queueStyle.Render(queue)
+		weight := weights[queue]
+		if weight >= 2 {
+			queueText += queueStyle.Render("") + weightStyle.Render(strconv.Itoa(weight)) + queueStyle.Render("")
+		}
+		formatted = append(formatted, queueText)
+	}
+	return strings.Join(formatted, sepStyle.Render(", "))
 }
 
 // Table columns for job list.
@@ -312,7 +332,7 @@ func (b *Busy) updateTableRows() {
 			job.ThreadID,
 			job.JID(),
 			job.Queue(),
-			format.Duration(time.Now().Unix() - job.RunAt),
+			format.DurationSince(job.RunAt),
 			job.DisplayClass(),
 			format.Args(job.DisplayArgs()),
 		}
@@ -355,7 +375,7 @@ func (b *Busy) renderJobsBox() string {
 	title := "Active Jobs"
 	if b.selectedProcess >= 0 && b.selectedProcess < len(b.data.Processes) {
 		proc := b.data.Processes[b.selectedProcess]
-		title = fmt.Sprintf("Active Jobs on %s:%s", proc.Hostname, proc.PID)
+		title = fmt.Sprintf("Active Jobs on %s:%s", proc.Hostname, formatPID(proc.PID))
 	}
 
 	// Get table content
@@ -398,6 +418,13 @@ func (b *Busy) renderMessage(msg string) string {
 	}, "Active Jobs", msg, b.width, boxHeight)
 
 	return header + "\n" + box
+}
+
+func formatPID(pid int) string {
+	if pid <= 0 {
+		return "-"
+	}
+	return strconv.Itoa(pid)
 }
 
 // renderJobDetail renders the job detail view.

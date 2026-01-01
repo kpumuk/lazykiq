@@ -14,6 +14,10 @@ toc: true
 Download the latest release for your platform from the
 [GitHub Releases page](https://github.com/kpumuk/lazykiq/releases).
 
+{{< callout context="note" title="Note" icon="outline/info-circle" >}}
+Lazykiq uses special glyphs in the UI; without a Nerd Font in your terminal some characters may render incorrectly.
+{{< /callout >}}
+
 ## Homebrew Tap
 
 ```bash
