@@ -117,6 +117,89 @@ func TestParseProcessInfoLegacyWeights(t *testing.T) {
 	}
 }
 
+func TestParseProcessInfoCapsulesOverride(t *testing.T) {
+	t.Parallel()
+
+	info := map[string]any{
+		"queues":  []any{"default", "low"},
+		"weights": []any{map[string]any{"default": 1, "low": 1}},
+		"capsules": map[string]any{
+			"default": map[string]any{
+				"concurrency": 8,
+				"mode":        "weighted",
+				"weights":     map[string]any{"default": 5, "low": 1},
+			},
+			"unsafe": map[string]any{
+				"concurrency": 1,
+				"mode":        "strict",
+				"weights":     map[string]any{"unsafe": 0},
+			},
+		},
+	}
+
+	data := mustMarshalJSON(t, info)
+	var process Process
+	parseProcessInfo(string(data), &process)
+
+	if len(process.Capsules) != 2 {
+		t.Fatalf("Capsules len = %d, want %d", len(process.Capsules), 2)
+	}
+	if process.Capsules["unsafe"].Concurrency != 1 {
+		t.Fatalf("Capsules[unsafe].Concurrency = %d, want %d", process.Capsules["unsafe"].Concurrency, 1)
+	}
+
+	expectedQueues := []string{"default", "low", "unsafe"}
+	if !reflect.DeepEqual(process.Queues, expectedQueues) {
+		t.Fatalf("Queues = %#v, want %#v", process.Queues, expectedQueues)
+	}
+
+	expectedWeights := map[string]int{
+		"default": 5,
+		"low":     1,
+		"unsafe":  0,
+	}
+	if !reflect.DeepEqual(process.QueueWeights, expectedWeights) {
+		t.Fatalf("QueueWeights = %#v, want %#v", process.QueueWeights, expectedWeights)
+	}
+}
+
+func TestParseProcessInfoCapsulesDuplicateQueues(t *testing.T) {
+	t.Parallel()
+
+	info := map[string]any{
+		"capsules": map[string]any{
+			"alpha": map[string]any{
+				"concurrency": 5,
+				"mode":        "weighted",
+				"weights":     map[string]any{"default": 5, "low": 1},
+			},
+			"beta": map[string]any{
+				"concurrency": 3,
+				"mode":        "weighted",
+				"weights":     map[string]any{"default": 2, "critical": 4},
+			},
+		},
+	}
+
+	data := mustMarshalJSON(t, info)
+	var process Process
+	parseProcessInfo(string(data), &process)
+
+	expectedQueues := []string{"critical", "default", "low"}
+	if !reflect.DeepEqual(process.Queues, expectedQueues) {
+		t.Fatalf("Queues = %#v, want %#v", process.Queues, expectedQueues)
+	}
+
+	expectedWeights := map[string]int{
+		"critical": 4,
+		"default":  5,
+		"low":      1,
+	}
+	if !reflect.DeepEqual(process.QueueWeights, expectedWeights) {
+		t.Fatalf("QueueWeights = %#v, want %#v", process.QueueWeights, expectedWeights)
+	}
+}
+
 func TestParseOptionalBeatAndQuiet(t *testing.T) {
 	t.Parallel()
 

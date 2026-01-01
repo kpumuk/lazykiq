@@ -16,19 +16,20 @@ import (
 // Process represents a Sidekiq worker process.
 type Process struct {
 	client       *Client
-	Identity     string         // hostname:pid:nonce (e.g., "be4860dbdb68:14:96908d62200c")
-	Hostname     string         // Parsed from identity (e.g., "be4860dbdb68")
-	PID          int            // Parsed from identity (e.g., 14)
-	Tag          string         // From info.tag (e.g., "myapp")
-	Concurrency  int            // From info.concurrency
-	Busy         int            // From busy field (converted to int)
-	Beat         time.Time      // From beat field (heartbeat timestamp)
-	Quiet        bool           // From quiet field
-	Queues       []string       // From info.queues
-	QueueWeights map[string]int // From info.weights or weighted queues
-	RSS          int64          // From rss field in KB, convert to bytes (*1024)
-	RTTUS        int64          // From rtt_us field (microseconds)
-	StartedAt    time.Time      // From info.started_at (timestamp)
+	Identity     string             // hostname:pid:nonce (e.g., "be4860dbdb68:14:96908d62200c")
+	Hostname     string             // Parsed from identity (e.g., "be4860dbdb68")
+	PID          int                // Parsed from identity (e.g., 14)
+	Tag          string             // From info.tag (e.g., "myapp")
+	Concurrency  int                // From info.concurrency
+	Busy         int                // From busy field (converted to int)
+	Beat         time.Time          // From beat field (heartbeat timestamp)
+	Quiet        bool               // From quiet field
+	Queues       []string           // From info.queues
+	QueueWeights map[string]int     // From info.weights or weighted queues
+	Capsules     map[string]Capsule // From info.capsules (Sidekiq 8+)
+	RSS          int64              // From rss field in KB, convert to bytes (*1024)
+	RTTUS        int64              // From rtt_us field (microseconds)
+	StartedAt    time.Time          // From info.started_at (timestamp)
 }
 
 // Job represents an active Sidekiq job (currently running).
@@ -51,18 +52,32 @@ type BusyData struct {
 	Jobs      []Job
 }
 
+// Capsule describes a Sidekiq capsule from process metadata.
+type Capsule struct {
+	Concurrency int
+	Mode        string
+	Weights     map[string]int
+}
+
 type processInfo struct {
-	Hostname    string          `json:"hostname"`
-	StartedAt   float64         `json:"started_at"`
-	PID         int             `json:"pid"`
-	Tag         string          `json:"tag"`
-	Concurrency int             `json:"concurrency"`
-	Queues      []string        `json:"queues"`
-	Weights     json.RawMessage `json:"weights"`
-	Labels      []string        `json:"labels"`
-	Identity    string          `json:"identity"`
-	Version     string          `json:"version"`
-	Embedded    bool            `json:"embedded"`
+	Hostname    string                 `json:"hostname"`
+	StartedAt   float64                `json:"started_at"`
+	PID         int                    `json:"pid"`
+	Tag         string                 `json:"tag"`
+	Concurrency int                    `json:"concurrency"`
+	Queues      []string               `json:"queues"`
+	Weights     json.RawMessage        `json:"weights"`
+	Capsules    map[string]capsuleInfo `json:"capsules"`
+	Labels      []string               `json:"labels"`
+	Identity    string                 `json:"identity"`
+	Version     string                 `json:"version"`
+	Embedded    bool                   `json:"embedded"`
+}
+
+type capsuleInfo struct {
+	Concurrency int            `json:"concurrency"`
+	Mode        string         `json:"mode"`
+	Weights     map[string]int `json:"weights"`
 }
 
 // NewProcess creates a new Process instance for the given identity.
@@ -133,6 +148,7 @@ func (p *Process) Refresh(ctx context.Context) error {
 	p.Concurrency = 0
 	p.Queues = nil
 	p.QueueWeights = nil
+	p.Capsules = nil
 	p.StartedAt = time.Time{}
 
 	p.Busy = 0
@@ -235,9 +251,58 @@ func parseProcessInfo(field any, process *Process) {
 	}
 
 	process.Concurrency = info.Concurrency
-	process.Queues, process.QueueWeights = parseProcessQueues(info.Queues, info.Weights)
+	if len(info.Capsules) > 0 {
+		process.Capsules = parseProcessCapsules(info.Capsules)
+		process.Queues, process.QueueWeights = parseQueuesFromCapsules(process.Capsules)
+	} else {
+		process.Queues, process.QueueWeights = parseProcessQueues(info.Queues, info.Weights)
+	}
 	process.Tag = info.Tag
 	process.StartedAt = timeFromSeconds(info.StartedAt)
+}
+
+func parseProcessCapsules(capsules map[string]capsuleInfo) map[string]Capsule {
+	if len(capsules) == 0 {
+		return nil
+	}
+
+	parsed := make(map[string]Capsule, len(capsules))
+	for name, capsule := range capsules {
+		parsed[name] = Capsule{
+			Concurrency: capsule.Concurrency,
+			Mode:        capsule.Mode,
+			Weights:     maps.Clone(capsule.Weights),
+		}
+	}
+	if len(parsed) == 0 {
+		return nil
+	}
+	return parsed
+}
+
+func parseQueuesFromCapsules(capsules map[string]Capsule) ([]string, map[string]int) {
+	if len(capsules) == 0 {
+		return nil, nil
+	}
+
+	weights := make(map[string]int)
+	for _, capsule := range capsules {
+		for name, weight := range capsule.Weights {
+			if existing, ok := weights[name]; !ok || weight > existing {
+				weights[name] = weight
+			}
+		}
+	}
+	if len(weights) == 0 {
+		return nil, nil
+	}
+
+	queues := make([]string, 0, len(weights))
+	for name := range weights {
+		queues = append(queues, name)
+	}
+	sort.Strings(queues)
+	return queues, weights
 }
 
 func parseProcessQueues(queues []string, weights json.RawMessage) ([]string, map[string]int) {
