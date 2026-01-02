@@ -2,10 +2,8 @@
 package sidekiq
 
 import (
-	"context"
 	"fmt"
 	"net/url"
-	"strconv"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -15,17 +13,6 @@ import (
 func init() {
 	// Disable all Redis logging globally using the built-in VoidLogger
 	redis.SetLogger(&logging.VoidLogger{})
-}
-
-// Stats holds Sidekiq statistics.
-type Stats struct {
-	Processed int64
-	Failed    int64
-	Busy      int64
-	Enqueued  int64
-	Retries   int64
-	Scheduled int64
-	Dead      int64
 }
 
 // Client is a Sidekiq API client.
@@ -92,110 +79,4 @@ func (c *Client) Close() error {
 // Redis returns the underlying Redis client for benchmarking and testing.
 func (c *Client) Redis() *redis.Client {
 	return c.redis
-}
-
-// GetStats fetches current Sidekiq statistics from Redis.
-// Uses pipelining to minimize roundtrips, following Sidekiq's fetch_stats_fast!/fetch_stats_slow! pattern.
-func (c *Client) GetStats(ctx context.Context) (Stats, error) {
-	stats := Stats{}
-
-	// Pipeline 1: Fast stats that don't require iteration
-	pipe1Results, err := c.redis.Pipelined(ctx, func(pipe redis.Pipeliner) error {
-		pipe.Get(ctx, "stat:processed")
-		pipe.Get(ctx, "stat:failed")
-		pipe.ZCard(ctx, "retry")
-		pipe.ZCard(ctx, "schedule")
-		pipe.ZCard(ctx, "dead")
-		pipe.SMembers(ctx, "processes")
-		pipe.SMembers(ctx, "queues")
-		return nil
-	})
-	if err != nil {
-		return stats, err
-	}
-
-	// Parse fast stats
-	if cmd, ok := pipe1Results[0].(*redis.StringCmd); ok {
-		if val, err := cmd.Result(); err == nil {
-			stats.Processed, _ = strconv.ParseInt(val, 10, 64)
-		}
-	}
-	if cmd, ok := pipe1Results[1].(*redis.StringCmd); ok {
-		if val, err := cmd.Result(); err == nil {
-			stats.Failed, _ = strconv.ParseInt(val, 10, 64)
-		}
-	}
-	if cmd, ok := pipe1Results[2].(*redis.IntCmd); ok {
-		if val, err := cmd.Result(); err == nil {
-			stats.Retries = val
-		}
-	}
-	if cmd, ok := pipe1Results[3].(*redis.IntCmd); ok {
-		if val, err := cmd.Result(); err == nil {
-			stats.Scheduled = val
-		}
-	}
-	if cmd, ok := pipe1Results[4].(*redis.IntCmd); ok {
-		if val, err := cmd.Result(); err == nil {
-			stats.Dead = val
-		}
-	}
-
-	var processes []string
-	if cmd, ok := pipe1Results[5].(*redis.StringSliceCmd); ok {
-		if val, err := cmd.Result(); err == nil {
-			processes = val
-		}
-	}
-
-	var queues []string
-	if cmd, ok := pipe1Results[6].(*redis.StringSliceCmd); ok {
-		if val, err := cmd.Result(); err == nil {
-			queues = val
-		}
-	}
-
-	// Pipeline 2: Slow stats that require aggregation
-	if len(processes) == 0 && len(queues) == 0 {
-		return stats, nil
-	}
-
-	pipe2Results, err := c.redis.Pipelined(ctx, func(pipe redis.Pipeliner) error {
-		for _, processKey := range processes {
-			pipe.HGet(ctx, processKey, "busy")
-		}
-		for _, queue := range queues {
-			pipe.LLen(ctx, "queue:"+queue)
-		}
-		return nil
-	})
-	if err != nil {
-		return stats, err
-	}
-
-	// Sum up busy counts
-	var busy int64
-	for i := range processes {
-		if cmd, ok := pipe2Results[i].(*redis.StringCmd); ok {
-			if val, err := cmd.Result(); err == nil {
-				count, _ := strconv.ParseInt(val, 10, 64)
-				busy += count
-			}
-		}
-	}
-	stats.Busy = busy
-
-	// Sum up queue sizes
-	var enqueued int64
-	offset := len(processes)
-	for i := range queues {
-		if cmd, ok := pipe2Results[offset+i].(*redis.IntCmd); ok {
-			if val, err := cmd.Result(); err == nil {
-				enqueued += val
-			}
-		}
-	}
-	stats.Enqueued = enqueued
-
-	return stats, nil
 }
