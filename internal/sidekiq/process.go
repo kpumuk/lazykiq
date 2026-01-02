@@ -107,26 +107,75 @@ func (c *Client) GetProcesses(ctx context.Context) ([]*Process, error) {
 }
 
 // GetBusyData fetches detailed process and active job information from Redis.
+// Uses pipelining to batch all Redis requests for optimal performance on large systems.
 func (c *Client) GetBusyData(ctx context.Context) (BusyData, error) {
 	var data BusyData
 
-	processes, err := c.GetProcesses(ctx)
+	// Step 1: Get all process identities
+	identities, err := c.redis.SMembers(ctx, "processes").Result()
+	if err != nil && !errors.Is(err, redis.Nil) {
+		return data, err
+	}
+
+	if len(identities) == 0 {
+		return data, nil
+	}
+
+	sort.Strings(identities)
+
+	// Step 2: Pipeline all process metadata fetches
+	processResults, err := c.redis.Pipelined(ctx, func(pipe redis.Pipeliner) error {
+		for _, identity := range identities {
+			pipe.HMGet(ctx, identity, "info", "busy", "beat", "quiet", "rss", "rtt_us")
+		}
+		return nil
+	})
 	if err != nil {
 		return data, err
 	}
 
-	data.Processes = make([]Process, 0, len(processes))
-	for _, process := range processes {
-		if err := process.Refresh(ctx); err != nil {
+	// Step 3: Pipeline all work data fetches
+	workResults, err := c.redis.Pipelined(ctx, func(pipe redis.Pipeliner) error {
+		for _, identity := range identities {
+			pipe.HGetAll(ctx, identity+":work")
+		}
+		return nil
+	})
+	if err != nil {
+		return data, err
+	}
+
+	// Step 4: Parse results
+	data.Processes = make([]Process, 0, len(identities))
+	data.Jobs = make([]Job, 0)
+
+	for i, identity := range identities {
+		process := c.NewProcess(identity)
+		if cmd, ok := processResults[i].(*redis.SliceCmd); ok {
+			fields, err := cmd.Result()
+			if err != nil && !errors.Is(err, redis.Nil) {
+				continue
+			}
+			process.refreshFromFields(fields)
+		}
+
+		// Only include processes that have valid info
+		if process.Hostname == "" || process.PID == 0 {
 			continue
 		}
+
 		data.Processes = append(data.Processes, *process)
 
-		jobs, err := process.GetJobs(ctx, "")
-		if err != nil {
-			continue
+		// Parse work data
+		if cmd, ok := workResults[i].(*redis.MapStringStringCmd); ok {
+			work, err := cmd.Result()
+			if err != nil && !errors.Is(err, redis.Nil) {
+				continue
+			}
+
+			jobs := process.parseJobsFromWork(work, "")
+			data.Jobs = append(data.Jobs, jobs...)
 		}
-		data.Jobs = append(data.Jobs, jobs...)
 	}
 
 	return data, nil
@@ -143,6 +192,27 @@ func (p *Process) Refresh(ctx context.Context) error {
 		return err
 	}
 
+	p.refreshFromFields(fields)
+	return nil
+}
+
+// GetJobs fetches active jobs for the process.
+// If filter is non-empty, only jobs whose raw work payload contains the substring are returned.
+func (p *Process) GetJobs(ctx context.Context, filter string) ([]Job, error) {
+	if p.client == nil {
+		return nil, errors.New("process client is nil")
+	}
+
+	work, err := p.client.redis.HGetAll(ctx, p.Identity+":work").Result()
+	if err != nil && !errors.Is(err, redis.Nil) {
+		return nil, err
+	}
+
+	return p.parseJobsFromWork(work, filter), nil
+}
+
+// refreshFromFields updates process fields from HMGET results.
+func (p *Process) refreshFromFields(fields []any) {
 	p.Hostname = ""
 	p.PID = 0
 	p.Tag = ""
@@ -186,30 +256,18 @@ func (p *Process) Refresh(ctx context.Context) error {
 	if rtt, ok := parseOptionalInt64(fieldAt(fields, 5)); ok {
 		p.RTTUS = rtt
 	}
-
-	return nil
 }
 
-// GetJobs fetches active jobs for the process.
-// If filter is non-empty, only jobs whose raw work payload contains the substring are returned.
-func (p *Process) GetJobs(ctx context.Context, filter string) ([]Job, error) {
-	if p.client == nil {
-		return nil, errors.New("process client is nil")
-	}
-
-	work, err := p.client.redis.HGetAll(ctx, p.Identity+":work").Result()
-	if err != nil && !errors.Is(err, redis.Nil) {
-		return nil, err
-	}
-
+// parseJobsFromWork parses work hash data into jobs.
+func (p *Process) parseJobsFromWork(work map[string]string, filter string) []Job {
 	jobs := make([]Job, 0, len(work))
 	for tid, workJSON := range work {
 		if filter != "" && !strings.Contains(workJSON, filter) {
 			continue
 		}
 
-		var work workData
-		if err := json.Unmarshal([]byte(workJSON), &work); err != nil {
+		var wd workData
+		if err := json.Unmarshal([]byte(workJSON), &wd); err != nil {
 			continue
 		}
 
@@ -218,18 +276,17 @@ func (p *Process) GetJobs(ctx context.Context, filter string) ([]Job, error) {
 			ThreadID:        tid,
 		}
 
-		if work.RunAt > 0 {
-			job.RunAt = timeFromSeconds(work.RunAt)
+		if wd.RunAt > 0 {
+			job.RunAt = timeFromSeconds(wd.RunAt)
 		}
 
-		if work.Payload != "" {
-			job.JobRecord = NewJobRecord(work.Payload, work.Queue)
+		if wd.Payload != "" {
+			job.JobRecord = NewJobRecord(wd.Payload, wd.Queue)
 		}
 
 		jobs = append(jobs, job)
 	}
-
-	return jobs, nil
+	return jobs
 }
 
 func parseProcessInfo(field any, process *Process) {
