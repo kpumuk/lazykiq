@@ -2,6 +2,7 @@
 package table
 
 import (
+	"slices"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
@@ -755,10 +756,7 @@ func clamp(v, low, high int) int {
 }
 
 func indexRowByID(rows []Row, id string) int {
-	for i, row := range rows {
-		if row.ID == id {
-			return i
-		}
-	}
-	return -1
+	return slices.IndexFunc(rows, func(row Row) bool {
+		return row.ID == id
+	})
 }

@@ -3,6 +3,7 @@ package views
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -48,7 +49,7 @@ type Metrics struct {
 
 // NewMetrics creates a new Metrics view.
 func NewMetrics(client *sidekiq.Client) *Metrics {
-	periods := append([]string{}, sidekiq.MetricsPeriodOrder...)
+	periods := slices.Clone(sidekiq.MetricsPeriodOrder)
 
 	m := &Metrics{
 		client:  client,
