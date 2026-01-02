@@ -13,4 +13,4 @@ seo:
 ---
 
 Lazykiq turns Sidekiq ops into a fast, focused terminal workflow.
-These docs get you installed, connected, and productive in minutes.
+Get installed, connected, and productive in minutes.
