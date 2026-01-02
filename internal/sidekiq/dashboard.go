@@ -82,35 +82,34 @@ func (c *Client) GetStatsHistory(ctx context.Context, days int) (StatsHistory, e
 
 	endDate := time.Now().UTC()
 	dates := make([]time.Time, 0, days)
-	processedKeys := make([]string, 0, days)
-	failedKeys := make([]string, 0, days)
+	allKeys := make([]string, 0, days*2)
 
+	// Build processed keys first, then failed keys
 	for i := days - 1; i >= 0; i-- {
 		date := endDate.AddDate(0, 0, -i)
-		dateStr := date.Format("2006-01-02")
 		dates = append(dates, date)
-		processedKeys = append(processedKeys, "stat:processed:"+dateStr)
-		failedKeys = append(failedKeys, "stat:failed:"+dateStr)
+		allKeys = append(allKeys, "stat:processed:"+date.Format("2006-01-02"))
+	}
+	for i := days - 1; i >= 0; i-- {
+		date := endDate.AddDate(0, 0, -i)
+		allKeys = append(allKeys, "stat:failed:"+date.Format("2006-01-02"))
 	}
 
-	processed, err := c.redis.MGet(ctx, processedKeys...).Result()
-	if err != nil && !errors.Is(err, redis.Nil) {
-		return StatsHistory{}, err
-	}
-	failed, err := c.redis.MGet(ctx, failedKeys...).Result()
+	// Single MGET for all keys
+	results, err := c.redis.MGet(ctx, allKeys...).Result()
 	if err != nil && !errors.Is(err, redis.Nil) {
 		return StatsHistory{}, err
 	}
 
 	history := StatsHistory{
 		Dates:     dates,
-		Processed: make([]int64, len(dates)),
-		Failed:    make([]int64, len(dates)),
+		Processed: make([]int64, days),
+		Failed:    make([]int64, days),
 	}
 
-	for i := range dates {
-		history.Processed[i] = parseInt64(processed[i])
-		history.Failed[i] = parseInt64(failed[i])
+	for i := range days {
+		history.Processed[i] = parseInt64(results[i])
+		history.Failed[i] = parseInt64(results[days+i])
 	}
 
 	return history, nil
