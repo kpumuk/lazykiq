@@ -3,6 +3,7 @@ package metrics
 
 import (
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -20,6 +21,7 @@ type Data struct {
 	Retries   int64
 	Scheduled int64
 	Dead      int64
+	UpdatedAt time.Time
 }
 
 // UpdateMsg is sent when metrics should be updated.

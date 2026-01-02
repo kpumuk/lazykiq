@@ -214,10 +214,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Handle connection errors from views
 		a.connectionError = msg.Err
 
-	case views.DashboardTickMsg:
-		cmds = append(cmds, a.updateView(viewDashboard, msg))
-
-	case views.DashboardRealtimeMsg:
+	case views.DashboardRedisInfoMsg:
 		cmds = append(cmds, a.updateView(viewDashboard, msg))
 
 	case views.DashboardHistoryMsg:
@@ -304,17 +301,19 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		a.errorPopup.SetSize(contentWidth, contentHeight)
 
-	default:
+	case metrics.UpdateMsg:
 		// Clear connection error on successful metrics update
-		if _, ok := msg.(metrics.UpdateMsg); ok {
-			a.connectionError = nil
-		}
+		a.connectionError = nil
 
-		// Pass messages to metrics for updates
+		// Pass to metrics bar
 		updatedMetrics, cmd := a.metrics.Update(msg)
 		a.metrics = updatedMetrics
 		cmds = append(cmds, cmd)
 
+		// Always forward to dashboard (for realtime chart tracking, even when not active)
+		cmds = append(cmds, a.updateView(viewDashboard, msg))
+
+	default:
 		// Pass to active view
 		cmds = append(cmds, a.updateView(a.activeViewID(), msg))
 	}
@@ -390,6 +389,7 @@ func (a App) fetchStatsCmd() tea.Msg {
 			Retries:   stats.Retries,
 			Scheduled: stats.Scheduled,
 			Dead:      stats.Dead,
+			UpdatedAt: time.Now(),
 		},
 	}
 }

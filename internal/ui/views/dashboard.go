@@ -15,6 +15,7 @@ import (
 
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
+	"github.com/kpumuk/lazykiq/internal/ui/components/metrics"
 	"github.com/kpumuk/lazykiq/internal/ui/format"
 )
 
@@ -23,19 +24,14 @@ const (
 	dashboardPaneHistory
 )
 
-// DashboardRealtimeMsg carries realtime dashboard data.
-type DashboardRealtimeMsg struct {
-	Snapshot sidekiq.DashboardRealtime
-}
-
 // DashboardHistoryMsg carries historical dashboard data.
 type DashboardHistoryMsg struct {
 	history sidekiq.StatsHistory
 }
 
-// DashboardTickMsg is emitted by the realtime ticker.
-type DashboardTickMsg struct {
-	id int
+// DashboardRedisInfoMsg carries Redis info for the dashboard.
+type DashboardRedisInfoMsg struct {
+	RedisInfo sidekiq.RedisInfo
 }
 
 // Dashboard is the main overview view.
@@ -45,12 +41,9 @@ type Dashboard struct {
 	height int
 	styles Styles
 
-	focusedPane int
-	tickID      int
-
-	realtimeInterval int
-	historyRanges    []int
-	historyRangeIdx  int
+	focusedPane     int
+	historyRanges   []int
+	historyRangeIdx int
 
 	lastProcessed int64
 	lastFailed    int64
@@ -73,41 +66,31 @@ type Dashboard struct {
 // NewDashboard creates a new Dashboard view.
 func NewDashboard(client *sidekiq.Client) *Dashboard {
 	return &Dashboard{
-		client:           client,
-		focusedPane:      dashboardPaneRealtime,
-		realtimeInterval: 5,
-		historyRanges:    []int{7, 30, 90, 180},
-		historyRangeIdx:  1,
+		client:          client,
+		focusedPane:     dashboardPaneRealtime,
+		historyRanges:   []int{7, 30, 90, 180},
+		historyRangeIdx: 1,
 	}
 }
 
 // Init implements View.
 func (d *Dashboard) Init() tea.Cmd {
-	d.tickID++
 	return tea.Batch(
-		d.fetchRealtimeCmd(),
+		d.fetchRedisInfoCmd(),
 		d.fetchHistoryCmd(),
-		d.realtimeTickCmd(),
 	)
 }
 
 // Update implements View.
 func (d *Dashboard) Update(msg tea.Msg) (View, tea.Cmd) {
 	switch msg := msg.(type) {
-	case DashboardTickMsg:
-		if msg.id != d.tickID {
-			return d, nil
-		}
-		return d, tea.Batch(d.fetchRealtimeCmd(), d.realtimeTickCmd())
-
-	case DashboardRealtimeMsg:
-		d.redisInfo = msg.Snapshot.RedisInfo
-
+	case metrics.UpdateMsg:
+		// Use stats from the shared metrics update (already fetched by app)
 		var deltaProcessed int64
 		var deltaFailed int64
 		if d.hasLastTotals {
-			deltaProcessed = msg.Snapshot.Stats.Processed - d.lastProcessed
-			deltaFailed = msg.Snapshot.Stats.Failed - d.lastFailed
+			deltaProcessed = msg.Data.Processed - d.lastProcessed
+			deltaFailed = msg.Data.Failed - d.lastFailed
 			if deltaProcessed < 0 {
 				deltaProcessed = 0
 			}
@@ -115,25 +98,28 @@ func (d *Dashboard) Update(msg tea.Msg) (View, tea.Cmd) {
 				deltaFailed = 0
 			}
 		}
-		d.lastProcessed = msg.Snapshot.Stats.Processed
-		d.lastFailed = msg.Snapshot.Stats.Failed
+		d.lastProcessed = msg.Data.Processed
+		d.lastFailed = msg.Data.Failed
 		if !d.hasLastTotals {
 			d.hasLastTotals = true
 			return d, nil
 		}
-		d.hasLastTotals = true
 
 		if deltaProcessed == 0 && deltaFailed == 0 {
 			return d, nil
 		}
 
-		d.lastPollAt = msg.Snapshot.FetchedAt
+		d.lastPollAt = msg.Data.UpdatedAt
 		d.lastDeltaP = deltaProcessed
 		d.lastDeltaF = deltaFailed
 		d.realtimeProcessed = append(d.realtimeProcessed, deltaProcessed)
 		d.realtimeFailed = append(d.realtimeFailed, deltaFailed)
-		d.realtimeTimes = append(d.realtimeTimes, msg.Snapshot.FetchedAt)
+		d.realtimeTimes = append(d.realtimeTimes, msg.Data.UpdatedAt)
 		d.trimRealtimeSeries()
+		return d, nil
+
+	case DashboardRedisInfoMsg:
+		d.redisInfo = msg.RedisInfo
 		return d, nil
 
 	case DashboardHistoryMsg:
@@ -143,7 +129,8 @@ func (d *Dashboard) Update(msg tea.Msg) (View, tea.Cmd) {
 		return d, nil
 
 	case RefreshMsg:
-		return d, nil
+		// Fetch Redis info on refresh (stats come via metrics.UpdateMsg)
+		return d, d.fetchRedisInfoCmd()
 
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -155,9 +142,9 @@ func (d *Dashboard) Update(msg tea.Msg) (View, tea.Cmd) {
 			}
 			return d, nil
 		case "[":
-			return d.adjustFocusedPane(-1)
+			return d.adjustHistoryRange(-1)
 		case "]":
-			return d.adjustFocusedPane(1)
+			return d.adjustHistoryRange(1)
 		}
 	}
 
@@ -207,47 +194,26 @@ func (d *Dashboard) SetStyles(styles Styles) View {
 	return d
 }
 
-func (d *Dashboard) adjustFocusedPane(delta int) (View, tea.Cmd) {
-	switch d.focusedPane {
-	case dashboardPaneRealtime:
-		next := max(d.realtimeInterval+delta, 5)
-		next = min(next, 20)
-		if next != d.realtimeInterval {
-			d.realtimeInterval = next
-			d.tickID++
-			return d, tea.Batch(d.fetchRealtimeCmd(), d.realtimeTickCmd())
-		}
-	case dashboardPaneHistory:
-		next := max(d.historyRangeIdx+delta, 0)
-		if next >= len(d.historyRanges) {
-			next = len(d.historyRanges) - 1
-		}
-		if next != d.historyRangeIdx {
-			d.historyRangeIdx = next
-			return d, d.fetchHistoryCmd()
-		}
+func (d *Dashboard) adjustHistoryRange(delta int) (View, tea.Cmd) {
+	next := max(d.historyRangeIdx+delta, 0)
+	if next >= len(d.historyRanges) {
+		next = len(d.historyRanges) - 1
+	}
+	if next != d.historyRangeIdx {
+		d.historyRangeIdx = next
+		return d, d.fetchHistoryCmd()
 	}
 	return d, nil
 }
 
-func (d *Dashboard) realtimeTickCmd() tea.Cmd {
-	id := d.tickID
-	interval := time.Duration(d.realtimeInterval) * time.Second
-	return tea.Tick(interval, func(time.Time) tea.Msg {
-		return DashboardTickMsg{id: id}
-	})
-}
-
-func (d *Dashboard) fetchRealtimeCmd() tea.Cmd {
+func (d *Dashboard) fetchRedisInfoCmd() tea.Cmd {
 	return func() tea.Msg {
 		ctx := context.Background()
-		snapshot, err := d.client.GetDashboardRealtime(ctx)
+		redisInfo, err := d.client.GetRedisInfo(ctx)
 		if err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}
-		return DashboardRealtimeMsg{
-			Snapshot: snapshot,
-		}
+		return DashboardRedisInfoMsg{RedisInfo: redisInfo}
 	}
 }
 
@@ -300,7 +266,6 @@ func (d *Dashboard) renderRedisURL() string {
 }
 
 func (d *Dashboard) renderRealtimeBox(height int) string {
-	meta := d.styles.MetricLabel.Render("interval: ") + d.styles.MetricValue.Render(fmt.Sprintf("%ds", d.realtimeInterval))
 	content := d.renderRealtimeContent(height - 2)
 	box := frame.New(
 		frame.WithStyles(frame.Styles{
@@ -315,7 +280,6 @@ func (d *Dashboard) renderRealtimeBox(height int) string {
 		}),
 		frame.WithTitle("Dashboard"),
 		frame.WithTitlePadding(0),
-		frame.WithMeta(meta),
 		frame.WithContent(content),
 		frame.WithPadding(1),
 		frame.WithSize(d.width, height),
@@ -577,7 +541,8 @@ func (d *Dashboard) seedRealtimeSeries() {
 	if maxPoints <= 0 {
 		return
 	}
-	interval := time.Duration(d.realtimeInterval) * time.Second
+	// App ticker runs every 5 seconds
+	const interval = 5 * time.Second
 	start := time.Now().Add(-interval * time.Duration(maxPoints-1))
 	for i := range maxPoints {
 		d.realtimeTimes = append(d.realtimeTimes, start.Add(interval*time.Duration(i)))
