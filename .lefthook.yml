@@ -24,6 +24,6 @@ pre-commit:
     - name: rubocop
       glob:
         - "demo/**/*.rb"
-        - "demo/Gemfile.lock"
+        - "demo/Gemfile*"
       run: mise exec ruby -- bundle exec standardrb --fix
       root: "demo/"
