@@ -321,7 +321,7 @@ func (d *Dead) updateTableRows() {
 func (d *Dead) renderJobsBox() string {
 	// Build meta: SIZE and PAGE info
 	sep := d.styles.Muted.Render(" • ")
-	sizeInfo := d.styles.MetricLabel.Render("SIZE: ") + d.styles.MetricValue.Render(format.Number(d.totalSize))
+	sizeInfo := d.styles.MetricLabel.Render("SIZE: ") + d.styles.MetricValue.Render(format.ShortNumber(d.totalSize))
 	pageInfo := d.styles.MetricLabel.Render("PAGE: ") + d.styles.MetricValue.Render(fmt.Sprintf("%d/%d", d.currentPage, d.totalPages))
 	meta := sizeInfo + sep + pageInfo
 

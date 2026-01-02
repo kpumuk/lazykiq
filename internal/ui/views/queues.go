@@ -363,7 +363,7 @@ func (q *Queues) renderJobsBox() string {
 
 	// Build meta: SIZE and PAGE info
 	sep := q.styles.Muted.Render(" • ")
-	sizeInfo := q.styles.MetricLabel.Render("SIZE: ") + q.styles.MetricValue.Render(format.Number(queueSize))
+	sizeInfo := q.styles.MetricLabel.Render("SIZE: ") + q.styles.MetricValue.Render(format.ShortNumber(queueSize))
 	pageInfo := q.styles.MetricLabel.Render("PAGE: ") + q.styles.MetricValue.Render(fmt.Sprintf("%d/%d", q.currentPage, q.totalPages))
 	meta := sizeInfo + sep + pageInfo
 

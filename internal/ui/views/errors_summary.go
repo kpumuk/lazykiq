@@ -241,7 +241,7 @@ func (e *ErrorsSummary) updateTableRows() {
 				row.displayClass,
 				row.errorClass,
 				row.queue,
-				format.Number(row.count),
+				format.ShortNumber(row.count),
 				row.errorMessage,
 			},
 		})

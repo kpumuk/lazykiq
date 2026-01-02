@@ -233,7 +233,7 @@ func (d *Dashboard) renderRedisInfoLine() string {
 	parts := []string{
 		d.styles.MetricLabel.Render("Redis Version: ") + d.styles.MetricValue.Render(orFallback(d.redisInfo.Version, "n/a")),
 		d.styles.MetricLabel.Render("Uptime: ") + d.styles.MetricValue.Render(strconv.FormatInt(d.redisInfo.UptimeDays, 10)) + d.styles.MetricLabel.Render(" days"),
-		d.styles.MetricLabel.Render("Connections: ") + d.styles.MetricValue.Render(format.Number(d.redisInfo.Connections)),
+		d.styles.MetricLabel.Render("Connections: ") + d.styles.MetricValue.Render(format.ShortNumber(d.redisInfo.Connections)),
 		d.styles.MetricLabel.Render("Memory: ") + d.styles.MetricValue.Render(orFallback(d.redisInfo.UsedMemory, "n/a")),
 		d.styles.MetricLabel.Render("Peak: ") + d.styles.MetricValue.Render(orFallback(d.redisInfo.UsedMemoryPeak, "n/a")),
 	}
@@ -355,8 +355,8 @@ func (d *Dashboard) renderHistoryContent(contentHeight int) string {
 
 func (d *Dashboard) renderRealtimeLegend(width int) string {
 	sep := d.styles.Muted.Render(" | ")
-	processed := d.styles.MetricLabel.Render("Processed: ") + d.styles.MetricValue.Render(format.Number(d.lastDeltaP))
-	failed := d.styles.MetricLabel.Render("Failed: ") + d.styles.MetricValue.Render(format.Number(d.lastDeltaF))
+	processed := d.styles.MetricLabel.Render("Processed: ") + d.styles.MetricValue.Render(format.ShortNumber(d.lastDeltaP))
+	failed := d.styles.MetricLabel.Render("Failed: ") + d.styles.MetricValue.Render(format.ShortNumber(d.lastDeltaF))
 	timestamp := d.styles.Muted.Render(d.lastPollAt.Format("15:04:05"))
 	line := processed + sep + failed + sep + timestamp
 	return lipgloss.NewStyle().MaxWidth(width).Render(line)
@@ -364,8 +364,8 @@ func (d *Dashboard) renderRealtimeLegend(width int) string {
 
 func (d *Dashboard) renderHistoryLegend(width int) string {
 	sep := d.styles.Muted.Render(" | ")
-	processed := d.styles.MetricLabel.Render("Processed: ") + d.styles.MetricValue.Render(format.Number(sumSeries(d.historyProcessed)))
-	failed := d.styles.MetricLabel.Render("Failed: ") + d.styles.MetricValue.Render(format.Number(sumSeries(d.historyFailed)))
+	processed := d.styles.MetricLabel.Render("Processed: ") + d.styles.MetricValue.Render(format.ShortNumber(sumSeries(d.historyProcessed)))
+	failed := d.styles.MetricLabel.Render("Failed: ") + d.styles.MetricValue.Render(format.ShortNumber(sumSeries(d.historyFailed)))
 	rangeLabel := d.styles.Muted.Render(d.historyDateRangeLabel())
 	line := processed + sep + failed + sep + rangeLabel
 	return lipgloss.NewStyle().MaxWidth(width).Render(line)
@@ -553,7 +553,7 @@ func (d *Dashboard) seedRealtimeSeries() {
 
 func shortYLabelFormatter() func(int, float64) string {
 	return func(_ int, v float64) string {
-		return format.ShortNumber(int64(v + 0.5))
+		return format.CompactNumber(int64(v + 0.5))
 	}
 }
 

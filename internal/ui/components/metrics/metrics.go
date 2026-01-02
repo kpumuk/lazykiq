@@ -140,13 +140,13 @@ func (m Model) View() string {
 	barStyle := m.styles.Bar.Width(m.width)
 
 	baseMetrics := []string{
-		m.styles.Label.Render("Processed: ") + m.styles.Value.Render(format.Number(m.data.Processed)),
-		m.styles.Label.Render("Failed: ") + m.styles.Value.Render(format.Number(m.data.Failed)),
-		m.styles.Label.Render("Busy: ") + m.styles.Value.Render(format.Number(m.data.Busy)),
-		m.styles.Label.Render("Enqueued: ") + m.styles.Value.Render(format.Number(m.data.Enqueued)),
-		m.styles.Label.Render("Retries: ") + m.styles.Value.Render(format.Number(m.data.Retries)),
-		m.styles.Label.Render("Scheduled: ") + m.styles.Value.Render(format.Number(m.data.Scheduled)),
-		m.styles.Label.Render("Dead: ") + m.styles.Value.Render(format.Number(m.data.Dead)),
+		m.styles.Label.Render("Processed: ") + m.styles.Value.Render(format.ShortNumber(m.data.Processed)),
+		m.styles.Label.Render("Failed: ") + m.styles.Value.Render(format.ShortNumber(m.data.Failed)),
+		m.styles.Label.Render("Busy: ") + m.styles.Value.Render(format.ShortNumber(m.data.Busy)),
+		m.styles.Label.Render("Enqueued: ") + m.styles.Value.Render(format.ShortNumber(m.data.Enqueued)),
+		m.styles.Label.Render("Retries: ") + m.styles.Value.Render(format.ShortNumber(m.data.Retries)),
+		m.styles.Label.Render("Scheduled: ") + m.styles.Value.Render(format.ShortNumber(m.data.Scheduled)),
+		m.styles.Label.Render("Dead: ") + m.styles.Value.Render(format.ShortNumber(m.data.Dead)),
 	}
 
 	if m.width <= 0 || len(baseMetrics) == 0 {

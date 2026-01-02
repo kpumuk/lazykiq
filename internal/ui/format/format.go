@@ -78,8 +78,8 @@ func Args(args []any) string {
 	return strings.Join(parts, ", ")
 }
 
-// Number formats a number with K/M suffixes for readability.
-func Number(n int64) string {
+// ShortNumber formats a number with K/M suffixes for readability.
+func ShortNumber(n int64) string {
 	switch {
 	case n >= 1_000_000_000:
 		return fmt.Sprintf("%.1fB", float64(n)/1_000_000_000)
@@ -92,8 +92,52 @@ func Number(n int64) string {
 	}
 }
 
-// ShortNumber formats a number into a compact 4-char max string (e.g., 999, 9.9K, 120K).
-func ShortNumber(n int64) string {
+// Number formats a number with thousands separators (e.g., 1,234,567).
+func Number(n int64) string {
+	if n < 0 {
+		return "-" + Number(-n)
+	}
+	s := strconv.FormatInt(n, 10)
+	return addThousandsSeparators(s)
+}
+
+// Float formats a float with thousands separators (e.g., 1,234.56).
+func Float(f float64, precision int) string {
+	if f < 0 {
+		return "-" + Float(-f, precision)
+	}
+
+	s := fmt.Sprintf("%.*f", precision, f)
+
+	// Split into integer and decimal parts
+	intPart, decPart := s, ""
+	if idx := strings.Index(s, "."); idx >= 0 {
+		intPart = s[:idx]
+		decPart = s[idx:]
+	}
+
+	return addThousandsSeparators(intPart) + decPart
+}
+
+func addThousandsSeparators(s string) string {
+	if len(s) <= 3 {
+		return s
+	}
+
+	// Insert commas from right to left
+	var result strings.Builder
+	result.Grow(len(s) + (len(s)-1)/3)
+	for i, c := range s {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			result.WriteByte(',')
+		}
+		result.WriteRune(c)
+	}
+	return result.String()
+}
+
+// CompactNumber formats a number into a compact 4-char max string (e.g., 999, 9.9K, 120K).
+func CompactNumber(n int64) string {
 	switch {
 	case n < 1_000:
 		return strconv.FormatInt(n, 10)

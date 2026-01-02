@@ -618,13 +618,13 @@ func buildValueYAxisLabels(maxVal int64, height int) map[int]string {
 	}
 	tickCount := min(4, height)
 	if tickCount < 2 {
-		labels[height-1] = format.Number(0)
+		labels[height-1] = format.ShortNumber(0)
 		return labels
 	}
 	for i := range tickCount {
 		row := int(math.Round(float64(i) * float64(height-1) / float64(tickCount-1)))
 		val := maxVal * int64(tickCount-1-i) / int64(tickCount-1)
-		labels[row] = format.Number(val)
+		labels[row] = format.ShortNumber(val)
 	}
 	return labels
 }
@@ -729,8 +729,8 @@ func (j *JobMetrics) renderBucketsLegend(width int) string {
 		return ""
 	}
 	sep := j.styles.Muted.Render(" | ")
-	success := j.styles.MetricLabel.Render("Success: ") + j.styles.MetricValue.Render(format.Number(j.result.Totals.Success()))
-	failed := j.styles.MetricLabel.Render("Failed: ") + j.styles.MetricValue.Render(format.Number(j.result.Totals.Failed))
+	success := j.styles.MetricLabel.Render("Success: ") + j.styles.MetricValue.Render(format.ShortNumber(j.result.Totals.Success()))
+	failed := j.styles.MetricLabel.Render("Failed: ") + j.styles.MetricValue.Render(format.ShortNumber(j.result.Totals.Failed))
 	avg := j.styles.MetricLabel.Render("Avg: ") + j.styles.MetricValue.Render(fmt.Sprintf("%.2fs", j.result.Totals.AvgSeconds()))
 	line := success + sep + failed + sep + avg
 	return maxWidthStyle.MaxWidth(width).Render(line)

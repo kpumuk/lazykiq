@@ -2,13 +2,13 @@ package views
 
 import (
 	"context"
-	"fmt"
 	"slices"
 	"sort"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/filterinput"
@@ -206,10 +206,10 @@ func (m *Metrics) SetStyles(styles Styles) View {
 
 var metricsColumns = []table.Column{
 	{Title: "Job", Width: 36},
-	{Title: "Success", Width: 9},
-	{Title: "Failure", Width: 8},
-	{Title: "Total (s)", Width: 10},
-	{Title: "Avg (s)", Width: 9},
+	{Title: "Success", Width: 12},
+	{Title: "Failure", Width: 12},
+	{Title: "Total (s)", Width: 12},
+	{Title: "Avg (s)", Width: 12},
 }
 
 func (m *Metrics) fetchListCmd() tea.Cmd {
@@ -264,22 +264,53 @@ func (m *Metrics) updateTableRows() {
 		m.table.SetEmptyMessage("No recent metrics")
 	}
 
-	rows := make([]table.Row, 0, len(m.rows))
-	for _, row := range m.rows {
+	if len(m.rows) == 0 {
+		m.table.SetRows(nil)
+		m.updateTableSize()
+		return
+	}
+
+	numericCellStyle := lipgloss.NewStyle().Align(lipgloss.Right)
+
+	// First pass: format values into table rows and track max widths
+	rows := make([]table.Row, len(m.rows))
+
+	maxWidths := make([]int, len(metricsColumns))
+	for i, row := range m.rows {
 		success := format.Number(row.totals.Success())
 		failure := format.Number(row.totals.Failed)
-		totalSecs := fmt.Sprintf("%.2f", row.totals.Seconds)
-		avgSecs := fmt.Sprintf("%.2f", row.totals.AvgSeconds())
-		rows = append(rows, table.Row{
+		totalSec := format.Float(row.totals.Seconds, 2)
+		avgSec := format.Float(row.totals.AvgSeconds(), 2)
+
+		rows[i] = table.Row{
 			ID: row.class,
 			Cells: []string{
 				row.class,
 				success,
 				failure,
-				totalSecs,
-				avgSecs,
+				totalSec,
+				avgSec,
 			},
-		})
+		}
+
+		for j := range metricsColumns {
+			maxWidths[j] = max(metricsColumns[j].Width, maxWidths[j], len(rows[i].Cells[j]))
+		}
+	}
+
+	// Second pass: apply right-alignment styling to headers and cells
+	m.table.SetColumns([]table.Column{
+		{Title: "Job", Width: maxWidths[0]},
+		{Title: numericCellStyle.Width(maxWidths[1]).Render(metricsColumns[1].Title), Width: maxWidths[1] + 1},
+		{Title: numericCellStyle.Width(maxWidths[2]).Render(metricsColumns[2].Title), Width: maxWidths[2] + 1},
+		{Title: numericCellStyle.Width(maxWidths[3]).Render(metricsColumns[3].Title), Width: maxWidths[3] + 1},
+		{Title: numericCellStyle.Width(maxWidths[4]).Render(metricsColumns[4].Title), Width: maxWidths[4] + 1},
+	})
+
+	for i := range rows {
+		for j := 1; j < len(metricsColumns); j++ {
+			rows[i].Cells[j] = numericCellStyle.Width(maxWidths[j]).Render(rows[i].Cells[j])
+		}
 	}
 
 	m.table.SetRows(rows)

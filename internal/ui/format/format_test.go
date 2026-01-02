@@ -119,7 +119,7 @@ func TestArgs(t *testing.T) {
 	}
 }
 
-func TestNumber(t *testing.T) {
+func TestShortNumber(t *testing.T) {
 	tests := []struct {
 		name string
 		n    int64
@@ -134,14 +134,14 @@ func TestNumber(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := Number(tt.n); got != tt.want {
+			if got := ShortNumber(tt.n); got != tt.want {
 				t.Fatalf("Number(%d) = %q, want %q", tt.n, got, tt.want)
 			}
 		})
 	}
 }
 
-func TestShortNumber(t *testing.T) {
+func TestCompactNumber(t *testing.T) {
 	tests := []struct {
 		name string
 		n    int64
@@ -162,8 +162,60 @@ func TestShortNumber(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := ShortNumber(tt.n); got != tt.want {
-				t.Fatalf("ShortNumber(%d) = %q, want %q", tt.n, got, tt.want)
+			if got := CompactNumber(tt.n); got != tt.want {
+				t.Fatalf("CompactNumber(%d) = %q, want %q", tt.n, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNumber(t *testing.T) {
+	tests := []struct {
+		name string
+		n    int64
+		want string
+	}{
+		{name: "plain", n: 999, want: "999"},
+		{name: "negative", n: -999, want: "-999"},
+		{name: "kilo", n: 1000, want: "1,000"},
+		{name: "kilo-fraction", n: 1500, want: "1,500"},
+		{name: "mega", n: 1_000_000, want: "1,000,000"},
+		{name: "giga", n: 1_000_000_000, want: "1,000,000,000"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := Number(tt.n); got != tt.want {
+				t.Fatalf("Number(%d) = %q, want %q", tt.n, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFloat(t *testing.T) {
+	tests := []struct {
+		name      string
+		f         float64
+		precision int
+		want      string
+	}{
+		{name: "plain", f: 999, precision: 2, want: "999.00"},
+		{name: "negative", f: -999, precision: 2, want: "-999.00"},
+		{name: "negative-precision", f: -999, want: "-999.0", precision: 1},
+		{name: "kilo", f: 1000.123, precision: 2, want: "1,000.12"},
+		{name: "kilo-fraction", f: 1500.123, precision: 2, want: "1,500.12"},
+		{name: "mega", f: 1_000_000.123, precision: 2, want: "1,000,000.12"},
+		{name: "mega-fraction", f: 1_000_000.123, precision: 2, want: "1,000,000.12"},
+		{name: "mega-precision", f: 1_000_000.123, precision: 0, want: "1,000,000"},
+		{name: "giga", f: 1_000_000_000, precision: 2, want: "1,000,000,000.00"},
+		{name: "giga-fraction", f: 1_000_000_000.123, precision: 2, want: "1,000,000,000.12"},
+		{name: "giga-precision", f: 1_000_000_000.123, precision: 1, want: "1,000,000,000.1"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := Float(tt.f, tt.precision); got != tt.want {
+				t.Fatalf("Float(%f) = %q, want %q", tt.f, got, tt.want)
 			}
 		})
 	}
