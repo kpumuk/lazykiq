@@ -2,12 +2,26 @@
 package sidekiq
 
 import (
+	"context"
 	"fmt"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/redis/go-redis/v9/logging"
+)
+
+// Version represents detected Sidekiq version for key format selection.
+type Version int
+
+const (
+	// VersionUnknown means version could not be detected.
+	VersionUnknown Version = iota
+	// Version7 uses j|YYYYMMDD|H:M format (8-digit date).
+	Version7
+	// Version8 uses j|YYMMDD|H:M format (6-digit date).
+	Version8
 )
 
 func init() {
@@ -19,6 +33,7 @@ func init() {
 type Client struct {
 	redis           *redis.Client
 	displayRedisURL string
+	version         Version
 }
 
 // NewClient creates a new Sidekiq client configured from a Redis URL.
@@ -79,4 +94,41 @@ func (c *Client) Close() error {
 // Redis returns the underlying Redis client for benchmarking and testing.
 func (c *Client) Redis() *redis.Client {
 	return c.redis
+}
+
+// DetectVersion detects which Sidekiq version is being used based on key format.
+// Uses SCAN to efficiently find any existing metrics key.
+// This should be called once at startup and the result is cached.
+func (c *Client) DetectVersion(ctx context.Context) Version {
+	if c.version != VersionUnknown {
+		return c.version
+	}
+
+	// Sidekiq 8 uses j|YYMMDD|H:M (6-digit date)
+	// Sidekiq 7 uses j|YYYYMMDD|H:M (8-digit date)
+	// We can distinguish by the date portion length after "j|"
+
+	keys, _, err := c.redis.Scan(ctx, 0, "j|*", 10).Result()
+	if err != nil || len(keys) == 0 {
+		return VersionUnknown
+	}
+
+	// Check first valid key
+	for _, key := range keys {
+		if len(key) < 4 {
+			continue
+		}
+		// Key format: j|DATE|H:M - find second pipe to get date length
+		pipeIdx := strings.IndexRune(key[2:], '|')
+		if pipeIdx == 6 {
+			c.version = Version8
+			return c.version
+		}
+		if pipeIdx == 8 {
+			c.version = Version7
+			return c.version
+		}
+	}
+
+	return VersionUnknown
 }
