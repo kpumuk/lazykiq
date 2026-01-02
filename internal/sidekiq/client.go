@@ -3,7 +3,6 @@ package sidekiq
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -90,81 +89,113 @@ func (c *Client) Close() error {
 	return c.redis.Close()
 }
 
+// Redis returns the underlying Redis client for benchmarking and testing.
+func (c *Client) Redis() *redis.Client {
+	return c.redis
+}
+
 // GetStats fetches current Sidekiq statistics from Redis.
+// Uses pipelining to minimize roundtrips, following Sidekiq's fetch_stats_fast!/fetch_stats_slow! pattern.
 func (c *Client) GetStats(ctx context.Context) (Stats, error) {
 	stats := Stats{}
 
-	// Get processed count
-	processed, err := c.redis.Get(ctx, "stat:processed").Result()
-	if err != nil && !errors.Is(err, redis.Nil) {
+	// Pipeline 1: Fast stats that don't require iteration
+	pipe1Results, err := c.redis.Pipelined(ctx, func(pipe redis.Pipeliner) error {
+		pipe.Get(ctx, "stat:processed")
+		pipe.Get(ctx, "stat:failed")
+		pipe.ZCard(ctx, "retry")
+		pipe.ZCard(ctx, "schedule")
+		pipe.ZCard(ctx, "dead")
+		pipe.SMembers(ctx, "processes")
+		pipe.SMembers(ctx, "queues")
+		return nil
+	})
+	if err != nil {
 		return stats, err
-	}
-	if err == nil {
-		stats.Processed, _ = strconv.ParseInt(processed, 10, 64)
 	}
 
-	// Get failed count
-	failed, err := c.redis.Get(ctx, "stat:failed").Result()
-	if err != nil && !errors.Is(err, redis.Nil) {
-		return stats, err
-	}
-	if err == nil {
-		stats.Failed, _ = strconv.ParseInt(failed, 10, 64)
-	}
-
-	// Get busy workers count by summing from all process hashes
-	processes, err := c.redis.SMembers(ctx, "processes").Result()
-	if err != nil && !errors.Is(err, redis.Nil) {
-		return stats, err
-	}
-	var busy int64
-	for _, processKey := range processes {
-		// Get the "busy" field directly from the process hash
-		busyStr, err := c.redis.HGet(ctx, processKey, "busy").Result()
-		if err != nil && !errors.Is(err, redis.Nil) {
-			continue
+	// Parse fast stats
+	if cmd, ok := pipe1Results[0].(*redis.StringCmd); ok {
+		if val, err := cmd.Result(); err == nil {
+			stats.Processed, _ = strconv.ParseInt(val, 10, 64)
 		}
-		if err == nil {
-			busyCount, _ := strconv.ParseInt(busyStr, 10, 64)
-			busy += busyCount
+	}
+	if cmd, ok := pipe1Results[1].(*redis.StringCmd); ok {
+		if val, err := cmd.Result(); err == nil {
+			stats.Failed, _ = strconv.ParseInt(val, 10, 64)
+		}
+	}
+	if cmd, ok := pipe1Results[2].(*redis.IntCmd); ok {
+		if val, err := cmd.Result(); err == nil {
+			stats.Retries = val
+		}
+	}
+	if cmd, ok := pipe1Results[3].(*redis.IntCmd); ok {
+		if val, err := cmd.Result(); err == nil {
+			stats.Scheduled = val
+		}
+	}
+	if cmd, ok := pipe1Results[4].(*redis.IntCmd); ok {
+		if val, err := cmd.Result(); err == nil {
+			stats.Dead = val
+		}
+	}
+
+	var processes []string
+	if cmd, ok := pipe1Results[5].(*redis.StringSliceCmd); ok {
+		if val, err := cmd.Result(); err == nil {
+			processes = val
+		}
+	}
+
+	var queues []string
+	if cmd, ok := pipe1Results[6].(*redis.StringSliceCmd); ok {
+		if val, err := cmd.Result(); err == nil {
+			queues = val
+		}
+	}
+
+	// Pipeline 2: Slow stats that require aggregation
+	if len(processes) == 0 && len(queues) == 0 {
+		return stats, nil
+	}
+
+	pipe2Results, err := c.redis.Pipelined(ctx, func(pipe redis.Pipeliner) error {
+		for _, processKey := range processes {
+			pipe.HGet(ctx, processKey, "busy")
+		}
+		for _, queue := range queues {
+			pipe.LLen(ctx, "queue:"+queue)
+		}
+		return nil
+	})
+	if err != nil {
+		return stats, err
+	}
+
+	// Sum up busy counts
+	var busy int64
+	for i := range processes {
+		if cmd, ok := pipe2Results[i].(*redis.StringCmd); ok {
+			if val, err := cmd.Result(); err == nil {
+				count, _ := strconv.ParseInt(val, 10, 64)
+				busy += count
+			}
 		}
 	}
 	stats.Busy = busy
 
-	// Get enqueued count by summing all queue sizes
-	queues, err := c.redis.SMembers(ctx, "queues").Result()
-	if err != nil && !errors.Is(err, redis.Nil) {
-		return stats, err
-	}
+	// Sum up queue sizes
 	var enqueued int64
-	for _, queue := range queues {
-		size, err := c.redis.LLen(ctx, "queue:"+queue).Result()
-		if err == nil {
-			enqueued += size
+	offset := len(processes)
+	for i := range queues {
+		if cmd, ok := pipe2Results[offset+i].(*redis.IntCmd); ok {
+			if val, err := cmd.Result(); err == nil {
+				enqueued += val
+			}
 		}
 	}
 	stats.Enqueued = enqueued
-
-	// Get retries count
-	retries, err := c.redis.ZCard(ctx, "retry").Result()
-	if err != nil && !errors.Is(err, redis.Nil) {
-		return stats, err
-	}
-	stats.Retries = retries
-
-	// Get scheduled count
-	scheduled, err := c.redis.ZCard(ctx, "schedule").Result()
-	if err != nil && !errors.Is(err, redis.Nil) {
-		return stats, err
-	}
-	stats.Scheduled = scheduled
-
-	// Get dead count
-	dead, err := c.redis.ZCard(ctx, "dead").Result()
-	if err != nil && !errors.Is(err, redis.Nil) {
-		return stats, err
-	}
-	stats.Dead = dead
 
 	return stats, nil
 }
