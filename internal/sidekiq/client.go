@@ -132,3 +132,13 @@ func (c *Client) DetectVersion(ctx context.Context) Version {
 
 	return VersionUnknown
 }
+
+// MetricsPeriodOrder returns the appropriate period order based on detected Sidekiq version.
+// Sidekiq 7 metrics are limited to 8 hours.
+func (c *Client) MetricsPeriodOrder(ctx context.Context) []string {
+	version := c.DetectVersion(ctx)
+	if version == Version7 {
+		return MetricsPeriodOrderSidekiq7
+	}
+	return MetricsPeriodOrder
+}

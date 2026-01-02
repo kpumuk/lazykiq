@@ -127,14 +127,6 @@ func (j *JobMetrics) View() string {
 		}, title, "Loading...", j.width, j.height)
 	}
 
-	if !j.hasDetailData() {
-		return messagebox.Render(messagebox.Styles{
-			Title:  j.styles.Title,
-			Muted:  j.styles.Muted,
-			Border: j.styles.FocusBorder,
-		}, title, "No job metrics found", j.width, j.height)
-	}
-
 	contentWidth := max(j.width-4, 0)
 	if contentWidth == 0 || j.height <= 0 {
 		return ""
@@ -238,7 +230,7 @@ func (j *JobMetrics) SetStyles(styles Styles) View {
 // SetJobMetrics sets the job name and period to display.
 func (j *JobMetrics) SetJobMetrics(jobName, period string) {
 	j.jobName = jobName
-	if idx := indexOf(j.periods, period); idx >= 0 {
+	if idx := slices.Index(j.periods, period); idx >= 0 {
 		j.periodIdx = idx
 		j.period = j.periods[idx]
 	} else {
@@ -269,7 +261,7 @@ func (j *JobMetrics) fetchCmd() tea.Cmd {
 		ctx := context.Background()
 		params, ok := sidekiq.MetricsPeriods[period]
 		if !ok {
-			params = sidekiq.MetricsPeriods[sidekiq.MetricsPeriodOrder[0]]
+			params = sidekiq.MetricsPeriods[j.periods[0]]
 		}
 		result, err := j.client.GetMetricsJobDetail(ctx, jobName, params)
 		if err != nil {
@@ -290,18 +282,22 @@ func (j *JobMetrics) adjustPeriod(delta int) (View, tea.Cmd) {
 	return j, j.fetchCmd()
 }
 
-func (j *JobMetrics) hasDetailData() bool {
-	if len(j.result.Hist) == 0 {
-		return false
-	}
-	return j.result.Totals.Processed > 0 || j.result.Totals.Failed > 0
-}
-
 func (j *JobMetrics) detailMeta() string {
 	if j.period == "" {
 		return ""
 	}
 	return j.styles.MetricLabel.Render("period: ") + j.styles.MetricValue.Render(j.period)
+}
+
+func (j *JobMetrics) noDataMessage(_ int) string {
+	jobName := j.jobName
+	if jobName == "" {
+		jobName = "unknown"
+	}
+	line1 := j.styles.Muted.Render("No data available for the job")
+	line2 := j.styles.Muted.Bold(true).Render(jobName)
+	line3 := j.styles.Muted.Render("Try increasing period")
+	return line1 + "\n" + line2 + "\n" + line3
 }
 
 func splitJobMetricsHeights(total int) (int, int) {
@@ -323,11 +319,11 @@ func (j *JobMetrics) renderColumnsChart(width, height int, totals []int64, label
 		return ""
 	}
 	if len(totals) == 0 {
-		return renderCentered(width, height, j.styles.Muted.Render("No data"))
+		return renderCentered(width, height, j.noDataMessage(width))
 	}
 	maxTotal := slices.Max(totals)
 	if maxTotal == 0 {
-		return renderCentered(width, height, j.styles.Muted.Render("No data"))
+		return renderCentered(width, height, j.noDataMessage(width))
 	}
 
 	legend := j.renderBucketsLegend(width)
@@ -345,17 +341,17 @@ func (j *JobMetrics) renderColumnsChart(width, height int, totals []int64, label
 	labelWidth := maxLabelWidth(yLabels)
 	chartWidth := max(width-labelWidth-1, 1)
 	if chartWidth < 2 {
-		return renderCentered(width, height, j.styles.Muted.Render("No data"))
+		return renderCentered(width, height, j.noDataMessage(width))
 	}
 
 	plotWidth := max(chartWidth-1, 1)
 	series := remapSeries(totals, plotWidth)
 	if len(series) == 0 {
-		return renderCentered(width, height, j.styles.Muted.Render("No data"))
+		return renderCentered(width, height, j.noDataMessage(width))
 	}
 	maxVal := slices.Max(series)
 	if maxVal == 0 {
-		return renderCentered(width, height, j.styles.Muted.Render("No data"))
+		return renderCentered(width, height, j.noDataMessage(width))
 	}
 
 	maxHeight := float64(max(chartHeight-1, 1))
@@ -390,13 +386,13 @@ func (j *JobMetrics) renderScatter(width, height int, buckets []time.Time) strin
 		return ""
 	}
 	if len(buckets) == 0 {
-		return renderCentered(width, height, j.styles.Muted.Render("No data"))
+		return renderCentered(width, height, j.noDataMessage(width))
 	}
 
 	// Use pre-processed data
 	bucketCount := j.processed.bucketCount
 	if bucketCount == 0 {
-		return renderCentered(width, height, j.styles.Muted.Render("No data"))
+		return renderCentered(width, height, j.noDataMessage(width))
 	}
 
 	labels := sidekiq.MetricsHistogramLabels
@@ -408,7 +404,7 @@ func (j *JobMetrics) renderScatter(width, height int, buckets []time.Time) strin
 	maxCount := j.processed.maxCount
 	maxBucket := j.processed.maxBucket
 	if len(points) == 0 || maxCount == 0 {
-		return renderCentered(width, height, j.styles.Muted.Render("No data"))
+		return renderCentered(width, height, j.noDataMessage(width))
 	}
 
 	minX := 0.0
@@ -786,11 +782,32 @@ func colorToHex(c color.Color) string {
 	return fmt.Sprintf("#%02x%02x%02x", r>>8, g>>8, b>>8)
 }
 
-func indexOf(values []string, target string) int {
-	for i, value := range values {
-		if value == target {
-			return i
-		}
+func renderCentered(width, height int, value string) string {
+	if height < 1 {
+		return ""
 	}
-	return -1
+	lines := make([]string, height)
+	for i := range lines {
+		lines[i] = strings.Repeat(" ", width)
+	}
+	if width <= 0 {
+		return strings.Join(lines, "\n")
+	}
+
+	// Handle multi-line content
+	contentLines := strings.Split(value, "\n")
+	contentHeight := len(contentLines)
+	startLine := max((height-contentHeight)/2, 0)
+
+	for i, contentLine := range contentLines {
+		lineIdx := startLine + i
+		if lineIdx >= height {
+			break
+		}
+		trimmed := maxWidthStyle.MaxWidth(width).Render(contentLine)
+		pad := max((width-lipgloss.Width(trimmed))/2, 0)
+		lines[lineIdx] = strings.Repeat(" ", pad) + trimmed
+	}
+
+	return strings.Join(lines, "\n")
 }

@@ -2,7 +2,6 @@ package views
 
 import (
 	"context"
-	"slices"
 	"sort"
 	"strings"
 
@@ -49,12 +48,10 @@ type Metrics struct {
 
 // NewMetrics creates a new Metrics view.
 func NewMetrics(client *sidekiq.Client) *Metrics {
-	periods := slices.Clone(sidekiq.MetricsPeriodOrder)
-
 	m := &Metrics{
 		client:  client,
-		periods: periods,
-		period:  periods[0],
+		periods: sidekiq.MetricsPeriodOrder,
+		period:  sidekiq.MetricsPeriodOrder[0],
 		filter:  filterinput.New(),
 		table: table.New(
 			table.WithColumns(metricsColumns),
@@ -217,9 +214,17 @@ func (m *Metrics) fetchListCmd() tea.Cmd {
 	filter := m.filter.Query()
 	return func() tea.Msg {
 		ctx := context.Background()
+
+		// Update periods based on detected Sidekiq version
+		m.periods = m.client.MetricsPeriodOrder(ctx)
+		if m.periodIdx >= len(m.periods) {
+			m.periodIdx = len(m.periods) - 1
+			m.period = m.periods[m.periodIdx]
+		}
+
 		params, ok := sidekiq.MetricsPeriods[period]
 		if !ok {
-			params = sidekiq.MetricsPeriods[sidekiq.MetricsPeriodOrder[0]]
+			params = sidekiq.MetricsPeriods[m.periods[0]]
 		}
 		result, err := m.client.GetMetricsTopJobs(ctx, params, filter)
 		if err != nil {

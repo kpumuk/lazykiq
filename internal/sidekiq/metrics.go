@@ -42,6 +42,9 @@ var MetricsPeriods = map[string]MetricsPeriod{
 // MetricsPeriodOrder defines the display order for periods.
 var MetricsPeriodOrder = []string{"1h", "2h", "4h", "8h", "24h", "48h", "72h"}
 
+// MetricsPeriodOrderSidekiq7 defines periods for Sidekiq 7 (limited to 8h).
+var MetricsPeriodOrderSidekiq7 = []string{"1h", "2h", "4h", "8h"}
+
 const metricsHistogramBuckets = 26
 
 // metricsJobDetailLuaScript fetches job metrics in a single round-trip.
