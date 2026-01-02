@@ -44,9 +44,9 @@ type JobMetrics struct {
 	period    string
 	periodIdx int
 	result    sidekiq.MetricsJobDetailResult
+	processed processedMetrics // Pre-computed histogram data
 	focused   int
 
-	maxWidthStyle     lipgloss.Style
 	chartAxisStyle    oldgloss.Style
 	chartBarStyle     oldgloss.Style
 	scatterAxisStyle  oldgloss.Style
@@ -81,6 +81,8 @@ func (j *JobMetrics) Update(msg tea.Msg) (View, tea.Cmd) {
 	switch msg := msg.(type) {
 	case jobMetricsDataMsg:
 		j.result = msg.result
+		// Pre-process histogram data once on arrival instead of every View() call
+		j.processed = processHistogramData(j.result.Hist, j.result.BucketCount)
 		j.ready = true
 		return j, nil
 
@@ -140,9 +142,9 @@ func (j *JobMetrics) View() string {
 
 	topHeight, bottomHeight := splitJobMetricsHeights(j.height)
 
-	buckets := sortedMetricBuckets(j.result.Hist)
-	bucketTotals := histogramTotals(j.result.Hist)
-	slices.Reverse(bucketTotals)
+	// Use pre-processed data computed on data arrival
+	buckets := j.processed.sortedBuckets
+	bucketTotals := j.processed.bucketTotals
 	labels := sidekiq.MetricsHistogramLabels
 	if len(labels) > len(bucketTotals) {
 		labels = labels[:len(bucketTotals)]
@@ -152,7 +154,7 @@ func (j *JobMetrics) View() string {
 	topChartHeight := max(topHeight-2, 0)
 	bottomChartHeight := max(bottomHeight-2, 0)
 	topChart := j.renderColumnsChart(contentWidth, topChartHeight, bucketTotals, labels)
-	bottomChart := j.renderScatter(contentWidth, bottomChartHeight, buckets, j.result.Hist)
+	bottomChart := j.renderScatter(contentWidth, bottomChartHeight, buckets)
 
 	topFrame := frame.New(
 		frame.WithStyles(frame.Styles{
@@ -245,6 +247,7 @@ func (j *JobMetrics) SetJobMetrics(jobName, period string) {
 	}
 	j.ready = false
 	j.result = sidekiq.MetricsJobDetailResult{}
+	j.processed = processedMetrics{}
 	j.focused = 0
 }
 
@@ -255,6 +258,7 @@ func (j *JobMetrics) Dispose() {
 	j.periodIdx = 0
 	j.period = j.periods[0]
 	j.result = sidekiq.MetricsJobDetailResult{}
+	j.processed = processedMetrics{}
 	j.focused = 0
 }
 
@@ -381,7 +385,7 @@ func (j *JobMetrics) renderColumnsChart(width, height int, totals []int64, label
 	return strings.Join(chartLines, "\n")
 }
 
-func (j *JobMetrics) renderScatter(width, height int, buckets []time.Time, hist map[string][]int64) string {
+func (j *JobMetrics) renderScatter(width, height int, buckets []time.Time) string {
 	if width < 2 || height < 2 {
 		return ""
 	}
@@ -389,7 +393,8 @@ func (j *JobMetrics) renderScatter(width, height int, buckets []time.Time, hist 
 		return renderCentered(width, height, j.styles.Muted.Render("No data"))
 	}
 
-	bucketCount := histBucketCount(hist)
+	// Use pre-processed data
+	bucketCount := j.processed.bucketCount
 	if bucketCount == 0 {
 		return renderCentered(width, height, j.styles.Muted.Render("No data"))
 	}
@@ -399,7 +404,9 @@ func (j *JobMetrics) renderScatter(width, height int, buckets []time.Time, hist 
 		labels = labels[:bucketCount]
 	}
 
-	points, maxCount, maxBucket := buildScatterPoints(buckets, hist, bucketCount)
+	points := j.processed.scatterPoints
+	maxCount := j.processed.maxCount
+	maxBucket := j.processed.maxBucket
 	if len(points) == 0 || maxCount == 0 {
 		return renderCentered(width, height, j.styles.Muted.Render("No data"))
 	}
@@ -471,45 +478,11 @@ func (j *JobMetrics) renderScatter(width, height int, buckets []time.Time, hist 
 }
 
 func (j *JobMetrics) initChartStyles() {
-	j.maxWidthStyle = lipgloss.NewStyle()
 	j.chartAxisStyle = oldgloss.NewStyle().Foreground(adaptiveColor(theme.DefaultTheme.TextMuted))
 	j.chartBarStyle = oldgloss.NewStyle().Foreground(adaptiveColor(theme.DefaultTheme.Primary))
 	j.scatterAxisStyle = oldgloss.NewStyle().Foreground(adaptiveColor(theme.DefaultTheme.TextMuted))
 	j.scatterLabelStyle = oldgloss.NewStyle().Foreground(adaptiveColor(theme.DefaultTheme.TextMuted))
 	j.scatterPointStyle = oldgloss.NewStyle().Foreground(adaptiveColor(theme.DefaultTheme.Primary))
-}
-
-func sortedMetricBuckets(hist map[string][]int64) []time.Time {
-	buckets := make([]time.Time, 0, len(hist))
-	for key := range hist {
-		t, err := time.Parse(time.RFC3339, key)
-		if err != nil {
-			continue
-		}
-		buckets = append(buckets, t)
-	}
-
-	sort.Slice(buckets, func(i, j int) bool {
-		return buckets[i].Before(buckets[j])
-	})
-	return buckets
-}
-
-func histogramTotals(hist map[string][]int64) []int64 {
-	bucketCount := histBucketCount(hist)
-	if bucketCount == 0 {
-		return nil
-	}
-	out := make([]int64, bucketCount)
-	for _, values := range hist {
-		for i, v := range values {
-			if i >= bucketCount {
-				break
-			}
-			out[i] += v
-		}
-	}
-	return out
 }
 
 type scatterPoint struct {
@@ -518,29 +491,79 @@ type scatterPoint struct {
 	Count int64
 }
 
-func buildScatterPoints(buckets []time.Time, hist map[string][]int64, bucketCount int) ([]scatterPoint, int64, int) {
-	points := make([]scatterPoint, 0)
-	var maxCount int64
-	maxBucket := -1
+// processedMetrics holds pre-computed data from histogram to avoid repeated processing in View().
+type processedMetrics struct {
+	sortedBuckets []time.Time    // Time buckets sorted chronologically
+	bucketTotals  []int64        // Histogram totals per bucket (reversed for chart)
+	scatterPoints []scatterPoint // Pre-built scatter points
+	maxCount      int64          // Maximum count for scatter point sizing
+	maxBucket     int            // Maximum bucket index with data
+	bucketCount   int            // Number of histogram buckets
+}
 
-	for tIdx, t := range buckets {
-		key := t.Format(time.RFC3339)
-		values := hist[key]
-		if len(values) == 0 {
+// processHistogramData performs single-pass processing of histogram data.
+// Returns all computed values needed for rendering charts.
+func processHistogramData(hist map[string][]int64, bucketCount int) processedMetrics {
+	if len(hist) == 0 || bucketCount == 0 {
+		return processedMetrics{}
+	}
+
+	// First pass: parse times, collect entries, and count non-zero values for pre-allocation
+	type bucketEntry struct {
+		time   time.Time
+		values []int64
+	}
+	entries := make([]bucketEntry, 0, len(hist))
+	nonZeroCount := 0
+
+	for key, values := range hist {
+		t, err := time.Parse(time.RFC3339, key)
+		if err != nil {
 			continue
 		}
-		for bIdx, count := range values {
+		entries = append(entries, bucketEntry{time: t, values: values})
+		for _, count := range values {
+			if count > 0 {
+				nonZeroCount++
+			}
+		}
+	}
+
+	// Sort by time
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].time.Before(entries[j].time)
+	})
+
+	// Pre-allocate with exact/known capacities
+	result := processedMetrics{
+		sortedBuckets: make([]time.Time, 0, len(entries)),
+		bucketTotals:  make([]int64, bucketCount),
+		scatterPoints: make([]scatterPoint, 0, nonZeroCount),
+		bucketCount:   bucketCount,
+		maxBucket:     -1,
+	}
+
+	// Second pass: compute totals and scatter points (now in sorted order)
+	for tIdx, entry := range entries {
+		result.sortedBuckets = append(result.sortedBuckets, entry.time)
+
+		for bIdx, count := range entry.values {
+			if bIdx >= bucketCount {
+				break
+			}
+			result.bucketTotals[bIdx] += count
+
 			if count == 0 {
 				continue
 			}
-			if count > maxCount {
-				maxCount = count
+			if count > result.maxCount {
+				result.maxCount = count
 			}
 			bucketIdx := bucketCount - 1 - bIdx
-			if bucketIdx > maxBucket {
-				maxBucket = bucketIdx
+			if bucketIdx > result.maxBucket {
+				result.maxBucket = bucketIdx
 			}
-			points = append(points, scatterPoint{
+			result.scatterPoints = append(result.scatterPoints, scatterPoint{
 				X:     float64(tIdx),
 				Y:     float64(bucketIdx),
 				Count: count,
@@ -548,16 +571,10 @@ func buildScatterPoints(buckets []time.Time, hist map[string][]int64, bucketCoun
 		}
 	}
 
-	return points, maxCount, maxBucket
-}
+	// Reverse totals for chart display (matches original behavior)
+	slices.Reverse(result.bucketTotals)
 
-func histBucketCount(hist map[string][]int64) int {
-	for _, values := range hist {
-		if len(values) > 0 {
-			return len(values)
-		}
-	}
-	return 0
+	return result
 }
 
 func axisMap(total, target int) []int {
@@ -716,7 +733,7 @@ func (j *JobMetrics) renderBucketsLegend(width int) string {
 	failed := j.styles.MetricLabel.Render("Failed: ") + j.styles.MetricValue.Render(format.Number(j.result.Totals.Failed))
 	avg := j.styles.MetricLabel.Render("Avg: ") + j.styles.MetricValue.Render(fmt.Sprintf("%.2fs", j.result.Totals.AvgSeconds()))
 	line := success + sep + failed + sep + avg
-	return j.maxWidthStyle.MaxWidth(width).Render(line)
+	return maxWidthStyle.MaxWidth(width).Render(line)
 }
 
 func (j *JobMetrics) renderScatterLegend(width int) string {
@@ -728,7 +745,7 @@ func (j *JobMetrics) renderScatterLegend(width int) string {
 		return ""
 	}
 	line := j.styles.MetricLabel.Render("Range: ") + j.styles.MetricValue.Render(rangeText)
-	return j.maxWidthStyle.MaxWidth(width).Render(line)
+	return maxWidthStyle.MaxWidth(width).Render(line)
 }
 
 func buildTimeBucketLabels(buckets []time.Time) []string {

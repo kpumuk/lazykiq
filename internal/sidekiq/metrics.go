@@ -132,6 +132,7 @@ type MetricsJobDetailResult struct {
 	Buckets     []time.Time
 	Totals      MetricsJobTotals
 	Hist        map[string][]int64
+	BucketCount int // Number of histogram buckets (cached to avoid iteration)
 }
 
 // GetMetricsTopJobs fetches aggregated metrics for all jobs within the period.
@@ -314,6 +315,9 @@ func (c *Client) getMetricsJobDetailLua(ctx context.Context, className string, p
 					}
 					slices.Reverse(merged)
 					result.Hist[bucketTimeStr] = merged
+					if result.BucketCount == 0 {
+						result.BucketCount = len(merged)
+					}
 				}
 			}
 		}
