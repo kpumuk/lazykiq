@@ -23,7 +23,7 @@ type errorsSummaryDataMsg struct {
 
 // ErrorsSummary shows a summary of errors grouped by job and error class.
 type ErrorsSummary struct {
-	client     *sidekiq.Client
+	client     sidekiq.API
 	width      int
 	height     int
 	styles     Styles
@@ -36,7 +36,7 @@ type ErrorsSummary struct {
 }
 
 // NewErrorsSummary creates a new ErrorsSummary view.
-func NewErrorsSummary(client *sidekiq.Client) *ErrorsSummary {
+func NewErrorsSummary(client sidekiq.API) *ErrorsSummary {
 	return &ErrorsSummary{
 		client: client,
 		filter: filterinput.New(),

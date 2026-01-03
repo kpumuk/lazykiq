@@ -29,7 +29,7 @@ const retriesPageSize = 25
 
 // Retries shows failed jobs pending retry.
 type Retries struct {
-	client      *sidekiq.Client
+	client      sidekiq.API
 	width       int
 	height      int
 	styles      Styles
@@ -43,7 +43,7 @@ type Retries struct {
 }
 
 // NewRetries creates a new Retries view.
-func NewRetries(client *sidekiq.Client) *Retries {
+func NewRetries(client sidekiq.API) *Retries {
 	return &Retries{
 		client:      client,
 		currentPage: 1,

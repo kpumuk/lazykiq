@@ -33,7 +33,7 @@ type jobMetricsDataMsg struct {
 
 // JobMetrics shows per-job execution metrics.
 type JobMetrics struct {
-	client *sidekiq.Client
+	client sidekiq.API
 	width  int
 	height int
 	styles Styles
@@ -55,7 +55,7 @@ type JobMetrics struct {
 }
 
 // NewJobMetrics creates a new job metrics view.
-func NewJobMetrics(client *sidekiq.Client) *JobMetrics {
+func NewJobMetrics(client sidekiq.API) *JobMetrics {
 	periods := []string{"1h", "2h", "4h", "8h"}
 	m := &JobMetrics{
 		client:  client,

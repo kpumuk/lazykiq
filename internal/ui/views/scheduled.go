@@ -28,7 +28,7 @@ type scheduledDataMsg struct {
 
 // Scheduled shows jobs scheduled for future execution.
 type Scheduled struct {
-	client      *sidekiq.Client
+	client      sidekiq.API
 	width       int
 	height      int
 	styles      Styles
@@ -42,7 +42,7 @@ type Scheduled struct {
 }
 
 // NewScheduled creates a new Scheduled view.
-func NewScheduled(client *sidekiq.Client) *Scheduled {
+func NewScheduled(client sidekiq.API) *Scheduled {
 	return &Scheduled{
 		client:      client,
 		currentPage: 1,

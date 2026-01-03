@@ -36,7 +36,7 @@ type DashboardRedisInfoMsg struct {
 
 // Dashboard is the main overview view.
 type Dashboard struct {
-	client *sidekiq.Client
+	client sidekiq.API
 	width  int
 	height int
 	styles Styles
@@ -64,7 +64,7 @@ type Dashboard struct {
 }
 
 // NewDashboard creates a new Dashboard view.
-func NewDashboard(client *sidekiq.Client) *Dashboard {
+func NewDashboard(client sidekiq.API) *Dashboard {
 	return &Dashboard{
 		client:          client,
 		focusedPane:     dashboardPaneRealtime,

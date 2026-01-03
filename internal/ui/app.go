@@ -56,12 +56,12 @@ type App struct {
 	navbar          navbar.Model
 	errorPopup      errorpopup.Model
 	styles          theme.Styles
-	sidekiq         *sidekiq.Client
+	sidekiq         sidekiq.API
 	connectionError error
 }
 
 // New creates a new App instance.
-func New(client *sidekiq.Client, version string) App {
+func New(client sidekiq.API, version string) App {
 	styles := theme.NewStyles()
 	brand := "Lazykiq"
 	if version != "" {

@@ -38,7 +38,7 @@ const queuesPageSize = 25
 
 // Queues shows the list of Sidekiq queues.
 type Queues struct {
-	client        *sidekiq.Client
+	client        sidekiq.API
 	width         int
 	height        int
 	styles        Styles
@@ -52,7 +52,7 @@ type Queues struct {
 }
 
 // NewQueues creates a new Queues view.
-func NewQueues(client *sidekiq.Client) *Queues {
+func NewQueues(client sidekiq.API) *Queues {
 	return &Queues{
 		client:        client,
 		currentPage:   1,

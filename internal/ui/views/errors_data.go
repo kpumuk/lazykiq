@@ -28,7 +28,7 @@ type errorGroupJob struct {
 	source string
 }
 
-func fetchErrorJobs(ctx context.Context, client *sidekiq.Client, query string) ([]*sidekiq.SortedEntry, []*sidekiq.SortedEntry, error) {
+func fetchErrorJobs(ctx context.Context, client sidekiq.API, query string) ([]*sidekiq.SortedEntry, []*sidekiq.SortedEntry, error) {
 	if query != "" {
 		deadJobs, err := client.ScanDeadJobs(ctx, query)
 		if err != nil {

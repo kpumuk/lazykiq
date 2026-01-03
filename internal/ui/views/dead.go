@@ -28,7 +28,7 @@ type deadDataMsg struct {
 
 // Dead shows dead/morgue jobs.
 type Dead struct {
-	client      *sidekiq.Client
+	client      sidekiq.API
 	width       int
 	height      int
 	styles      Styles
@@ -42,7 +42,7 @@ type Dead struct {
 }
 
 // NewDead creates a new Dead view.
-func NewDead(client *sidekiq.Client) *Dead {
+func NewDead(client sidekiq.API) *Dead {
 	return &Dead{
 		client:      client,
 		currentPage: 1,

@@ -26,7 +26,7 @@ type busyDataMsg struct {
 
 // Busy shows active workers/processes.
 type Busy struct {
-	client          *sidekiq.Client
+	client          sidekiq.API
 	width           int
 	height          int
 	styles          Styles
@@ -42,7 +42,7 @@ type Busy struct {
 const processGlyph = "⚙"
 
 // NewBusy creates a new Busy view.
-func NewBusy(client *sidekiq.Client) *Busy {
+func NewBusy(client sidekiq.API) *Busy {
 	return &Busy{
 		client:          client,
 		selectedProcess: -1, // Show all jobs by default

@@ -31,7 +31,7 @@ type metricsRow struct {
 
 // Metrics shows job execution metrics.
 type Metrics struct {
-	client *sidekiq.Client
+	client sidekiq.API
 	width  int
 	height int
 	styles Styles
@@ -47,7 +47,7 @@ type Metrics struct {
 }
 
 // NewMetrics creates a new Metrics view.
-func NewMetrics(client *sidekiq.Client) *Metrics {
+func NewMetrics(client sidekiq.API) *Metrics {
 	m := &Metrics{
 		client:  client,
 		periods: sidekiq.MetricsPeriodOrder,

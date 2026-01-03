@@ -23,7 +23,7 @@ type errorsDetailsDataMsg struct {
 
 // ErrorsDetails shows all jobs for a selected error group.
 type ErrorsDetails struct {
-	client *sidekiq.Client
+	client sidekiq.API
 	width  int
 	height int
 	styles Styles
@@ -36,7 +36,7 @@ type ErrorsDetails struct {
 }
 
 // NewErrorsDetails creates a new ErrorsDetails view.
-func NewErrorsDetails(client *sidekiq.Client) *ErrorsDetails {
+func NewErrorsDetails(client sidekiq.API) *ErrorsDetails {
 	return &ErrorsDetails{
 		client: client,
 		table: table.New(
