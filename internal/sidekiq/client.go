@@ -107,13 +107,15 @@ func (c *Client) DetectVersion(ctx context.Context) Version {
 	// Sidekiq 8 uses j|YYMMDD|H:M (6-digit date)
 	// Sidekiq 7 uses j|YYYYMMDD|H:M (8-digit date)
 	// We can distinguish by the date portion length after "j|"
+	// If both formats exist (during upgrade), prefer Version8
 
 	keys, _, err := c.redis.Scan(ctx, 0, "j|*", 10).Result()
 	if err != nil || len(keys) == 0 {
 		return VersionUnknown
 	}
 
-	// Check first valid key
+	// Check all keys, prefer Version8 over Version7
+	detected := VersionUnknown
 	for _, key := range keys {
 		if len(key) < 4 {
 			continue
@@ -124,13 +126,13 @@ func (c *Client) DetectVersion(ctx context.Context) Version {
 			c.version = Version8
 			return c.version
 		}
-		if pipeIdx == 8 {
-			c.version = Version7
-			return c.version
+		if pipeIdx == 8 && detected == VersionUnknown {
+			detected = Version7
 		}
 	}
 
-	return VersionUnknown
+	c.version = detected
+	return c.version
 }
 
 // MetricsPeriodOrder returns the appropriate period order based on detected Sidekiq version.
