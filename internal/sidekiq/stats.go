@@ -32,7 +32,7 @@ local busy = 0
 for _, proc in ipairs(processes) do
     local b = redis.call('HGET', proc, 'busy')
     if b then
-        busy = busy + tonumber(b)
+        busy = busy + (tonumber(b) or 0)
     end
 end
 
