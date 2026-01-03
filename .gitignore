@@ -5,6 +5,7 @@
 
 # Temp files
 /tmp
+/coverage.out
 
 # IDE configurations
 /.idea

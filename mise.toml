@@ -21,6 +21,11 @@ alias = "fmt"
 description = "Run tests"
 run = "go test ./..."
 
+[tasks.coverage]
+description = "Run tests with coverage"
+run = "go test -coverprofile=coverage.out ./... && go tool cover -html=coverage.out"
+alias = "cov"
+
 [tasks.deps]
 description = "Update development dependencies"
 run = "go get -u ./... && go mod tidy"
