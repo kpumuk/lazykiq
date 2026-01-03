@@ -245,10 +245,7 @@ func TestMetricsPeriodOrder_Unknown(t *testing.T) {
 func setupTestRedis(t *testing.T) (*miniredis.Miniredis, *Client) {
 	t.Helper()
 
-	mr, err := miniredis.Run()
-	if err != nil {
-		t.Fatalf("failed to start miniredis: %v", err)
-	}
+	mr := miniredis.RunT(t)
 
 	client := &Client{
 		redis: redis.NewClient(&redis.Options{
@@ -258,7 +255,6 @@ func setupTestRedis(t *testing.T) (*miniredis.Miniredis, *Client) {
 
 	t.Cleanup(func() {
 		_ = client.Close()
-		mr.Close()
 	})
 
 	return mr, client

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -30,21 +29,27 @@ type StatsHistory struct {
 // GetRedisInfo fetches Redis INFO and extracts fields used on the dashboard.
 func (c *Client) GetRedisInfo(ctx context.Context) (RedisInfo, error) {
 	info := RedisInfo{}
-	raw, err := c.redis.Info(ctx, "server", "clients", "memory").Result()
+	data, err := c.redis.InfoMap(ctx, "server", "clients", "memory").Result()
 	if err != nil && !errors.Is(err, redis.Nil) {
 		return info, err
 	}
 
-	parsed := parseInfo(raw)
-	info.Version = parsed["redis_version"]
-	info.UsedMemory = parsed["used_memory_human"]
-	info.UsedMemoryPeak = parsed["used_memory_peak_human"]
-
-	if v, ok := parsed["uptime_in_days"]; ok {
-		info.UptimeDays, _ = strconv.ParseInt(v, 10, 64)
+	if server, ok := data["Server"]; ok {
+		info.Version = server["redis_version"]
+		if v, ok := server["uptime_in_days"]; ok {
+			info.UptimeDays, _ = strconv.ParseInt(v, 10, 64)
+		}
 	}
-	if v, ok := parsed["connected_clients"]; ok {
-		info.Connections, _ = strconv.ParseInt(v, 10, 64)
+
+	if clients, ok := data["Clients"]; ok {
+		if v, ok := clients["connected_clients"]; ok {
+			info.Connections, _ = strconv.ParseInt(v, 10, 64)
+		}
+	}
+
+	if memory, ok := data["Memory"]; ok {
+		info.UsedMemory = memory["used_memory_human"]
+		info.UsedMemoryPeak = memory["used_memory_peak_human"]
 	}
 
 	return info, nil
@@ -84,42 +89,9 @@ func (c *Client) GetStatsHistory(ctx context.Context, days int) (StatsHistory, e
 	}
 
 	for i := range days {
-		history.Processed[i] = parseInt64(results[i])
-		history.Failed[i] = parseInt64(results[days+i])
+		history.Processed[i], _ = parseOptionalInt64(results[i])
+		history.Failed[i], _ = parseOptionalInt64(results[days+i])
 	}
 
 	return history, nil
-}
-
-func parseInfo(raw string) map[string]string {
-	values := make(map[string]string)
-	for line := range strings.SplitSeq(raw, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		parts := strings.SplitN(line, ":", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		values[parts[0]] = strings.TrimSpace(parts[1])
-	}
-	return values
-}
-
-func parseInt64(value any) int64 {
-	switch v := value.(type) {
-	case nil:
-		return 0
-	case string:
-		n, _ := strconv.ParseInt(v, 10, 64)
-		return n
-	case []byte:
-		n, _ := strconv.ParseInt(string(v), 10, 64)
-		return n
-	case int64:
-		return v
-	default:
-		return 0
-	}
 }
