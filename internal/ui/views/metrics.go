@@ -10,10 +10,11 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
-	"github.com/kpumuk/lazykiq/internal/ui/components/filterinput"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
 	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
+	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
+	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
 	"github.com/kpumuk/lazykiq/internal/ui/format"
 )
 
@@ -36,14 +37,16 @@ type Metrics struct {
 	height int
 	styles Styles
 
-	ready     bool
-	result    sidekiq.MetricsTopJobsResult
-	rows      []metricsRow
-	periods   []string
-	period    string
-	periodIdx int
-	filter    filterinput.Model
-	table     table.Model
+	ready       bool
+	result      sidekiq.MetricsTopJobsResult
+	rows        []metricsRow
+	periods     []string
+	period      string
+	periodIdx   int
+	filter      string
+	frameStyles frame.Styles
+	filterStyle filterdialog.Styles
+	table       table.Model
 }
 
 // NewMetrics creates a new Metrics view.
@@ -52,7 +55,6 @@ func NewMetrics(client sidekiq.API) *Metrics {
 		client:  client,
 		periods: sidekiq.MetricsPeriodOrder,
 		period:  sidekiq.MetricsPeriodOrder[0],
-		filter:  filterinput.New(),
 		table: table.New(
 			table.WithColumns(metricsColumns),
 			table.WithEmptyMessage("No recent metrics"),
@@ -66,7 +68,6 @@ func NewMetrics(client sidekiq.API) *Metrics {
 func (m *Metrics) Init() tea.Cmd {
 	m.ready = false
 	m.table.SetCursor(0)
-	m.filter.Init()
 	return m.fetchListCmd()
 }
 
@@ -82,19 +83,28 @@ func (m *Metrics) Update(msg tea.Msg) (View, tea.Cmd) {
 	case RefreshMsg:
 		return m, m.fetchListCmd()
 
-	case filterinput.ActionMsg:
-		if msg.Action != filterinput.ActionNone {
-			m.table.SetCursor(0)
-			return m, m.fetchListCmd()
+	case filterdialog.ActionMsg:
+		if msg.Action == filterdialog.ActionNone {
+			return m, nil
 		}
-		return m, nil
+		if msg.Query == m.filter {
+			return m, nil
+		}
+		m.filter = msg.Query
+		m.table.SetCursor(0)
+		return m, m.fetchListCmd()
 
 	case tea.KeyMsg:
-		wasFocused := m.filter.Focused()
-		var cmd tea.Cmd
-		m.filter, cmd = m.filter.Update(msg)
-		if wasFocused || msg.String() == "/" || msg.String() == "ctrl+u" || msg.String() == "esc" {
-			return m, cmd
+		switch msg.String() {
+		case "/":
+			return m, m.openFilterDialog()
+		case "ctrl+u":
+			if m.filter != "" {
+				m.filter = ""
+				m.table.SetCursor(0)
+				return m, m.fetchListCmd()
+			}
+			return m, nil
 		}
 
 		switch msg.String() {
@@ -134,20 +144,12 @@ func (m *Metrics) View() string {
 	}
 
 	meta := m.listMeta()
-	content := m.filter.View() + "\n" + m.table.View()
+	content := m.table.View()
 
 	box := frame.New(
-		frame.WithStyles(frame.Styles{
-			Focused: frame.StyleState{
-				Title:  m.styles.Title,
-				Border: m.styles.FocusBorder,
-			},
-			Blurred: frame.StyleState{
-				Title:  m.styles.Title,
-				Border: m.styles.BorderStyle,
-			},
-		}),
+		frame.WithStyles(m.frameStyles),
 		frame.WithTitle("Metrics"),
+		frame.WithFilter(m.filter),
 		frame.WithTitlePadding(0),
 		frame.WithMeta(meta),
 		frame.WithContent(content),
@@ -169,11 +171,6 @@ func (m *Metrics) ShortHelp() []key.Binding {
 	return nil
 }
 
-// FilterFocused reports whether the filter input is capturing keys.
-func (m *Metrics) FilterFocused() bool {
-	return m.filter.Focused()
-}
-
 // SetSize implements View.
 func (m *Metrics) SetSize(width, height int) View {
 	m.width = width
@@ -185,18 +182,33 @@ func (m *Metrics) SetSize(width, height int) View {
 // SetStyles implements View.
 func (m *Metrics) SetStyles(styles Styles) View {
 	m.styles = styles
+	m.frameStyles = frame.Styles{
+		Focused: frame.StyleState{
+			Title:  styles.Title,
+			Muted:  styles.Muted,
+			Filter: styles.FilterFocused,
+			Border: styles.FocusBorder,
+		},
+		Blurred: frame.StyleState{
+			Title:  styles.Title,
+			Muted:  styles.Muted,
+			Filter: styles.FilterBlurred,
+			Border: styles.BorderStyle,
+		},
+	}
+	m.filterStyle = filterdialog.Styles{
+		Title:       styles.Title,
+		Border:      styles.FocusBorder,
+		Text:        styles.Text,
+		Placeholder: styles.Muted,
+		Cursor:      styles.Text,
+	}
 	m.table.SetStyles(table.Styles{
 		Text:      styles.Text,
 		Muted:     styles.Muted,
 		Header:    styles.TableHeader,
 		Selected:  styles.TableSelected,
 		Separator: styles.TableSeparator,
-	})
-	m.filter.SetStyles(filterinput.Styles{
-		Prompt:      styles.MetricLabel,
-		Text:        styles.Text,
-		Placeholder: styles.Muted,
-		Cursor:      styles.Text,
 	})
 	return m
 }
@@ -211,7 +223,7 @@ var metricsColumns = []table.Column{
 
 func (m *Metrics) fetchListCmd() tea.Cmd {
 	period := m.period
-	filter := m.filter.Query()
+	filter := m.filter
 	return func() tea.Msg {
 		ctx := context.Background()
 
@@ -263,7 +275,7 @@ func (m *Metrics) buildListRows() {
 }
 
 func (m *Metrics) updateTableRows() {
-	if m.filter.Query() != "" {
+	if m.filter != "" {
 		m.table.SetEmptyMessage("No matches")
 	} else {
 		m.table.SetEmptyMessage("No recent metrics")
@@ -322,11 +334,21 @@ func (m *Metrics) updateTableRows() {
 	m.updateTableSize()
 }
 
+func (m *Metrics) openFilterDialog() tea.Cmd {
+	return func() tea.Msg {
+		return dialogs.OpenDialogMsg{
+			Model: filterdialog.New(
+				filterdialog.WithStyles(m.filterStyle),
+				filterdialog.WithQuery(m.filter),
+			),
+		}
+	}
+}
+
 func (m *Metrics) updateTableSize() {
 	tableWidth := m.width - 4
-	tableHeight := max(m.height-3, 3)
+	tableHeight := max(m.height-2, 3)
 	m.table.SetSize(tableWidth, tableHeight)
-	m.filter.SetWidth(tableWidth)
 }
 
 func (m *Metrics) listMeta() string {

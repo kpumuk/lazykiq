@@ -88,6 +88,8 @@ type jobDetailStyles struct {
 	PanelTitle      lipgloss.Style
 	FocusBorder     lipgloss.Style
 	Muted           lipgloss.Style
+	FilterFocused   lipgloss.Style
+	FilterBlurred   lipgloss.Style
 }
 
 // PropertyRow represents a key-value pair for display.
@@ -257,6 +259,8 @@ func (j *JobDetail) SetStyles(styles Styles) View {
 		PanelTitle:      styles.Title,
 		FocusBorder:     styles.FocusBorder,
 		Muted:           styles.Muted,
+		FilterFocused:   styles.FilterFocused,
+		FilterBlurred:   styles.FilterBlurred,
 	}
 	j.jsonView.SetStyles(jsonview.Styles{
 		Text:        j.styles.JSON,
@@ -508,10 +512,14 @@ func (j *JobDetail) renderLeftPanel() string {
 		frame.WithStyles(frame.Styles{
 			Focused: frame.StyleState{
 				Title:  j.styles.PanelTitle,
+				Muted:  j.styles.Muted,
+				Filter: j.styles.FilterFocused,
 				Border: j.styles.FocusBorder,
 			},
 			Blurred: frame.StyleState{
 				Title:  j.styles.PanelTitle,
+				Muted:  j.styles.Muted,
+				Filter: j.styles.FilterBlurred,
 				Border: j.styles.Border,
 			},
 		}),
@@ -549,10 +557,14 @@ func (j *JobDetail) renderRightPanel() string {
 		frame.WithStyles(frame.Styles{
 			Focused: frame.StyleState{
 				Title:  j.styles.PanelTitle,
+				Muted:  j.styles.Muted,
+				Filter: j.styles.FilterFocused,
 				Border: j.styles.FocusBorder,
 			},
 			Blurred: frame.StyleState{
 				Title:  j.styles.PanelTitle,
+				Muted:  j.styles.Muted,
+				Filter: j.styles.FilterBlurred,
 				Border: j.styles.Border,
 			},
 		}),

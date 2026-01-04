@@ -7,10 +7,11 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
-	"github.com/kpumuk/lazykiq/internal/ui/components/filterinput"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
 	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
+	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
+	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
 	"github.com/kpumuk/lazykiq/internal/ui/format"
 )
 
@@ -23,23 +24,24 @@ type errorsSummaryDataMsg struct {
 
 // ErrorsSummary shows a summary of errors grouped by job and error class.
 type ErrorsSummary struct {
-	client     sidekiq.API
-	width      int
-	height     int
-	styles     Styles
-	rows       []errorSummaryRow
-	table      table.Model
-	ready      bool
-	deadCount  int
-	retryCount int
-	filter     filterinput.Model
+	client      sidekiq.API
+	width       int
+	height      int
+	styles      Styles
+	rows        []errorSummaryRow
+	table       table.Model
+	ready       bool
+	deadCount   int
+	retryCount  int
+	filter      string
+	frameStyles frame.Styles
+	filterStyle filterdialog.Styles
 }
 
 // NewErrorsSummary creates a new ErrorsSummary view.
 func NewErrorsSummary(client sidekiq.API) *ErrorsSummary {
 	return &ErrorsSummary{
 		client: client,
-		filter: filterinput.New(),
 		table: table.New(
 			table.WithColumns(errorsSummaryColumns),
 			table.WithEmptyMessage("No errors"),
@@ -50,7 +52,6 @@ func NewErrorsSummary(client sidekiq.API) *ErrorsSummary {
 // Init implements View.
 func (e *ErrorsSummary) Init() tea.Cmd {
 	e.reset()
-	e.filter.Init()
 	return e.fetchDataCmd()
 }
 
@@ -68,19 +69,28 @@ func (e *ErrorsSummary) Update(msg tea.Msg) (View, tea.Cmd) {
 	case RefreshMsg:
 		return e, e.fetchDataCmd()
 
-	case filterinput.ActionMsg:
-		if msg.Action != filterinput.ActionNone {
-			e.table.SetCursor(0)
-			return e, e.fetchDataCmd()
+	case filterdialog.ActionMsg:
+		if msg.Action == filterdialog.ActionNone {
+			return e, nil
 		}
-		return e, nil
+		if msg.Query == e.filter {
+			return e, nil
+		}
+		e.filter = msg.Query
+		e.table.SetCursor(0)
+		return e, e.fetchDataCmd()
 
 	case tea.KeyMsg:
-		wasFocused := e.filter.Focused()
-		var cmd tea.Cmd
-		e.filter, cmd = e.filter.Update(msg)
-		if wasFocused || msg.String() == "/" || msg.String() == "ctrl+u" || msg.String() == "esc" {
-			return e, cmd
+		switch msg.String() {
+		case "/":
+			return e, e.openFilterDialog()
+		case "ctrl+u":
+			if e.filter != "" {
+				e.filter = ""
+				e.table.SetCursor(0)
+				return e, e.fetchDataCmd()
+			}
+			return e, nil
 		}
 
 		switch msg.String() {
@@ -92,7 +102,7 @@ func (e *ErrorsSummary) Update(msg tea.Msg) (View, tea.Cmd) {
 						DisplayClass: row.displayClass,
 						ErrorClass:   row.errorClass,
 						Queue:        row.queue,
-						Query:        e.filter.Query(),
+						Query:        e.filter,
 					}
 				}
 			}
@@ -113,7 +123,7 @@ func (e *ErrorsSummary) View() string {
 	}
 
 	total := e.deadCount + e.retryCount
-	if len(e.rows) == 0 && total == 0 && e.filter.Query() == "" && !e.filter.Focused() {
+	if len(e.rows) == 0 && total == 0 && e.filter == "" {
 		return e.renderMessage("No errors")
 	}
 
@@ -141,31 +151,41 @@ func (e *ErrorsSummary) SetSize(width, height int) View {
 // Dispose clears cached data when the view is removed from the stack.
 func (e *ErrorsSummary) Dispose() {
 	e.reset()
-	e.filter = filterinput.New()
+	e.filter = ""
 	e.SetStyles(e.styles)
 	e.updateTableSize()
-}
-
-// FilterFocused reports whether the filter input is capturing keys.
-func (e *ErrorsSummary) FilterFocused() bool {
-	return e.filter.Focused()
 }
 
 // SetStyles implements View.
 func (e *ErrorsSummary) SetStyles(styles Styles) View {
 	e.styles = styles
+	e.frameStyles = frame.Styles{
+		Focused: frame.StyleState{
+			Title:  styles.Title,
+			Muted:  styles.Muted,
+			Filter: styles.FilterFocused,
+			Border: styles.FocusBorder,
+		},
+		Blurred: frame.StyleState{
+			Title:  styles.Title,
+			Muted:  styles.Muted,
+			Filter: styles.FilterBlurred,
+			Border: styles.BorderStyle,
+		},
+	}
+	e.filterStyle = filterdialog.Styles{
+		Title:       styles.Title,
+		Border:      styles.FocusBorder,
+		Text:        styles.Text,
+		Placeholder: styles.Muted,
+		Cursor:      styles.Text,
+	}
 	e.table.SetStyles(table.Styles{
 		Text:      styles.Text,
 		Muted:     styles.Muted,
 		Header:    styles.TableHeader,
 		Selected:  styles.TableSelected,
 		Separator: styles.TableSeparator,
-	})
-	e.filter.SetStyles(filterinput.Styles{
-		Prompt:      styles.MetricLabel,
-		Text:        styles.Text,
-		Placeholder: styles.Muted,
-		Cursor:      styles.Text,
 	})
 	return e
 }
@@ -174,7 +194,7 @@ func (e *ErrorsSummary) SetStyles(styles Styles) View {
 func (e *ErrorsSummary) fetchDataCmd() tea.Cmd {
 	return func() tea.Msg {
 		ctx := context.Background()
-		deadJobs, retryJobs, err := fetchErrorJobs(ctx, e.client, e.filter.Query())
+		deadJobs, retryJobs, err := fetchErrorJobs(ctx, e.client, e.filter)
 		if err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}
@@ -216,15 +236,14 @@ var errorsSummaryColumns = []table.Column{
 
 // updateTableSize updates the table dimensions based on current view size.
 func (e *ErrorsSummary) updateTableSize() {
-	tableHeight := max(e.height-3, 3)
+	tableHeight := max(e.height-2, 3)
 	tableWidth := e.width - 4
 	e.table.SetSize(tableWidth, tableHeight)
-	e.filter.SetWidth(tableWidth)
 }
 
 // updateTableRows converts summary data to table rows.
 func (e *ErrorsSummary) updateTableRows() {
-	if e.filter.Query() != "" {
+	if e.filter != "" {
 		e.table.SetEmptyMessage("No matches")
 	} else {
 		e.table.SetEmptyMessage("No errors")
@@ -250,22 +269,25 @@ func (e *ErrorsSummary) updateTableRows() {
 	e.updateTableSize()
 }
 
+func (e *ErrorsSummary) openFilterDialog() tea.Cmd {
+	return func() tea.Msg {
+		return dialogs.OpenDialogMsg{
+			Model: filterdialog.New(
+				filterdialog.WithStyles(e.filterStyle),
+				filterdialog.WithQuery(e.filter),
+			),
+		}
+	}
+}
+
 // renderSummaryBox renders the bordered box containing the summary table.
 func (e *ErrorsSummary) renderSummaryBox() string {
-	content := e.filter.View() + "\n" + e.table.View()
+	content := e.table.View()
 
 	box := frame.New(
-		frame.WithStyles(frame.Styles{
-			Focused: frame.StyleState{
-				Title:  e.styles.Title,
-				Border: e.styles.FocusBorder,
-			},
-			Blurred: frame.StyleState{
-				Title:  e.styles.Title,
-				Border: e.styles.BorderStyle,
-			},
-		}),
+		frame.WithStyles(e.frameStyles),
 		frame.WithTitle("Errors"),
+		frame.WithFilter(e.filter),
 		frame.WithTitlePadding(0),
 		frame.WithContent(content),
 		frame.WithPadding(1),

@@ -10,6 +10,8 @@ import (
 // StyleState holds styles for a focus state.
 type StyleState struct {
 	Title  lipgloss.Style
+	Muted  lipgloss.Style
+	Filter lipgloss.Style
 	Border lipgloss.Style
 }
 
@@ -23,6 +25,8 @@ type Styles struct {
 func DefaultStyles() Styles {
 	state := StyleState{
 		Title:  lipgloss.NewStyle().Bold(true),
+		Muted:  lipgloss.NewStyle(),
+		Filter: lipgloss.NewStyle(),
 		Border: lipgloss.NewStyle(),
 	}
 	return Styles{
@@ -34,7 +38,7 @@ func DefaultStyles() Styles {
 // Model defines state for the frame component.
 type Model struct {
 	styles       Styles
-	title        string
+	title        Title
 	meta         string
 	content      string
 	width        int
@@ -57,6 +61,7 @@ func New(opts ...Option) Model {
 		titlePadding: 1,
 		border:       lipgloss.RoundedBorder(),
 	}
+	m.title = NewTitle(WithTitleStyles(m.styles.Focused, m.styles.Blurred))
 
 	for _, opt := range opts {
 		opt(&m)
@@ -69,11 +74,26 @@ func New(opts ...Option) Model {
 func WithStyles(s Styles) Option {
 	return func(m *Model) {
 		m.styles = s
+		m.title.SetStyles(m.styles.Focused, m.styles.Blurred)
 	}
 }
 
 // WithTitle sets the title.
 func WithTitle(title string) Option {
+	return func(m *Model) {
+		m.title.SetTitle(title)
+	}
+}
+
+// WithFilter sets the filter on the title.
+func WithFilter(filter string) Option {
+	return func(m *Model) {
+		m.title.SetFilter(filter)
+	}
+}
+
+// WithFrameTitle sets a custom title component.
+func WithFrameTitle(title Title) Option {
 	return func(m *Model) {
 		m.title = title
 	}
@@ -146,10 +166,21 @@ func WithBorder(border lipgloss.Border) Option {
 // SetStyles sets the styles.
 func (m *Model) SetStyles(s Styles) {
 	m.styles = s
+	m.title.SetStyles(m.styles.Focused, m.styles.Blurred)
 }
 
 // SetTitle sets the title.
 func (m *Model) SetTitle(title string) {
+	m.title.SetTitle(title)
+}
+
+// SetFilter sets the filter on the title.
+func (m *Model) SetFilter(filter string) {
+	m.title.SetFilter(filter)
+}
+
+// SetFrameTitle sets a custom title component.
+func (m *Model) SetFrameTitle(title Title) {
 	m.title = title
 }
 
@@ -264,31 +295,23 @@ func (m Model) renderTopBorder(state StyleState, innerWidth int) string {
 	rightPad := 1
 	available := max(innerWidth-leftPad-rightPad, 0)
 
-	title := padLabel(m.title, m.titlePadding)
-	styledTitle := state.Title.Render(title)
-	titleWidth := lipgloss.Width(styledTitle)
-
 	meta := padLabel(m.meta, m.metaPadding)
 	if meta != "" {
 		meta = state.Border.Render("╖") + meta + state.Border.Render("╓")
 	}
 	metaWidth := lipgloss.Width(meta)
 
-	if titleWidth+metaWidth > available {
-		excess := titleWidth + metaWidth - available
-		if metaWidth > 0 {
-			reduce := min(excess, metaWidth)
+	availableForTitle := available
+	if metaWidth > 0 {
+		if available-metaWidth <= 0 {
 			meta = ""
 			metaWidth = 0
-			excess -= reduce
-		}
-		if excess > 0 && titleWidth > 0 {
-			target := max(titleWidth-excess, 0)
-			title = state.Title.Width(target).MaxWidth(target).Render(title)
-			styledTitle = state.Title.Render(title)
-			titleWidth = lipgloss.Width(styledTitle)
+		} else {
+			availableForTitle = available - metaWidth
 		}
 	}
+	styledTitle := m.title.Render(m.focused, availableForTitle, m.titlePadding)
+	titleWidth := lipgloss.Width(styledTitle)
 
 	remaining := max(available-titleWidth-metaWidth, 0)
 

@@ -33,6 +33,8 @@ type Styles struct {
 	JSONPunctuation lipgloss.Style
 	QueueText       lipgloss.Style
 	QueueWeight     lipgloss.Style
+	FilterFocused   lipgloss.Style
+	FilterBlurred   lipgloss.Style
 }
 
 // RefreshMsg is broadcast by the app on the 5-second ticker.

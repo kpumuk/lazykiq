@@ -14,6 +14,7 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/components/metrics"
 	"github.com/kpumuk/lazykiq/internal/ui/components/navbar"
 	"github.com/kpumuk/lazykiq/internal/ui/components/stackbar"
+	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 	"github.com/kpumuk/lazykiq/internal/ui/theme"
 	"github.com/kpumuk/lazykiq/internal/ui/views"
 )
@@ -55,6 +56,7 @@ type App struct {
 	stackbar        stackbar.Model
 	navbar          navbar.Model
 	errorPopup      errorpopup.Model
+	dialogs         dialogs.DialogCmp
 	styles          theme.Styles
 	sidekiq         sidekiq.API
 	connectionError error
@@ -116,6 +118,8 @@ func New(client sidekiq.API, version string) App {
 		JSONPunctuation: styles.JSONPunctuation,
 		QueueText:       styles.QueueText,
 		QueueWeight:     styles.QueueWeight,
+		FilterFocused:   styles.FilterFocused,
+		FilterBlurred:   styles.FilterBlurred,
 	}
 	for _, id := range viewOrder {
 		viewRegistry[id] = viewRegistry[id].SetStyles(viewStyles)
@@ -169,6 +173,7 @@ func New(client sidekiq.API, version string) App {
 				Border:  styles.ErrorBorder,
 			}),
 		),
+		dialogs: dialogs.NewDialogCmp(),
 		styles:  styles,
 		sidekiq: client,
 	}
@@ -195,6 +200,14 @@ func tickCmd() tea.Cmd {
 // Update implements tea.Model.
 func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
+	dialogUpdated := false
+
+	switch msg.(type) {
+	case dialogs.OpenDialogMsg, dialogs.CloseDialogMsg:
+		updated, cmd := a.dialogs.Update(msg)
+		a.dialogs = updated
+		return a, cmd
+	}
 
 	switch msg := msg.(type) {
 	case tickMsg:
@@ -239,10 +252,12 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, a.pushView(viewJobMetrics))
 
 	case tea.KeyMsg:
-		activeID := a.activeViewID()
-		if view, ok := a.viewRegistry[activeID].(interface{ FilterFocused() bool }); ok && view.FilterFocused() {
-			return a, a.updateView(activeID, msg)
+		if a.dialogs.HasDialogs() {
+			updated, cmd := a.dialogs.Update(msg)
+			a.dialogs = updated
+			return a, cmd
 		}
+		activeID := a.activeViewID()
 
 		if msg.String() == "esc" && len(a.viewStack) > 1 {
 			a.popView()
@@ -300,6 +315,10 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.viewRegistry[id] = view.SetSize(contentWidth, contentHeight)
 		}
 		a.errorPopup.SetSize(contentWidth, contentHeight)
+		updated, cmd := a.dialogs.Update(msg)
+		a.dialogs = updated
+		cmds = append(cmds, cmd)
+		dialogUpdated = true
 
 	case metrics.UpdateMsg:
 		// Clear connection error on successful metrics update
@@ -318,6 +337,12 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, a.updateView(a.activeViewID(), msg))
 	}
 
+	if a.dialogs.HasDialogs() && !dialogUpdated {
+		updated, cmd := a.dialogs.Update(msg)
+		a.dialogs = updated
+		cmds = append(cmds, cmd)
+	}
+
 	return a, tea.Batch(cmds...)
 }
 
@@ -332,41 +357,43 @@ func (a App) View() tea.View {
 	}
 
 	content := a.viewRegistry[a.activeViewID()].View()
-
-	// If there's a connection error, overlay the error popup
-	if a.connectionError != nil {
-		a.errorPopup.SetMessage(a.connectionError.Error())
-		errorPanel := a.errorPopup.View()
-		if errorPanel != "" {
-			panelWidth := lipgloss.Width(errorPanel)
-			panelHeight := lipgloss.Height(errorPanel)
-			contentHeight := a.height - a.metrics.Height() - a.stackbar.Height() - a.navbar.Height()
-			panelX := max((a.width-panelWidth)/2, 0)
-			panelY := a.metrics.Height() + max((contentHeight-panelHeight)/2, 0)
-
-			canvas := lipgloss.NewCanvas(
-				lipgloss.NewLayer(lipgloss.JoinVertical(
-					lipgloss.Left,
-					a.metrics.View(),
-					content,
-					a.stackbar.View(),
-					a.navbar.View(),
-				)),
-				lipgloss.NewLayer(errorPanel).X(panelX).Y(panelY).Z(1),
-			)
-			v.SetContent(canvas.Render())
-			return v
-		}
-	}
-
-	// Build the layout: metrics (top) + content (middle) + navbar (bottom)
-	v.SetContent(lipgloss.JoinVertical(
+	base := lipgloss.JoinVertical(
 		lipgloss.Left,
 		a.metrics.View(),
 		content,
 		a.stackbar.View(),
 		a.navbar.View(),
-	))
+	)
+
+	// If there's a connection error, overlay the error popup
+	if a.connectionError != nil || a.dialogs.HasDialogs() {
+		layers := []*lipgloss.Layer{
+			lipgloss.NewLayer(base),
+		}
+
+		if a.connectionError != nil {
+			a.errorPopup.SetMessage(a.connectionError.Error())
+			errorPanel := a.errorPopup.View()
+			if errorPanel != "" {
+				panelWidth := lipgloss.Width(errorPanel)
+				panelHeight := lipgloss.Height(errorPanel)
+				contentHeight := a.height - a.metrics.Height() - a.stackbar.Height() - a.navbar.Height()
+				panelX := max((a.width-panelWidth)/2, 0)
+				panelY := a.metrics.Height() + max((contentHeight-panelHeight)/2, 0)
+				layers = append(layers, lipgloss.NewLayer(errorPanel).X(panelX).Y(panelY).Z(1))
+			}
+		}
+
+		if a.dialogs.HasDialogs() {
+			layers = append(layers, a.dialogs.GetLayers()...)
+		}
+
+		canvas := lipgloss.NewCanvas(layers...)
+		v.SetContent(canvas.Render())
+		return v
+	}
+	// Build the layout: metrics (top) + content (middle) + navbar (bottom)
+	v.SetContent(base)
 
 	return v
 }

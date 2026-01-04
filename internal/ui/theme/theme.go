@@ -28,6 +28,7 @@ type Theme struct {
 	TableSelectedBg compat.AdaptiveColor
 	Success         compat.AdaptiveColor
 	Error           compat.AdaptiveColor
+	Filter          compat.CompleteAdaptiveColor
 
 	// Metrics colors
 	MetricsText compat.CompleteAdaptiveColor
@@ -104,6 +105,10 @@ var DefaultTheme = Theme{
 	Error: compat.AdaptiveColor{
 		Light: lipgloss.Color("#FF0000"),
 		Dark:  lipgloss.Color("#FF0000"),
+	},
+	Filter: compat.CompleteAdaptiveColor{
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#C026D3"), ANSI256: lipgloss.Color("165"), ANSI: lipgloss.Color("13")},
+		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#E879F9"), ANSI256: lipgloss.Color("171"), ANSI: lipgloss.Color("13")},
 	},
 
 	// Metrics
@@ -221,6 +226,10 @@ type Styles struct {
 	// Errors
 	ErrorTitle  lipgloss.Style
 	ErrorBorder lipgloss.Style
+
+	// Frame title filter
+	FilterFocused lipgloss.Style
+	FilterBlurred lipgloss.Style
 }
 
 // NewStyles creates a Styles instance from the default adaptive theme.
@@ -354,5 +363,12 @@ func NewStyles() Styles {
 
 		ErrorBorder: lipgloss.NewStyle().
 			Foreground(t.Error),
+
+		FilterFocused: lipgloss.NewStyle().
+			Foreground(t.MetricsText).
+			Background(t.Filter),
+
+		FilterBlurred: lipgloss.NewStyle().
+			Foreground(t.Filter),
 	}
 }

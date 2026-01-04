@@ -410,10 +410,14 @@ func (b *Busy) renderJobsBox() string {
 		frame.WithStyles(frame.Styles{
 			Focused: frame.StyleState{
 				Title:  b.styles.Title,
+				Muted:  b.styles.Muted,
+				Filter: b.styles.FilterFocused,
 				Border: b.styles.FocusBorder,
 			},
 			Blurred: frame.StyleState{
 				Title:  b.styles.Title,
+				Muted:  b.styles.Muted,
+				Filter: b.styles.FilterBlurred,
 				Border: b.styles.BorderStyle,
 			},
 		}),

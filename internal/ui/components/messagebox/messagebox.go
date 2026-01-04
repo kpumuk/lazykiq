@@ -146,10 +146,14 @@ func (m Model) View() string {
 		frame.WithStyles(frame.Styles{
 			Focused: frame.StyleState{
 				Title:  m.styles.Title,
+				Muted:  m.styles.Muted,
+				Filter: m.styles.Title,
 				Border: m.styles.Border,
 			},
 			Blurred: frame.StyleState{
 				Title:  m.styles.Title,
+				Muted:  m.styles.Muted,
+				Filter: m.styles.Title,
 				Border: m.styles.Border,
 			},
 		}),

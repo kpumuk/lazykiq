@@ -271,10 +271,14 @@ func (d *Dashboard) renderRealtimeBox(height int) string {
 		frame.WithStyles(frame.Styles{
 			Focused: frame.StyleState{
 				Title:  d.styles.Title,
+				Muted:  d.styles.Muted,
+				Filter: d.styles.FilterFocused,
 				Border: d.styles.FocusBorder,
 			},
 			Blurred: frame.StyleState{
 				Title:  d.styles.Title,
+				Muted:  d.styles.Muted,
+				Filter: d.styles.FilterBlurred,
 				Border: d.styles.BorderStyle,
 			},
 		}),
@@ -296,10 +300,14 @@ func (d *Dashboard) renderHistoryBox(height int) string {
 		frame.WithStyles(frame.Styles{
 			Focused: frame.StyleState{
 				Title:  d.styles.Title,
+				Muted:  d.styles.Muted,
+				Filter: d.styles.FilterFocused,
 				Border: d.styles.FocusBorder,
 			},
 			Blurred: frame.StyleState{
 				Title:  d.styles.Title,
+				Muted:  d.styles.Muted,
+				Filter: d.styles.FilterBlurred,
 				Border: d.styles.BorderStyle,
 			},
 		}),

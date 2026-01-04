@@ -378,10 +378,14 @@ func (q *Queues) renderJobsBox() string {
 		frame.WithStyles(frame.Styles{
 			Focused: frame.StyleState{
 				Title:  q.styles.Title,
+				Muted:  q.styles.Muted,
+				Filter: q.styles.FilterFocused,
 				Border: q.styles.FocusBorder,
 			},
 			Blurred: frame.StyleState{
 				Title:  q.styles.Title,
+				Muted:  q.styles.Muted,
+				Filter: q.styles.FilterBlurred,
 				Border: q.styles.BorderStyle,
 			},
 		}),

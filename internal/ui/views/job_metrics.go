@@ -152,10 +152,14 @@ func (j *JobMetrics) View() string {
 		frame.WithStyles(frame.Styles{
 			Focused: frame.StyleState{
 				Title:  j.styles.Title,
+				Muted:  j.styles.Muted,
+				Filter: j.styles.FilterFocused,
 				Border: j.styles.FocusBorder,
 			},
 			Blurred: frame.StyleState{
 				Title:  j.styles.Title,
+				Muted:  j.styles.Muted,
+				Filter: j.styles.FilterBlurred,
 				Border: j.styles.BorderStyle,
 			},
 		}),
@@ -177,10 +181,14 @@ func (j *JobMetrics) View() string {
 		frame.WithStyles(frame.Styles{
 			Focused: frame.StyleState{
 				Title:  j.styles.Title,
+				Muted:  j.styles.Muted,
+				Filter: j.styles.FilterFocused,
 				Border: j.styles.FocusBorder,
 			},
 			Blurred: frame.StyleState{
 				Title:  j.styles.Title,
+				Muted:  j.styles.Muted,
+				Filter: j.styles.FilterBlurred,
 				Border: j.styles.BorderStyle,
 			},
 		}),

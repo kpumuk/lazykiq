@@ -10,10 +10,11 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
-	"github.com/kpumuk/lazykiq/internal/ui/components/filterinput"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
 	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
+	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
+	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
 	"github.com/kpumuk/lazykiq/internal/ui/format"
 )
 
@@ -39,7 +40,9 @@ type Retries struct {
 	currentPage int
 	totalPages  int
 	totalSize   int64
-	filter      filterinput.Model
+	filter      string
+	frameStyles frame.Styles
+	filterStyle filterdialog.Styles
 }
 
 // NewRetries creates a new Retries view.
@@ -48,7 +51,6 @@ func NewRetries(client sidekiq.API) *Retries {
 		client:      client,
 		currentPage: 1,
 		totalPages:  1,
-		filter:      filterinput.New(),
 		table: table.New(
 			table.WithColumns(retryJobColumns),
 			table.WithEmptyMessage("No retries"),
@@ -59,7 +61,6 @@ func NewRetries(client sidekiq.API) *Retries {
 // Init implements View.
 func (r *Retries) Init() tea.Cmd {
 	r.reset()
-	r.filter.Init()
 	return r.fetchDataCmd()
 }
 
@@ -78,25 +79,35 @@ func (r *Retries) Update(msg tea.Msg) (View, tea.Cmd) {
 	case RefreshMsg:
 		return r, r.fetchDataCmd()
 
-	case filterinput.ActionMsg:
-		if msg.Action != filterinput.ActionNone {
-			r.currentPage = 1
-			r.table.SetCursor(0)
-			return r, r.fetchDataCmd()
+	case filterdialog.ActionMsg:
+		if msg.Action == filterdialog.ActionNone {
+			return r, nil
 		}
-		return r, nil
+		if msg.Query == r.filter {
+			return r, nil
+		}
+		r.filter = msg.Query
+		r.currentPage = 1
+		r.table.SetCursor(0)
+		return r, r.fetchDataCmd()
 
 	case tea.KeyMsg:
-		wasFocused := r.filter.Focused()
-		var cmd tea.Cmd
-		r.filter, cmd = r.filter.Update(msg)
-		if wasFocused || msg.String() == "/" || msg.String() == "esc" || msg.String() == "ctrl+u" {
-			return r, cmd
+		switch msg.String() {
+		case "/":
+			return r, r.openFilterDialog()
+		case "ctrl+u":
+			if r.filter != "" {
+				r.filter = ""
+				r.currentPage = 1
+				r.table.SetCursor(0)
+				return r, r.fetchDataCmd()
+			}
+			return r, nil
 		}
 
 		switch msg.String() {
 		case "alt+left", "[":
-			if r.filter.Query() != "" {
+			if r.filter != "" {
 				return r, nil
 			}
 			if r.currentPage > 1 {
@@ -105,7 +116,7 @@ func (r *Retries) Update(msg tea.Msg) (View, tea.Cmd) {
 			}
 			return r, nil
 		case "alt+right", "]":
-			if r.filter.Query() != "" {
+			if r.filter != "" {
 				return r, nil
 			}
 			if r.currentPage < r.totalPages {
@@ -137,7 +148,7 @@ func (r *Retries) View() string {
 		return r.renderMessage("Loading...")
 	}
 
-	if len(r.jobs) == 0 && r.totalSize == 0 && r.filter.Query() == "" && !r.filter.Focused() {
+	if len(r.jobs) == 0 && r.totalSize == 0 && r.filter == "" {
 		return r.renderMessage("No retries")
 	}
 
@@ -165,31 +176,41 @@ func (r *Retries) SetSize(width, height int) View {
 // Dispose clears cached data when the view is removed from the stack.
 func (r *Retries) Dispose() {
 	r.reset()
-	r.filter = filterinput.New()
+	r.filter = ""
 	r.SetStyles(r.styles)
 	r.updateTableSize()
-}
-
-// FilterFocused reports whether the filter input is capturing keys.
-func (r *Retries) FilterFocused() bool {
-	return r.filter.Focused()
 }
 
 // SetStyles implements View.
 func (r *Retries) SetStyles(styles Styles) View {
 	r.styles = styles
+	r.frameStyles = frame.Styles{
+		Focused: frame.StyleState{
+			Title:  styles.Title,
+			Muted:  styles.Muted,
+			Filter: styles.FilterFocused,
+			Border: styles.FocusBorder,
+		},
+		Blurred: frame.StyleState{
+			Title:  styles.Title,
+			Muted:  styles.Muted,
+			Filter: styles.FilterBlurred,
+			Border: styles.BorderStyle,
+		},
+	}
+	r.filterStyle = filterdialog.Styles{
+		Title:       styles.Title,
+		Border:      styles.FocusBorder,
+		Text:        styles.Text,
+		Placeholder: styles.Muted,
+		Cursor:      styles.Text,
+	}
 	r.table.SetStyles(table.Styles{
 		Text:      styles.Text,
 		Muted:     styles.Muted,
 		Header:    styles.TableHeader,
 		Selected:  styles.TableSelected,
 		Separator: styles.TableSeparator,
-	})
-	r.filter.SetStyles(filterinput.Styles{
-		Prompt:      styles.MetricLabel,
-		Text:        styles.Text,
-		Placeholder: styles.Muted,
-		Cursor:      styles.Text,
 	})
 	return r
 }
@@ -199,8 +220,8 @@ func (r *Retries) fetchDataCmd() tea.Cmd {
 	return func() tea.Msg {
 		ctx := context.Background()
 
-		if r.filter.Query() != "" {
-			jobs, err := r.client.ScanRetryJobs(ctx, r.filter.Query())
+		if r.filter != "" {
+			jobs, err := r.client.ScanRetryJobs(ctx, r.filter)
 			if err != nil {
 				return ConnectionErrorMsg{Err: err}
 			}
@@ -273,16 +294,15 @@ var retryJobColumns = []table.Column{
 // updateTableSize updates the table dimensions based on current view size.
 func (r *Retries) updateTableSize() {
 	// Calculate table height: total height - box borders
-	tableHeight := max(r.height-3, 3)
+	tableHeight := max(r.height-2, 3)
 	// Table width: view width - box borders - padding
 	tableWidth := r.width - 4
 	r.table.SetSize(tableWidth, tableHeight)
-	r.filter.SetWidth(tableWidth)
 }
 
 // updateTableRows converts job data to table rows.
 func (r *Retries) updateTableRows() {
-	if r.filter.Query() != "" {
+	if r.filter != "" {
 		r.table.SetEmptyMessage("No matches")
 	} else {
 		r.table.SetEmptyMessage("No retries")
@@ -324,6 +344,17 @@ func (r *Retries) updateTableRows() {
 	r.updateTableSize()
 }
 
+func (r *Retries) openFilterDialog() tea.Cmd {
+	return func() tea.Msg {
+		return dialogs.OpenDialogMsg{
+			Model: filterdialog.New(
+				filterdialog.WithStyles(r.filterStyle),
+				filterdialog.WithQuery(r.filter),
+			),
+		}
+	}
+}
+
 // renderJobsBox renders the bordered box containing the jobs table.
 func (r *Retries) renderJobsBox() string {
 	// Build meta: SIZE and PAGE info
@@ -333,20 +364,12 @@ func (r *Retries) renderJobsBox() string {
 	meta := sizeInfo + sep + pageInfo
 
 	// Get table content
-	content := r.filter.View() + "\n" + r.table.View()
+	content := r.table.View()
 
 	box := frame.New(
-		frame.WithStyles(frame.Styles{
-			Focused: frame.StyleState{
-				Title:  r.styles.Title,
-				Border: r.styles.FocusBorder,
-			},
-			Blurred: frame.StyleState{
-				Title:  r.styles.Title,
-				Border: r.styles.BorderStyle,
-			},
-		}),
+		frame.WithStyles(r.frameStyles),
 		frame.WithTitle("Retries"),
+		frame.WithFilter(r.filter),
 		frame.WithTitlePadding(0),
 		frame.WithMeta(meta),
 		frame.WithContent(content),

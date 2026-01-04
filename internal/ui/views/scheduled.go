@@ -9,10 +9,11 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
-	"github.com/kpumuk/lazykiq/internal/ui/components/filterinput"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
 	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
+	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
+	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
 	"github.com/kpumuk/lazykiq/internal/ui/format"
 )
 
@@ -38,7 +39,9 @@ type Scheduled struct {
 	currentPage int
 	totalPages  int
 	totalSize   int64
-	filter      filterinput.Model
+	filter      string
+	frameStyles frame.Styles
+	filterStyle filterdialog.Styles
 }
 
 // NewScheduled creates a new Scheduled view.
@@ -47,7 +50,6 @@ func NewScheduled(client sidekiq.API) *Scheduled {
 		client:      client,
 		currentPage: 1,
 		totalPages:  1,
-		filter:      filterinput.New(),
 		table: table.New(
 			table.WithColumns(scheduledJobColumns),
 			table.WithEmptyMessage("No scheduled jobs"),
@@ -58,7 +60,6 @@ func NewScheduled(client sidekiq.API) *Scheduled {
 // Init implements View.
 func (s *Scheduled) Init() tea.Cmd {
 	s.reset()
-	s.filter.Init()
 	return s.fetchDataCmd()
 }
 
@@ -77,25 +78,35 @@ func (s *Scheduled) Update(msg tea.Msg) (View, tea.Cmd) {
 	case RefreshMsg:
 		return s, s.fetchDataCmd()
 
-	case filterinput.ActionMsg:
-		if msg.Action != filterinput.ActionNone {
-			s.currentPage = 1
-			s.table.SetCursor(0)
-			return s, s.fetchDataCmd()
+	case filterdialog.ActionMsg:
+		if msg.Action == filterdialog.ActionNone {
+			return s, nil
 		}
-		return s, nil
+		if msg.Query == s.filter {
+			return s, nil
+		}
+		s.filter = msg.Query
+		s.currentPage = 1
+		s.table.SetCursor(0)
+		return s, s.fetchDataCmd()
 
 	case tea.KeyMsg:
-		wasFocused := s.filter.Focused()
-		var cmd tea.Cmd
-		s.filter, cmd = s.filter.Update(msg)
-		if wasFocused || msg.String() == "/" || msg.String() == "esc" || msg.String() == "ctrl+u" {
-			return s, cmd
+		switch msg.String() {
+		case "/":
+			return s, s.openFilterDialog()
+		case "ctrl+u":
+			if s.filter != "" {
+				s.filter = ""
+				s.currentPage = 1
+				s.table.SetCursor(0)
+				return s, s.fetchDataCmd()
+			}
+			return s, nil
 		}
 
 		switch msg.String() {
 		case "alt+left", "[":
-			if s.filter.Query() != "" {
+			if s.filter != "" {
 				return s, nil
 			}
 			if s.currentPage > 1 {
@@ -104,7 +115,7 @@ func (s *Scheduled) Update(msg tea.Msg) (View, tea.Cmd) {
 			}
 			return s, nil
 		case "alt+right", "]":
-			if s.filter.Query() != "" {
+			if s.filter != "" {
 				return s, nil
 			}
 			if s.currentPage < s.totalPages {
@@ -135,7 +146,7 @@ func (s *Scheduled) View() string {
 		return s.renderMessage("Loading...")
 	}
 
-	if len(s.jobs) == 0 && s.totalSize == 0 && s.filter.Query() == "" && !s.filter.Focused() {
+	if len(s.jobs) == 0 && s.totalSize == 0 && s.filter == "" {
 		return s.renderMessage("No scheduled jobs")
 	}
 
@@ -163,31 +174,41 @@ func (s *Scheduled) SetSize(width, height int) View {
 // Dispose clears cached data when the view is removed from the stack.
 func (s *Scheduled) Dispose() {
 	s.reset()
-	s.filter = filterinput.New()
+	s.filter = ""
 	s.SetStyles(s.styles)
 	s.updateTableSize()
-}
-
-// FilterFocused reports whether the filter input is capturing keys.
-func (s *Scheduled) FilterFocused() bool {
-	return s.filter.Focused()
 }
 
 // SetStyles implements View.
 func (s *Scheduled) SetStyles(styles Styles) View {
 	s.styles = styles
+	s.frameStyles = frame.Styles{
+		Focused: frame.StyleState{
+			Title:  styles.Title,
+			Muted:  styles.Muted,
+			Filter: styles.FilterFocused,
+			Border: styles.FocusBorder,
+		},
+		Blurred: frame.StyleState{
+			Title:  styles.Title,
+			Muted:  styles.Muted,
+			Filter: styles.FilterBlurred,
+			Border: styles.BorderStyle,
+		},
+	}
+	s.filterStyle = filterdialog.Styles{
+		Title:       styles.Title,
+		Border:      styles.FocusBorder,
+		Text:        styles.Text,
+		Placeholder: styles.Muted,
+		Cursor:      styles.Text,
+	}
 	s.table.SetStyles(table.Styles{
 		Text:      styles.Text,
 		Muted:     styles.Muted,
 		Header:    styles.TableHeader,
 		Selected:  styles.TableSelected,
 		Separator: styles.TableSeparator,
-	})
-	s.filter.SetStyles(filterinput.Styles{
-		Prompt:      styles.MetricLabel,
-		Text:        styles.Text,
-		Placeholder: styles.Muted,
-		Cursor:      styles.Text,
 	})
 	return s
 }
@@ -197,8 +218,8 @@ func (s *Scheduled) fetchDataCmd() tea.Cmd {
 	return func() tea.Msg {
 		ctx := context.Background()
 
-		if s.filter.Query() != "" {
-			jobs, err := s.client.ScanScheduledJobs(ctx, s.filter.Query())
+		if s.filter != "" {
+			jobs, err := s.client.ScanScheduledJobs(ctx, s.filter)
 			if err != nil {
 				return ConnectionErrorMsg{Err: err}
 			}
@@ -269,16 +290,15 @@ var scheduledJobColumns = []table.Column{
 // updateTableSize updates the table dimensions based on current view size.
 func (s *Scheduled) updateTableSize() {
 	// Calculate table height: total height - box borders
-	tableHeight := max(s.height-3, 3)
+	tableHeight := max(s.height-2, 3)
 	// Table width: view width - box borders - padding
 	tableWidth := s.width - 4
 	s.table.SetSize(tableWidth, tableHeight)
-	s.filter.SetWidth(tableWidth)
 }
 
 // updateTableRows converts job data to table rows.
 func (s *Scheduled) updateTableRows() {
-	if s.filter.Query() != "" {
+	if s.filter != "" {
 		s.table.SetEmptyMessage("No matches")
 	} else {
 		s.table.SetEmptyMessage("No scheduled jobs")
@@ -305,6 +325,17 @@ func (s *Scheduled) updateTableRows() {
 	s.updateTableSize()
 }
 
+func (s *Scheduled) openFilterDialog() tea.Cmd {
+	return func() tea.Msg {
+		return dialogs.OpenDialogMsg{
+			Model: filterdialog.New(
+				filterdialog.WithStyles(s.filterStyle),
+				filterdialog.WithQuery(s.filter),
+			),
+		}
+	}
+}
+
 // renderJobsBox renders the bordered box containing the jobs table.
 func (s *Scheduled) renderJobsBox() string {
 	// Build meta: SIZE and PAGE info
@@ -314,20 +345,12 @@ func (s *Scheduled) renderJobsBox() string {
 	meta := sizeInfo + sep + pageInfo
 
 	// Get table content
-	content := s.filter.View() + "\n" + s.table.View()
+	content := s.table.View()
 
 	box := frame.New(
-		frame.WithStyles(frame.Styles{
-			Focused: frame.StyleState{
-				Title:  s.styles.Title,
-				Border: s.styles.FocusBorder,
-			},
-			Blurred: frame.StyleState{
-				Title:  s.styles.Title,
-				Border: s.styles.BorderStyle,
-			},
-		}),
+		frame.WithStyles(s.frameStyles),
 		frame.WithTitle("Scheduled"),
+		frame.WithFilter(s.filter),
 		frame.WithTitlePadding(0),
 		frame.WithMeta(meta),
 		frame.WithContent(content),
