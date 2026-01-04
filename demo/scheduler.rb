@@ -5,9 +5,10 @@ require "sidekiq/api"
 require "time"
 
 class JobScheduler
-  QUEUES = %w[critical default mailers batch low unsafe].freeze
+  QUEUES = %w[critical default mailers batch low unsafe unprocessed_1 unprocessed_2 unprocessed_3 unprocessed_4 unprocessed_5].freeze
   MAX_JOBS_PER_QUEUE = 10_000
   MAX_UNSAFE_JOBS = 42
+  MAX_UNPROCESSED_JOBS = 5
   MAX_RETRY_QUEUE = 20_000
   MAX_SCHEDULED_JOBS = 5_000
   SCHEDULE_BATCH_SIZE = 100
@@ -69,7 +70,17 @@ class JobScheduler
     {job: "ImageProcessingJob", queue: "default", weight: 2,
      payload: -> { tagged_payload(ImageProcessingJob, "default", [rand(1..100_000), %w[resize crop thumbnail watermark].sample(rand(1..3))], COMMON_TAGS) }},
     {job: "CleanupJob", queue: "low", weight: 2,
-     payload: -> { tagged_payload(CleanupJob, "low", [%w[temp_files sessions logs exports].sample, rand(7..90)], COMMON_TAGS) }}
+     payload: -> { tagged_payload(CleanupJob, "low", [%w[temp_files sessions logs exports].sample, rand(7..90)], COMMON_TAGS) }},
+    {job: "CleanupJob", queue: "unprocessed_1", weight: 1,
+     args: -> { [] }},
+    {job: "CleanupJob", queue: "unprocessed_2", weight: 1,
+     args: -> { [] }},
+    {job: "CleanupJob", queue: "unprocessed_3", weight: 1,
+     args: -> { [] }},
+    {job: "CleanupJob", queue: "unprocessed_4", weight: 1,
+     args: -> { [] }},
+    {job: "CleanupJob", queue: "unprocessed_5", weight: 1,
+     args: -> { [] }}
   ].freeze
 
   def self.fake_email
@@ -183,6 +194,7 @@ class JobScheduler
     QUEUES.each do |queue_name|
       current_size = queue_sizes[queue_name] || 0
       scheduled_size = scheduled_sizes[queue_name] || 0
+
       available_capacity = max_jobs_for_queue(queue_name) - current_size - scheduled_size
 
       next if available_capacity <= 0
@@ -265,12 +277,13 @@ class JobScheduler
     if delay
       job_class.set(cattr: {tenanant_id: rand(1..10_000)}).perform_in(delay, *job_def[:args].call)
     else
-      job_class.set(cattr: {tenanant_id: rand(1..10_000)}).perform_async(*job_def[:args].call)
+      job_class.set(cattr: {tenanant_id: rand(1..10_000)}, queue: job_def[:queue]).perform_async(*job_def[:args].call)
     end
   end
 
   def max_jobs_for_queue(queue_name)
     return MAX_UNSAFE_JOBS if queue_name == "unsafe"
+    return MAX_UNPROCESSED_JOBS if queue_name.start_with?("unprocessed_")
 
     MAX_JOBS_PER_QUEUE
   end
