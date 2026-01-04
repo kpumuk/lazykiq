@@ -16,6 +16,8 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
 	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
+	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
+	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
 	"github.com/kpumuk/lazykiq/internal/ui/format"
 )
 
@@ -37,6 +39,8 @@ type Busy struct {
 	ready           bool
 	selectedProcess int // -1 = all, 0-8 = specific process index
 	treeMode        bool
+	filter          string
+	filterStyle     filterdialog.Styles
 }
 
 const processGlyph = "⚙"
@@ -72,8 +76,30 @@ func (b *Busy) Update(msg tea.Msg) (View, tea.Cmd) {
 	case RefreshMsg:
 		return b, b.fetchDataCmd()
 
+	case filterdialog.ActionMsg:
+		if msg.Action == filterdialog.ActionNone {
+			return b, nil
+		}
+		if msg.Query == b.filter {
+			return b, nil
+		}
+		b.filter = msg.Query
+		b.table.SetCursor(0)
+		return b, b.fetchDataCmd()
+
 	case tea.KeyMsg:
 		key := msg.String()
+		switch key {
+		case "/":
+			return b, b.openFilterDialog()
+		case "ctrl+u":
+			if b.filter != "" {
+				b.filter = ""
+				b.table.SetCursor(0)
+				return b, b.fetchDataCmd()
+			}
+			return b, nil
+		}
 		if b.handleProcessSelectKey(key) {
 			return b, nil
 		}
@@ -155,6 +181,13 @@ func (b *Busy) SetStyles(styles Styles) View {
 		Selected:  styles.TableSelected,
 		Separator: styles.TableSeparator,
 	})
+	b.filterStyle = filterdialog.Styles{
+		Title:       styles.Title,
+		Border:      styles.FocusBorder,
+		Text:        styles.Text,
+		Placeholder: styles.Muted,
+		Cursor:      styles.Text,
+	}
 	return b
 }
 
@@ -162,7 +195,7 @@ func (b *Busy) SetStyles(styles Styles) View {
 func (b *Busy) fetchDataCmd() tea.Cmd {
 	return func() tea.Msg {
 		ctx := context.Background()
-		data, err := b.client.GetBusyData(ctx)
+		data, err := b.client.GetBusyData(ctx, b.filter)
 		if err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}
@@ -176,6 +209,7 @@ func (b *Busy) reset() {
 	b.filteredJobs = nil
 	b.rowJobIndex = nil
 	b.selectedProcess = -1
+	b.filter = ""
 	b.table.SetRows(nil)
 	b.table.SetCursor(0)
 }
@@ -259,6 +293,11 @@ func (b *Busy) updateTableSize() {
 // updateTableRows converts job data to table rows.
 func (b *Busy) updateTableRows() {
 	b.normalizeSelectedProcess()
+	if b.filter != "" {
+		b.table.SetEmptyMessage("No matches")
+	} else {
+		b.table.SetEmptyMessage("No active jobs")
+	}
 	if b.treeMode {
 		b.updateTableRowsTree()
 		return
@@ -368,6 +407,17 @@ func (b *Busy) updateTableRowsFlat() {
 	b.updateTableSize()
 }
 
+func (b *Busy) openFilterDialog() tea.Cmd {
+	return func() tea.Msg {
+		return dialogs.OpenDialogMsg{
+			Model: filterdialog.New(
+				filterdialog.WithStyles(b.filterStyle),
+				filterdialog.WithQuery(b.filter),
+			),
+		}
+	}
+}
+
 // renderJobsBox renders the bordered box containing the jobs table.
 func (b *Busy) renderJobsBox() string {
 	// Calculate stats for meta
@@ -422,6 +472,7 @@ func (b *Busy) renderJobsBox() string {
 			},
 		}),
 		frame.WithTitle(title),
+		frame.WithFilter(b.filter),
 		frame.WithTitlePadding(0),
 		frame.WithMeta(meta),
 		frame.WithContent(content),

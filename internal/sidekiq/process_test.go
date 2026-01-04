@@ -315,7 +315,7 @@ func TestGetBusyData(t *testing.T) {
 	mr.HSet("host1:100:abc:work", "tid1", string(mustMarshalJSON(t, work1)))
 	mr.HSet("host2:200:def:work", "tid2", string(mustMarshalJSON(t, work2)))
 
-	data, err := client.GetBusyData(ctx)
+	data, err := client.GetBusyData(ctx, "")
 	if err != nil {
 		t.Fatalf("GetBusyData failed: %v", err)
 	}
@@ -365,10 +365,65 @@ func TestGetBusyData(t *testing.T) {
 	}
 }
 
+func TestGetBusyData_Filter(t *testing.T) {
+	mr, client := setupTestRedis(t)
+	ctx := testContext(t)
+
+	_, _ = mr.SetAdd("processes", "host1:100:abc", "host2:200:def")
+
+	info1 := map[string]any{
+		"hostname":    "host1",
+		"pid":         100,
+		"concurrency": 5,
+		"queues":      []any{"default"},
+	}
+	info2 := map[string]any{
+		"hostname":    "host2",
+		"pid":         200,
+		"concurrency": 10,
+		"queues":      []any{"critical"},
+	}
+
+	mr.HSet("host1:100:abc", "info", string(mustMarshalJSON(t, info1)))
+	mr.HSet("host2:200:def", "info", string(mustMarshalJSON(t, info2)))
+
+	work1 := map[string]any{
+		"queue":   "default",
+		"payload": `{"jid":"job1","class":"MyJob","args":["keep"]}`,
+		"run_at":  1234567800.0,
+	}
+	work2 := map[string]any{
+		"queue":   "critical",
+		"payload": `{"jid":"job2","class":"UrgentJob","args":["drop"]}`,
+		"run_at":  1234567900.0,
+	}
+
+	mr.HSet("host1:100:abc:work", "tid1", string(mustMarshalJSON(t, work1)))
+	mr.HSet("host2:200:def:work", "tid2", string(mustMarshalJSON(t, work2)))
+
+	data, err := client.GetBusyData(ctx, "keep")
+	if err != nil {
+		t.Fatalf("GetBusyData failed: %v", err)
+	}
+
+	if len(data.Processes) != 2 {
+		t.Fatalf("len(Processes) = %d, want 2", len(data.Processes))
+	}
+	if len(data.Jobs) != 1 {
+		t.Fatalf("len(Jobs) = %d, want 1", len(data.Jobs))
+	}
+	if data.Jobs[0].JID() != "job1" {
+		t.Fatalf("Jobs[0].JID() = %q, want job1", data.Jobs[0].JID())
+	}
+	if data.Jobs[0].ProcessIdentity != "host1:100:abc" {
+		t.Fatalf("Jobs[0].ProcessIdentity = %q, want host1:100:abc", data.Jobs[0].ProcessIdentity)
+	}
+}
+
 func TestGetBusyData_Empty(t *testing.T) {
 	_, client := setupTestRedis(t)
 
-	data, err := client.GetBusyData(testContext(t))
+	data, err := client.GetBusyData(testContext(t), "")
 	if err != nil {
 		t.Fatalf("GetBusyData failed: %v", err)
 	}
@@ -635,7 +690,7 @@ func TestGetBusyData_SkipInvalidProcesses(t *testing.T) {
 
 	mr.HSet("invalid", "busy", "4")
 
-	data, err := client.GetBusyData(ctx)
+	data, err := client.GetBusyData(ctx, "")
 	if err != nil {
 		t.Fatalf("GetBusyData failed: %v", err)
 	}

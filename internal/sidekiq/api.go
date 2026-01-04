@@ -45,7 +45,8 @@ type API interface {
 	GetProcesses(ctx context.Context) ([]*Process, error)
 
 	// GetBusyData fetches detailed process and active job information from Redis.
-	GetBusyData(ctx context.Context) (BusyData, error)
+	// If filter is non-empty, only jobs whose raw payload contains the substring are returned.
+	GetBusyData(ctx context.Context, filter string) (BusyData, error)
 
 	// GetDeadJobs fetches dead jobs with pagination (newest first).
 	GetDeadJobs(ctx context.Context, start, count int) ([]*SortedEntry, int64, error)

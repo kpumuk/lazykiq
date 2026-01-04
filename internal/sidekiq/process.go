@@ -108,7 +108,8 @@ func (c *Client) GetProcesses(ctx context.Context) ([]*Process, error) {
 
 // GetBusyData fetches detailed process and active job information from Redis.
 // Uses pipelining to batch all Redis requests for optimal performance on large systems.
-func (c *Client) GetBusyData(ctx context.Context) (BusyData, error) {
+// If filter is non-empty, only jobs whose raw payload contains the substring are returned.
+func (c *Client) GetBusyData(ctx context.Context, filter string) (BusyData, error) {
 	var data BusyData
 
 	// Step 1: Get all process identities
@@ -173,7 +174,7 @@ func (c *Client) GetBusyData(ctx context.Context) (BusyData, error) {
 				continue
 			}
 
-			jobs := process.parseJobsFromWork(work, "")
+			jobs := process.parseJobsFromWork(work, filter)
 			data.Jobs = append(data.Jobs, jobs...)
 		}
 	}

@@ -34,3 +34,8 @@ run = "go get -u ./... && go mod tidy"
 description = "Run Hugo in development mode"
 run = "bun dev --baseURL http://localhost:1313/lazykiq"
 dir = "website"
+
+[tasks.demo]
+description = "Run the demo application"
+run = "docker-compose -f docker-compose.yml up --build -d"
+dir = "demo"
