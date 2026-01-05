@@ -2,8 +2,6 @@ package views
 
 import (
 	"context"
-	"fmt"
-	"image/color"
 	"math"
 	"slices"
 	"sort"
@@ -13,17 +11,14 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"charm.land/lipgloss/v2/compat"
-	"github.com/NimbleMarkets/ntcharts/canvas"
-	"github.com/NimbleMarkets/ntcharts/canvas/graph"
-	"github.com/NimbleMarkets/ntcharts/linechart"
-	oldgloss "github.com/charmbracelet/lipgloss"
+	"github.com/NimbleMarkets/ntcharts/v2/canvas"
+	"github.com/NimbleMarkets/ntcharts/v2/canvas/graph"
+	"github.com/NimbleMarkets/ntcharts/v2/linechart"
 
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
 	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
 	"github.com/kpumuk/lazykiq/internal/ui/format"
-	"github.com/kpumuk/lazykiq/internal/ui/theme"
 )
 
 // jobMetricsDataMsg carries job metrics data.
@@ -47,11 +42,11 @@ type JobMetrics struct {
 	processed processedMetrics // Pre-computed histogram data
 	focused   int
 
-	chartAxisStyle    oldgloss.Style
-	chartBarStyle     oldgloss.Style
-	scatterAxisStyle  oldgloss.Style
-	scatterLabelStyle oldgloss.Style
-	scatterPointStyle oldgloss.Style
+	chartAxisStyle    lipgloss.Style
+	chartBarStyle     lipgloss.Style
+	scatterAxisStyle  lipgloss.Style
+	scatterLabelStyle lipgloss.Style
+	scatterPointStyle lipgloss.Style
 }
 
 // NewJobMetrics creates a new job metrics view.
@@ -519,11 +514,11 @@ func (j *JobMetrics) renderScatter(width, height int, buckets []time.Time) strin
 }
 
 func (j *JobMetrics) initChartStyles() {
-	j.chartAxisStyle = oldgloss.NewStyle().Foreground(adaptiveColor(theme.DefaultTheme.TextMuted))
-	j.chartBarStyle = oldgloss.NewStyle().Foreground(adaptiveColor(theme.DefaultTheme.Primary))
-	j.scatterAxisStyle = oldgloss.NewStyle().Foreground(adaptiveColor(theme.DefaultTheme.TextMuted))
-	j.scatterLabelStyle = oldgloss.NewStyle().Foreground(adaptiveColor(theme.DefaultTheme.TextMuted))
-	j.scatterPointStyle = oldgloss.NewStyle().Foreground(adaptiveColor(theme.DefaultTheme.Primary))
+	j.chartAxisStyle = j.styles.ChartAxis
+	j.chartBarStyle = j.styles.ChartHistogram
+	j.scatterAxisStyle = j.styles.ChartAxis
+	j.scatterLabelStyle = j.styles.ChartLabel
+	j.scatterPointStyle = j.styles.ChartHistogram
 }
 
 type scatterPoint struct {
@@ -786,21 +781,6 @@ func buildTimeBucketLabels(buckets []time.Time) []string {
 	}
 
 	return labels
-}
-
-func adaptiveColor(color compat.CompleteAdaptiveColor) oldgloss.AdaptiveColor {
-	return oldgloss.AdaptiveColor{
-		Light: colorToHex(color.Light.TrueColor),
-		Dark:  colorToHex(color.Dark.TrueColor),
-	}
-}
-
-func colorToHex(c color.Color) string {
-	if c == nil {
-		return ""
-	}
-	r, g, b, _ := c.RGBA()
-	return fmt.Sprintf("#%02x%02x%02x", r>>8, g>>8, b>>8)
 }
 
 func renderCentered(width, height int, value string) string {

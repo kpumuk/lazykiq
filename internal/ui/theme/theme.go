@@ -33,6 +33,11 @@ type Theme struct {
 	// Metrics colors
 	MetricsText compat.CompleteAdaptiveColor
 
+	// Chart colors
+	ChartAxis      compat.CompleteAdaptiveColor
+	ChartLabel     compat.CompleteAdaptiveColor
+	ChartHistogram compat.CompleteAdaptiveColor
+
 	// Stack bar colors
 	StackBarBg   compat.CompleteAdaptiveColor
 	StackBarText compat.CompleteAdaptiveColor
@@ -115,6 +120,20 @@ var DefaultTheme = Theme{
 	MetricsText: compat.CompleteAdaptiveColor{
 		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#f8f9fa"), ANSI256: lipgloss.Color("255"), ANSI: lipgloss.Color("15")},
 		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#f8f9fa"), ANSI256: lipgloss.Color("255"), ANSI: lipgloss.Color("15")},
+	},
+
+	// Charts
+	ChartAxis: compat.CompleteAdaptiveColor{
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#6B7280"), ANSI256: lipgloss.Color("240"), ANSI: lipgloss.Color("8")},
+		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#9CA3AF"), ANSI256: lipgloss.Color("250"), ANSI: lipgloss.Color("7")},
+	},
+	ChartLabel: compat.CompleteAdaptiveColor{
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#6B7280"), ANSI256: lipgloss.Color("240"), ANSI: lipgloss.Color("8")},
+		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#9CA3AF"), ANSI256: lipgloss.Color("250"), ANSI: lipgloss.Color("7")},
+	},
+	ChartHistogram: compat.CompleteAdaptiveColor{
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#B2003C"), ANSI256: lipgloss.Color("161"), ANSI: lipgloss.Color("13")},
+		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#F73D68"), ANSI256: lipgloss.Color("204"), ANSI: lipgloss.Color("13")},
 	},
 
 	// Stack bar
@@ -208,8 +227,11 @@ type Styles struct {
 	FocusBorder lipgloss.Style
 
 	// Charts
-	ChartSuccess lipgloss.Style
-	ChartFailure lipgloss.Style
+	ChartAxis      lipgloss.Style
+	ChartLabel     lipgloss.Style
+	ChartSuccess   lipgloss.Style
+	ChartFailure   lipgloss.Style
+	ChartHistogram lipgloss.Style
 
 	// JSON highlighting
 	JSONKey         lipgloss.Style
@@ -338,6 +360,15 @@ func NewStyles() Styles {
 
 		ChartFailure: lipgloss.NewStyle().
 			Foreground(t.Error),
+
+		ChartAxis: lipgloss.NewStyle().
+			Foreground(t.ChartAxis),
+
+		ChartLabel: lipgloss.NewStyle().
+			Foreground(t.ChartLabel),
+
+		ChartHistogram: lipgloss.NewStyle().
+			Foreground(t.ChartHistogram),
 
 		JSONKey: lipgloss.NewStyle().
 			Foreground(t.JSONKey),

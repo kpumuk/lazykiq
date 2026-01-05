@@ -38,6 +38,9 @@ linters:
     gocritic:
       disabled-checks:
         - singleCaseSwitch
+    gomoddirectives:
+      replace-allow-list:
+        - github.com/NimbleMarkets/ntcharts/v2
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0

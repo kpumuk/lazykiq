@@ -23,8 +23,11 @@ type Styles struct {
 	BorderStyle     lipgloss.Style
 	FocusBorder     lipgloss.Style
 	NavKey          lipgloss.Style
+	ChartAxis       lipgloss.Style
+	ChartLabel      lipgloss.Style
 	ChartSuccess    lipgloss.Style
 	ChartFailure    lipgloss.Style
+	ChartHistogram  lipgloss.Style
 	JSONKey         lipgloss.Style
 	JSONString      lipgloss.Style
 	JSONNumber      lipgloss.Style
