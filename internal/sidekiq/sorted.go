@@ -104,6 +104,37 @@ func (c *Client) scanSortedSetJobs(ctx context.Context, key, match string, rever
 	return entries, nil
 }
 
+func (c *Client) getSortedSetBounds(ctx context.Context, key string) (*SortedEntry, *SortedEntry, error) {
+	pipe := c.redis.Pipeline()
+	minCmd := pipe.ZRangeWithScores(ctx, key, 0, 0)
+	maxCmd := pipe.ZRevRangeWithScores(ctx, key, 0, 0)
+
+	_, err := pipe.Exec(ctx)
+	if err != nil && !errors.Is(err, redis.Nil) {
+		return nil, nil, err
+	}
+
+	minResults, err := minCmd.Result()
+	if err != nil && !errors.Is(err, redis.Nil) {
+		return nil, nil, err
+	}
+	if len(minResults) == 0 {
+		return nil, nil, nil
+	}
+
+	maxResults, err := maxCmd.Result()
+	if err != nil && !errors.Is(err, redis.Nil) {
+		return nil, nil, err
+	}
+	if len(maxResults) == 0 {
+		return nil, nil, nil
+	}
+
+	minValue, _ := minResults[0].Member.(string)
+	maxValue, _ := maxResults[0].Member.(string)
+	return NewSortedEntry(minValue, minResults[0].Score), NewSortedEntry(maxValue, maxResults[0].Score), nil
+}
+
 // GetDeadJobs fetches dead jobs with pagination (newest first).
 func (c *Client) GetDeadJobs(ctx context.Context, start, count int) ([]*SortedEntry, int64, error) {
 	return c.getSortedSetJobs(ctx, "dead", start, count, true)
@@ -112,6 +143,11 @@ func (c *Client) GetDeadJobs(ctx context.Context, start, count int) ([]*SortedEn
 // ScanDeadJobs scans dead jobs using a match pattern (no paging).
 func (c *Client) ScanDeadJobs(ctx context.Context, match string) ([]*SortedEntry, error) {
 	return c.scanSortedSetJobs(ctx, "dead", match, true)
+}
+
+// GetDeadBounds fetches the oldest and newest dead jobs.
+func (c *Client) GetDeadBounds(ctx context.Context) (*SortedEntry, *SortedEntry, error) {
+	return c.getSortedSetBounds(ctx, "dead")
 }
 
 // GetRetryJobs fetches retry jobs with pagination (earliest retry first).
@@ -124,6 +160,11 @@ func (c *Client) ScanRetryJobs(ctx context.Context, match string) ([]*SortedEntr
 	return c.scanSortedSetJobs(ctx, "retry", match, false)
 }
 
+// GetRetryBounds fetches the earliest and latest retry jobs.
+func (c *Client) GetRetryBounds(ctx context.Context) (*SortedEntry, *SortedEntry, error) {
+	return c.getSortedSetBounds(ctx, "retry")
+}
+
 // GetScheduledJobs fetches scheduled jobs with pagination (earliest execution time first).
 func (c *Client) GetScheduledJobs(ctx context.Context, start, count int) ([]*SortedEntry, int64, error) {
 	return c.getSortedSetJobs(ctx, "schedule", start, count, false)
@@ -132,4 +173,9 @@ func (c *Client) GetScheduledJobs(ctx context.Context, start, count int) ([]*Sor
 // ScanScheduledJobs scans scheduled jobs using a match pattern (no paging).
 func (c *Client) ScanScheduledJobs(ctx context.Context, match string) ([]*SortedEntry, error) {
 	return c.scanSortedSetJobs(ctx, "schedule", match, false)
+}
+
+// GetScheduledBounds fetches the earliest and latest scheduled jobs.
+func (c *Client) GetScheduledBounds(ctx context.Context) (*SortedEntry, *SortedEntry, error) {
+	return c.getSortedSetBounds(ctx, "schedule")
 }

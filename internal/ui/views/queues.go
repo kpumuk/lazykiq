@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
-	"strings"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
@@ -136,7 +135,7 @@ func (q *Queues) View() string {
 		return q.renderMessage("No queues")
 	}
 
-	return lipgloss.JoinVertical(lipgloss.Left, q.renderQueueList(), q.renderJobsBox())
+	return q.renderJobsBox()
 }
 
 // Name implements View.
@@ -147,6 +146,66 @@ func (q *Queues) Name() string {
 // ShortHelp implements View.
 func (q *Queues) ShortHelp() []key.Binding {
 	return nil
+}
+
+// HeaderLines implements HeaderLinesProvider.
+func (q *Queues) HeaderLines() []string {
+	lines := q.queueListLines()
+	if len(lines) > 9 {
+		lines = lines[:9]
+	}
+	if len(lines) < 5 {
+		padding := make([]string, 5-len(lines))
+		lines = append(lines, padding...)
+	}
+	if len(lines) == 0 {
+		return make([]string, 5)
+	}
+	return lines
+}
+
+// ContextItems implements ContextProvider.
+func (q *Queues) ContextItems() []ContextItem {
+	queueName := ""
+	if q.selectedQueue >= 0 && q.selectedQueue < len(q.queues) {
+		queueName = q.queues[q.selectedQueue].Name
+	}
+	items := []ContextItem{}
+	if queueName != "" {
+		items = append(items, ContextItem{Label: "Queue", Value: queueName})
+	}
+	if q.totalPages > 0 {
+		items = append(items, ContextItem{Label: "Page", Value: fmt.Sprintf("%d/%d", q.currentPage, q.totalPages)})
+	}
+	return items
+}
+
+// HintBindings implements HintProvider.
+func (q *Queues) HintBindings() []key.Binding {
+	return []key.Binding{
+		helpBinding([]string{"["}, "[", "prev page"),
+		helpBinding([]string{"]"}, "]", "next page"),
+		helpBinding([]string{"enter"}, "enter", "job detail"),
+	}
+}
+
+// HelpSections implements HelpProvider.
+func (q *Queues) HelpSections() []HelpSection {
+	sections := []HelpSection{{
+		Title: "Queue Actions",
+		Bindings: []key.Binding{
+			helpBinding([]string{"ctrl+1"}, "ctrl+1-9", "select queue"),
+			helpBinding([]string{"["}, "[", "previous page"),
+			helpBinding([]string{"]"}, "]", "next page"),
+			helpBinding([]string{"enter"}, "enter", "job detail"),
+		},
+	}}
+	return sections
+}
+
+// TableHelp implements TableHelpProvider.
+func (q *Queues) TableHelp() []key.Binding {
+	return tableHelpBindings(q.table.KeyMap)
 }
 
 // SetSize implements View.
@@ -245,9 +304,9 @@ func (q *Queues) reset() {
 }
 
 // renderQueueList renders the compact queue list (outside the border).
-func (q *Queues) renderQueueList() string {
+func (q *Queues) queueListLines() []string {
 	if len(q.queues) == 0 {
-		return ""
+		return nil
 	}
 
 	// First pass: find max widths for alignment
@@ -271,7 +330,7 @@ func (q *Queues) renderQueueList() string {
 	lines := make([]string, 0, len(q.queues))
 	for i, queue := range q.queues {
 		// Hotkey with grey background (like navbar), bold if selected
-		hotkeyText := strconv.Itoa(i + 1)
+		hotkeyText := fmt.Sprintf("ctrl+%d", i+1)
 		var hotkey string
 		if i == q.selectedQueue {
 			hotkey = q.styles.NavKey.Bold(true).Render(hotkeyText)
@@ -290,7 +349,7 @@ func (q *Queues) renderQueueList() string {
 		lines = append(lines, hotkey+name+stats)
 	}
 
-	return q.styles.BoxPadding.Render(strings.Join(lines, "\n"))
+	return lines
 }
 
 // formatLatency formats latency in seconds as a readable string.
@@ -311,9 +370,8 @@ var queueJobColumns = []table.Column{
 
 // updateTableSize updates the table dimensions based on current view size.
 func (q *Queues) updateTableSize() {
-	// Calculate table height: total height - queue list - box borders
-	queueListHeight := len(q.queues)
-	tableHeight := max(q.height-queueListHeight-2, 3)
+	// Calculate table height: total height - box borders
+	tableHeight := max(q.height-2, 3)
 	// Table width: view width - box borders - padding
 	tableWidth := q.width - 4
 	q.table.SetSize(tableWidth, tableHeight)
@@ -367,9 +425,8 @@ func (q *Queues) renderJobsBox() string {
 	pageInfo := q.styles.MetricLabel.Render("PAGE: ") + q.styles.MetricValue.Render(fmt.Sprintf("%d/%d", q.currentPage, q.totalPages))
 	meta := sizeInfo + sep + pageInfo
 
-	// Calculate box height (account for queue list above)
-	queueListHeight := len(q.queues)
-	boxHeight := q.height - queueListHeight
+	// Calculate box height
+	boxHeight := q.height
 
 	// Get table content
 	content := q.table.View()

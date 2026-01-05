@@ -3,7 +3,6 @@ package views
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -157,16 +156,14 @@ func (d *Dashboard) View() string {
 		return ""
 	}
 
-	redisLine := d.renderRedisInfoLine()
-	remaining := max(d.height-1, 2)
-
-	topHeight := remaining / 2
-	bottomHeight := remaining - topHeight
+	available := max(d.height, 2)
+	topHeight := available / 2
+	bottomHeight := available - topHeight
 
 	realtimeBox := d.renderRealtimeBox(topHeight)
 	historyBox := d.renderHistoryBox(bottomHeight)
 
-	return lipgloss.JoinVertical(lipgloss.Left, redisLine, realtimeBox, historyBox)
+	return lipgloss.JoinVertical(lipgloss.Left, realtimeBox, historyBox)
 }
 
 // Name implements View.
@@ -177,6 +174,47 @@ func (d *Dashboard) Name() string {
 // ShortHelp implements View.
 func (d *Dashboard) ShortHelp() []key.Binding {
 	return nil
+}
+
+// ContextItems implements ContextProvider.
+func (d *Dashboard) ContextItems() []ContextItem {
+	redisVersion := orNA(d.redisInfo.Version)
+	redisURL := strings.TrimSpace(d.client.DisplayRedisURL())
+	redisValue := redisVersion
+	if redisURL != "" {
+		redisValue = fmt.Sprintf("%s (%s)", redisVersion, redisURL)
+	}
+
+	return []ContextItem{
+		{Label: "Redis", Value: redisValue},
+		{Label: "Uptime", Value: fmt.Sprintf("%d days", d.redisInfo.UptimeDays)},
+		{Label: "Connections", Value: format.ShortNumber(d.redisInfo.Connections)},
+		{Label: "Memory", Value: orNA(d.redisInfo.UsedMemory)},
+		{Label: "Peak", Value: orNA(d.redisInfo.UsedMemoryPeak)},
+	}
+}
+
+// HintBindings implements HintProvider.
+func (d *Dashboard) HintBindings() []key.Binding {
+	return []key.Binding{
+		helpBinding([]string{"tab"}, "tab", "switch pane"),
+		helpBinding([]string{"["}, "[", "prev range"),
+		helpBinding([]string{"]"}, "]", "next range"),
+	}
+}
+
+// HelpSections implements HelpProvider.
+func (d *Dashboard) HelpSections() []HelpSection {
+	return []HelpSection{
+		{
+			Title: "Dashboard",
+			Bindings: []key.Binding{
+				helpBinding([]string{"tab"}, "tab", "switch pane"),
+				helpBinding([]string{"["}, "[", "previous range"),
+				helpBinding([]string{"]"}, "]", "next range"),
+			},
+		},
+	}
 }
 
 // SetSize implements View.
@@ -227,42 +265,6 @@ func (d *Dashboard) fetchHistoryCmd() tea.Cmd {
 		}
 		return DashboardHistoryMsg{history: history}
 	}
-}
-
-func (d *Dashboard) renderRedisInfoLine() string {
-	parts := []string{
-		d.styles.MetricLabel.Render("Redis Version: ") + d.styles.MetricValue.Render(orFallback(d.redisInfo.Version, "n/a")),
-		d.styles.MetricLabel.Render("Uptime: ") + d.styles.MetricValue.Render(strconv.FormatInt(d.redisInfo.UptimeDays, 10)) + d.styles.MetricLabel.Render(" days"),
-		d.styles.MetricLabel.Render("Connections: ") + d.styles.MetricValue.Render(format.ShortNumber(d.redisInfo.Connections)),
-		d.styles.MetricLabel.Render("Memory: ") + d.styles.MetricValue.Render(orFallback(d.redisInfo.UsedMemory, "n/a")),
-		d.styles.MetricLabel.Render("Peak: ") + d.styles.MetricValue.Render(orFallback(d.redisInfo.UsedMemoryPeak, "n/a")),
-	}
-
-	sep := d.styles.Muted.Render(" │ ")
-	left := strings.Join(parts, sep)
-	right := d.renderRedisURL()
-	innerWidth := max(d.width-2, 1)
-
-	leftWidth := lipgloss.Width(left)
-	if right == "" || leftWidth >= innerWidth-1 {
-		line := lipgloss.NewStyle().MaxWidth(innerWidth).Render(left)
-		line = d.styles.BoxPadding.Render(line)
-		return lipgloss.NewStyle().MaxWidth(d.width).Render(line)
-	}
-
-	spaceForRight := innerWidth - leftWidth - 1
-	right = lipgloss.PlaceHorizontal(spaceForRight, lipgloss.Right, right)
-	line := left + " " + right
-	line = d.styles.BoxPadding.Render(line)
-	return lipgloss.NewStyle().MaxWidth(d.width).Render(line)
-}
-
-func (d *Dashboard) renderRedisURL() string {
-	redisURL := d.client.DisplayRedisURL()
-	if redisURL == "" {
-		return ""
-	}
-	return d.styles.Muted.Render(redisURL)
 }
 
 func (d *Dashboard) renderRealtimeBox(height int) string {
@@ -524,9 +526,9 @@ func sumSeries(values []int64) int64 {
 	return total
 }
 
-func orFallback(value, fallback string) string {
+func orNA(value string) string {
 	if value == "" {
-		return fallback
+		return "n/a"
 	}
 	return value
 }

@@ -147,6 +147,52 @@ func (e *ErrorsDetails) ShortHelp() []key.Binding {
 	return nil
 }
 
+// ContextItems implements ContextProvider.
+func (e *ErrorsDetails) ContextItems() []ContextItem {
+	items := []ContextItem{}
+	if e.groupKey.displayClass != "" {
+		items = append(items, ContextItem{Label: "Job", Value: e.groupKey.displayClass})
+	}
+	if e.groupKey.errorClass != "" {
+		items = append(items, ContextItem{Label: "Error", Value: e.groupKey.errorClass})
+	}
+	if e.groupKey.queue != "" {
+		items = append(items, ContextItem{Label: "Queue", Value: e.groupKey.queue})
+	}
+	if e.filter != "" {
+		items = append(items, ContextItem{Label: "Filter", Value: e.filter})
+	}
+	return items
+}
+
+// HintBindings implements HintProvider.
+func (e *ErrorsDetails) HintBindings() []key.Binding {
+	return []key.Binding{
+		helpBinding([]string{"/"}, "/", "filter"),
+		helpBinding([]string{"ctrl+u"}, "ctrl+u", "reset filter"),
+		helpBinding([]string{"enter"}, "enter", "job detail"),
+	}
+}
+
+// HelpSections implements HelpProvider.
+func (e *ErrorsDetails) HelpSections() []HelpSection {
+	return []HelpSection{
+		{
+			Title: "Error Group",
+			Bindings: []key.Binding{
+				helpBinding([]string{"/"}, "/", "filter"),
+				helpBinding([]string{"ctrl+u"}, "ctrl+u", "clear filter"),
+				helpBinding([]string{"enter"}, "enter", "job detail"),
+			},
+		},
+	}
+}
+
+// TableHelp implements TableHelpProvider.
+func (e *ErrorsDetails) TableHelp() []key.Binding {
+	return tableHelpBindings(e.table.KeyMap)
+}
+
 // SetSize implements View.
 func (e *ErrorsDetails) SetSize(width, height int) View {
 	e.width = width

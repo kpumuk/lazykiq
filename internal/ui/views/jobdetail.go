@@ -232,6 +232,49 @@ func (j *JobDetail) ShortHelp() []key.Binding {
 	return nil
 }
 
+// ContextItems implements ContextProvider.
+func (j *JobDetail) ContextItems() []ContextItem {
+	items := []ContextItem{}
+	if j.job != nil {
+		items = append(items, ContextItem{Label: "Job", Value: j.job.JID()})
+	}
+	panel := "Details"
+	if j.focusRight {
+		panel = "JSON"
+	}
+	items = append(items, ContextItem{Label: "Panel", Value: panel})
+	return items
+}
+
+// HintBindings implements HintProvider.
+func (j *JobDetail) HintBindings() []key.Binding {
+	return []key.Binding{
+		helpBinding([]string{"tab"}, "tab", "switch panel"),
+		helpBinding([]string{"j"}, "j/k", "scroll"),
+		helpBinding([]string{"h"}, "h/l", "scroll left/right"),
+	}
+}
+
+// HelpSections implements HelpProvider.
+func (j *JobDetail) HelpSections() []HelpSection {
+	return []HelpSection{
+		{
+			Title: "Job Detail",
+			Bindings: []key.Binding{
+				j.KeyMap.SwitchPanel,
+				j.KeyMap.LineUp,
+				j.KeyMap.LineDown,
+				j.KeyMap.ScrollLeft,
+				j.KeyMap.ScrollRight,
+				j.KeyMap.GotoTop,
+				j.KeyMap.GotoBottom,
+				j.KeyMap.Home,
+				j.KeyMap.End,
+			},
+		},
+	}
+}
+
 // SetSize implements View.
 func (j *JobDetail) SetSize(width, height int) View {
 	j.width = width

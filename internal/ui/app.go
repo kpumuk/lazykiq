@@ -10,11 +10,13 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
+	"github.com/kpumuk/lazykiq/internal/ui/components/contextbar"
 	"github.com/kpumuk/lazykiq/internal/ui/components/errorpopup"
 	"github.com/kpumuk/lazykiq/internal/ui/components/metrics"
 	"github.com/kpumuk/lazykiq/internal/ui/components/navbar"
 	"github.com/kpumuk/lazykiq/internal/ui/components/stackbar"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
+	helpdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/help"
 	"github.com/kpumuk/lazykiq/internal/ui/theme"
 	"github.com/kpumuk/lazykiq/internal/ui/views"
 )
@@ -43,6 +45,8 @@ const (
 	viewJobMetrics
 )
 
+const contextbarDefaultHeight = 5
+
 // App is the main application model.
 type App struct {
 	keys            KeyMap
@@ -53,6 +57,7 @@ type App struct {
 	viewOrder       []viewID
 	viewRegistry    map[viewID]views.View
 	metrics         metrics.Model
+	contextbar      contextbar.Model
 	stackbar        stackbar.Model
 	navbar          navbar.Model
 	errorPopup      errorpopup.Model
@@ -65,6 +70,7 @@ type App struct {
 // New creates a new App instance.
 func New(client sidekiq.API, version string) App {
 	styles := theme.NewStyles()
+	keys := DefaultKeyMap()
 	brand := "Lazykiq"
 	if version != "" {
 		brand = "Lazykiq v" + version
@@ -135,7 +141,7 @@ func New(client sidekiq.API, version string) App {
 	}
 
 	return App{
-		keys:         DefaultKeyMap(),
+		keys:         keys,
 		viewStack:    []viewID{viewDashboard},
 		viewOrder:    viewOrder,
 		viewRegistry: viewRegistry,
@@ -146,6 +152,18 @@ func New(client sidekiq.API, version string) App {
 				Label: styles.MetricsLabel,
 				Value: styles.MetricsValue,
 			}),
+		),
+		contextbar: contextbar.New(
+			contextbar.WithStyles(contextbar.Styles{
+				Bar:       styles.ContextBar,
+				Label:     styles.ContextLabel,
+				Value:     styles.ContextValue,
+				Muted:     styles.ContextMuted,
+				Key:       styles.ContextKey,
+				Desc:      styles.ContextDesc,
+				Separator: styles.ContextSeparator,
+			}),
+			contextbar.WithHeight(contextbarDefaultHeight),
 		),
 		stackbar: stackbar.New(
 			stackbar.WithStyles(stackbar.Styles{
@@ -165,6 +183,7 @@ func New(client sidekiq.API, version string) App {
 			}),
 			navbar.WithViews(navViews),
 			navbar.WithBrand(brand),
+			navbar.WithHelp(keys.Help),
 		),
 		errorPopup: errorpopup.New(
 			errorpopup.WithStyles(errorpopup.Styles{
@@ -206,6 +225,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case dialogs.OpenDialogMsg, dialogs.CloseDialogMsg:
 		updated, cmd := a.dialogs.Update(msg)
 		a.dialogs = updated
+		a.syncContextbar()
 		return a, cmd
 	}
 
@@ -253,6 +273,9 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		if a.dialogs.HasDialogs() {
+			if key.Matches(msg, a.keys.Quit) && a.dialogs.ActiveDialogID() == helpdialog.DialogID {
+				return a, tea.Quit
+			}
 			updated, cmd := a.dialogs.Update(msg)
 			a.dialogs = updated
 			return a, cmd
@@ -268,6 +291,8 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch {
 		case key.Matches(msg, a.keys.Quit):
 			return a, tea.Quit
+		case key.Matches(msg, a.keys.Help):
+			return a, a.toggleHelpDialog()
 
 		case key.Matches(msg, a.keys.View1):
 			cmds = append(cmds, a.setActiveView(viewDashboard))
@@ -305,16 +330,11 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Update component dimensions
 		a.metrics.SetWidth(msg.Width)
+		a.contextbar.SetWidth(msg.Width)
 		a.stackbar.SetWidth(msg.Width)
 		a.navbar.SetWidth(msg.Width)
 
-		// Calculate content size (total - metrics - stackbar - navbar)
-		contentHeight := msg.Height - a.metrics.Height() - a.stackbar.Height() - a.navbar.Height()
-		contentWidth := msg.Width
-		for id, view := range a.viewRegistry {
-			a.viewRegistry[id] = view.SetSize(contentWidth, contentHeight)
-		}
-		a.errorPopup.SetSize(contentWidth, contentHeight)
+		a.resizeViews()
 		updated, cmd := a.dialogs.Update(msg)
 		a.dialogs = updated
 		cmds = append(cmds, cmd)
@@ -343,6 +363,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 	}
 
+	a.syncContextbar()
 	return a, tea.Batch(cmds...)
 }
 
@@ -357,9 +378,16 @@ func (a App) View() tea.View {
 	}
 
 	content := a.viewRegistry[a.activeViewID()].View()
+	items := a.contextHeaderItems()
+	if len(items) == 0 {
+		items = a.contextItems()
+	}
+	a.contextbar.SetItems(items)
+	a.contextbar.SetHints(a.contextHints())
 	base := lipgloss.JoinVertical(
 		lipgloss.Left,
 		a.metrics.View(),
+		a.contextbar.View(),
 		content,
 		a.stackbar.View(),
 		a.navbar.View(),
@@ -377,9 +405,9 @@ func (a App) View() tea.View {
 			if errorPanel != "" {
 				panelWidth := lipgloss.Width(errorPanel)
 				panelHeight := lipgloss.Height(errorPanel)
-				contentHeight := a.height - a.metrics.Height() - a.stackbar.Height() - a.navbar.Height()
+				contentHeight := a.height - a.metrics.Height() - a.contextbar.Height() - a.stackbar.Height() - a.navbar.Height()
 				panelX := max((a.width-panelWidth)/2, 0)
-				panelY := a.metrics.Height() + max((contentHeight-panelHeight)/2, 0)
+				panelY := a.metrics.Height() + a.contextbar.Height() + max((contentHeight-panelHeight)/2, 0)
 				layers = append(layers, lipgloss.NewLayer(errorPanel).X(panelX).Y(panelY).Z(1))
 			}
 		}
@@ -396,6 +424,220 @@ func (a App) View() tea.View {
 	v.SetContent(base)
 
 	return v
+}
+
+func (a *App) syncContextbar() {
+	if !a.ready || a.width == 0 || a.height == 0 {
+		return
+	}
+	active := a.viewRegistry[a.activeViewID()]
+	desired := contextbarDefaultHeight
+	if provider, ok := active.(views.HeaderLinesProvider); ok {
+		if lines := provider.HeaderLines(); len(lines) > 0 {
+			desired = len(lines)
+		}
+	}
+	if desired <= 0 {
+		desired = contextbarDefaultHeight
+	}
+	if desired == a.contextbar.Height() {
+		return
+	}
+	a.contextbar.SetHeight(desired)
+	a.resizeViews()
+}
+
+func (a *App) resizeViews() {
+	contentHeight := a.height - a.metrics.Height() - a.contextbar.Height() - a.stackbar.Height() - a.navbar.Height()
+	contentWidth := a.width
+	for id, view := range a.viewRegistry {
+		a.viewRegistry[id] = view.SetSize(contentWidth, contentHeight)
+	}
+	a.errorPopup.SetSize(contentWidth, contentHeight)
+}
+
+func (a App) contextItems() []contextbar.Item {
+	active := a.viewRegistry[a.activeViewID()]
+	provider, ok := active.(views.ContextProvider)
+	if !ok {
+		return nil
+	}
+	items := provider.ContextItems()
+	if len(items) == 0 {
+		return nil
+	}
+
+	result := make([]contextbar.Item, 0, len(items))
+	for _, item := range items {
+		result = append(result, contextbar.KeyValueItem{
+			Label: item.Label,
+			Value: item.Value,
+		})
+	}
+	return result
+}
+
+func (a App) contextHeaderItems() []contextbar.Item {
+	active := a.viewRegistry[a.activeViewID()]
+	provider, ok := active.(views.HeaderLinesProvider)
+	if !ok {
+		return nil
+	}
+	lines := provider.HeaderLines()
+	if len(lines) == 0 {
+		return nil
+	}
+
+	items := make([]contextbar.Item, 0, len(lines))
+	for _, line := range lines {
+		items = append(items, contextbar.FormattedItem{Line: line})
+	}
+	return items
+}
+
+func (a App) contextHints() []key.Binding {
+	hints := a.globalHeaderHints()
+	active := a.viewRegistry[a.activeViewID()]
+	if provider, ok := active.(views.HintProvider); ok {
+		hints = append(hints, provider.HintBindings()...)
+	}
+	hints = filterMiniHelpBindings(hints)
+	return dedupeBindings(hints)
+}
+
+func (a App) globalHeaderHints() []key.Binding {
+	if len(a.viewStack) > 1 {
+		return []key.Binding{
+			key.NewBinding(
+				key.WithKeys("esc"),
+				key.WithHelp("esc", "back"),
+			),
+		}
+	}
+	return nil
+}
+
+func (a App) toggleHelpDialog() tea.Cmd {
+	if a.dialogs.ActiveDialogID() == helpdialog.DialogID {
+		return func() tea.Msg { return dialogs.CloseDialogMsg{} }
+	}
+	active := a.viewRegistry[a.activeViewID()]
+	sections := a.helpSections(active)
+	return func() tea.Msg {
+		return dialogs.OpenDialogMsg{
+			Model: helpdialog.New(
+				helpdialog.WithStyles(helpdialog.Styles{
+					Title:   a.styles.ViewTitle,
+					Border:  a.styles.FocusBorder,
+					Section: a.styles.ViewTitle,
+					Key:     a.styles.ContextKey,
+					Desc:    a.styles.ViewText,
+					Muted:   a.styles.ViewMuted,
+				}),
+				helpdialog.WithSections(sections),
+			),
+		}
+	}
+}
+
+func (a App) helpSections(active views.View) []helpdialog.Section {
+	sections := []helpdialog.Section{
+		{
+			Title:    "Global",
+			Bindings: a.globalHelpBindings(),
+		},
+	}
+
+	if provider, ok := active.(views.HelpProvider); ok {
+		for _, section := range provider.HelpSections() {
+			sections = append(sections, helpdialog.Section{
+				Title:    section.Title,
+				Bindings: section.Bindings,
+				Lines:    section.Lines,
+				Column:   helpColumn(section.Column),
+			})
+		}
+	}
+
+	if provider, ok := active.(views.TableHelpProvider); ok {
+		if bindings := provider.TableHelp(); len(bindings) > 0 {
+			sections = append(sections, helpdialog.Section{
+				Title:    "Table",
+				Bindings: bindings,
+				Column:   helpdialog.ColumnAuto,
+			})
+		}
+	}
+
+	return sections
+}
+
+func helpColumn(column views.HelpColumn) helpdialog.Column {
+	switch column {
+	case views.HelpColumnAuto:
+		return helpdialog.ColumnAuto
+	case views.HelpColumnLeft:
+		return helpdialog.ColumnLeft
+	case views.HelpColumnRight:
+		return helpdialog.ColumnRight
+	default:
+		return helpdialog.ColumnAuto
+	}
+}
+
+func (a App) globalHelpBindings() []key.Binding {
+	bindings := []key.Binding{
+		a.keys.View1,
+		a.keys.View2,
+		a.keys.View3,
+		a.keys.View4,
+		a.keys.View5,
+		a.keys.View6,
+		a.keys.View7,
+		a.keys.View8,
+		a.keys.Help,
+		a.keys.Quit,
+	}
+	if len(a.viewStack) > 1 {
+		bindings = append(bindings, key.NewBinding(
+			key.WithKeys("esc"),
+			key.WithHelp("esc", "back"),
+		))
+	}
+	return bindings
+}
+
+func dedupeBindings(bindings []key.Binding) []key.Binding {
+	seen := map[string]bool{}
+	result := make([]key.Binding, 0, len(bindings))
+	for _, binding := range bindings {
+		if !binding.Enabled() {
+			continue
+		}
+		help := binding.Help()
+		if help.Key == "" {
+			continue
+		}
+		key := help.Key + "\x00" + help.Desc
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		result = append(result, binding)
+	}
+	return result
+}
+
+func filterMiniHelpBindings(bindings []key.Binding) []key.Binding {
+	result := make([]key.Binding, 0, len(bindings))
+	for _, binding := range bindings {
+		help := binding.Help()
+		if help.Key == "q" || help.Key == "?" {
+			continue
+		}
+		result = append(result, binding)
+	}
+	return result
 }
 
 // fetchStatsCmd fetches Sidekiq stats and returns a metrics.UpdateMsg or connectionErrorMsg.

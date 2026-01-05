@@ -74,7 +74,7 @@ func DefaultKeyMap() KeyMap {
 
 // ShortHelp returns keybindings to show in the mini help view.
 func (k KeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.View1, k.View2, k.View3, k.View4, k.View5, k.View6, k.View7, k.View8, k.Quit}
+	return []key.Binding{k.View1, k.View2, k.View3, k.View4, k.View5, k.View6, k.View7, k.View8, k.Help, k.Quit}
 }
 
 // FullHelp returns keybindings for the expanded help view.

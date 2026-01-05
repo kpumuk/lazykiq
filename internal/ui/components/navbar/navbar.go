@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 )
@@ -40,6 +41,7 @@ type Model struct {
 	views  []ViewInfo
 	brand  string
 	width  int
+	help   key.Binding
 }
 
 // Option is used to set options in New.
@@ -79,6 +81,13 @@ func WithBrand(brand string) Option {
 	}
 }
 
+// WithHelp sets the help binding.
+func WithHelp(help key.Binding) Option {
+	return func(m *Model) {
+		m.help = help
+	}
+}
+
 // WithWidth sets the width.
 func WithWidth(w int) Option {
 	return func(m *Model) {
@@ -99,6 +108,11 @@ func (m *Model) SetViews(views []ViewInfo) {
 // SetBrand sets the brand label shown on the right.
 func (m *Model) SetBrand(brand string) {
 	m.brand = brand
+}
+
+// SetHelp sets the help binding.
+func (m *Model) SetHelp(help key.Binding) {
+	m.help = help
 }
 
 // SetWidth sets the width.
@@ -148,6 +162,9 @@ func (m Model) View() string {
 
 	// Add quit hint
 	items.WriteString(m.styles.Key.Render("q") + m.styles.Quit.Render("quit"))
+	if m.help.Enabled() {
+		items.WriteString(m.styles.Key.Render(m.help.Help().Key) + m.styles.Quit.Render(m.help.Help().Desc))
+	}
 
 	left := items.String()
 	right := ""

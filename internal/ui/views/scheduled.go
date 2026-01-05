@@ -22,6 +22,8 @@ const scheduledPageSize = 25
 // scheduledDataMsg carries scheduled jobs data internally.
 type scheduledDataMsg struct {
 	jobs        []*sidekiq.SortedEntry
+	firstEntry  *sidekiq.SortedEntry
+	lastEntry   *sidekiq.SortedEntry
 	currentPage int
 	totalPages  int
 	totalSize   int64
@@ -34,6 +36,8 @@ type Scheduled struct {
 	height      int
 	styles      Styles
 	jobs        []*sidekiq.SortedEntry
+	firstEntry  *sidekiq.SortedEntry
+	lastEntry   *sidekiq.SortedEntry
 	table       table.Model
 	ready       bool
 	currentPage int
@@ -68,6 +72,8 @@ func (s *Scheduled) Update(msg tea.Msg) (View, tea.Cmd) {
 	switch msg := msg.(type) {
 	case scheduledDataMsg:
 		s.jobs = msg.jobs
+		s.firstEntry = msg.firstEntry
+		s.lastEntry = msg.lastEntry
 		s.currentPage = msg.currentPage
 		s.totalPages = msg.totalPages
 		s.totalSize = msg.totalSize
@@ -163,6 +169,58 @@ func (s *Scheduled) ShortHelp() []key.Binding {
 	return nil
 }
 
+// ContextItems implements ContextProvider.
+func (s *Scheduled) ContextItems() []ContextItem {
+	now := time.Now().Unix()
+	nextScheduled := "-"
+	latestScheduled := "-"
+	if s.firstEntry != nil {
+		nextScheduled = format.Duration(s.firstEntry.At() - now)
+	}
+	if s.lastEntry != nil {
+		latestScheduled = format.Duration(s.lastEntry.At() - now)
+	}
+
+	items := []ContextItem{
+		{Label: "Next scheduled in", Value: nextScheduled},
+		{Label: "Latest scheduled in", Value: latestScheduled},
+		{Label: "Total items", Value: format.Number(s.totalSize)},
+	}
+	return items
+}
+
+// HintBindings implements HintProvider.
+func (s *Scheduled) HintBindings() []key.Binding {
+	return []key.Binding{
+		helpBinding([]string{"/"}, "/", "filter"),
+		helpBinding([]string{"ctrl+u"}, "ctrl+u", "reset filter"),
+		helpBinding([]string{"["}, "[", "prev page"),
+		helpBinding([]string{"]"}, "]", "next page"),
+		helpBinding([]string{"enter"}, "enter", "job detail"),
+	}
+}
+
+// HelpSections implements HelpProvider.
+func (s *Scheduled) HelpSections() []HelpSection {
+	return []HelpSection{
+		{
+			Title: "Scheduled",
+			Bindings: []key.Binding{
+				helpBinding([]string{"/"}, "/", "filter"),
+				helpBinding([]string{"ctrl+u"}, "ctrl+u", "clear filter"),
+				helpBinding([]string{"["}, "[", "previous page"),
+				helpBinding([]string{"]"}, "]", "next page"),
+				helpBinding([]string{"enter"}, "enter", "job detail"),
+			},
+		},
+	}
+}
+
+// TableHelp implements TableHelpProvider.
+func (s *Scheduled) TableHelp() []key.Binding {
+	return tableHelpBindings(s.table.KeyMap)
+}
+
 // SetSize implements View.
 func (s *Scheduled) SetSize(width, height int) View {
 	s.width = width
@@ -223,9 +281,12 @@ func (s *Scheduled) fetchDataCmd() tea.Cmd {
 			if err != nil {
 				return ConnectionErrorMsg{Err: err}
 			}
+			firstEntry, lastEntry := sortedEntryBounds(jobs)
 
 			return scheduledDataMsg{
 				jobs:        jobs,
+				firstEntry:  firstEntry,
+				lastEntry:   lastEntry,
 				currentPage: 1,
 				totalPages:  1,
 				totalSize:   int64(len(jobs)),
@@ -241,6 +302,15 @@ func (s *Scheduled) fetchDataCmd() tea.Cmd {
 			return ConnectionErrorMsg{Err: err}
 		}
 
+		var firstEntry *sidekiq.SortedEntry
+		var lastEntry *sidekiq.SortedEntry
+		if totalSize > 0 {
+			firstEntry, lastEntry, err = s.client.GetScheduledBounds(ctx)
+			if err != nil {
+				return ConnectionErrorMsg{Err: err}
+			}
+		}
+
 		if totalSize > 0 {
 			totalPages = int((totalSize + scheduledPageSize - 1) / scheduledPageSize)
 		}
@@ -254,6 +324,8 @@ func (s *Scheduled) fetchDataCmd() tea.Cmd {
 
 		return scheduledDataMsg{
 			jobs:        jobs,
+			firstEntry:  firstEntry,
+			lastEntry:   lastEntry,
 			currentPage: currentPage,
 			totalPages:  totalPages,
 			totalSize:   totalSize,
@@ -274,6 +346,8 @@ func (s *Scheduled) reset() {
 	s.totalPages = 1
 	s.totalSize = 0
 	s.jobs = nil
+	s.firstEntry = nil
+	s.lastEntry = nil
 	s.ready = false
 	s.table.SetRows(nil)
 	s.table.SetCursor(0)
@@ -338,11 +412,9 @@ func (s *Scheduled) openFilterDialog() tea.Cmd {
 
 // renderJobsBox renders the bordered box containing the jobs table.
 func (s *Scheduled) renderJobsBox() string {
-	// Build meta: SIZE and PAGE info
-	sep := s.styles.Muted.Render(" • ")
-	sizeInfo := s.styles.MetricLabel.Render("SIZE: ") + s.styles.MetricValue.Render(format.ShortNumber(s.totalSize))
-	pageInfo := s.styles.MetricLabel.Render("PAGE: ") + s.styles.MetricValue.Render(fmt.Sprintf("%d/%d", s.currentPage, s.totalPages))
-	meta := sizeInfo + sep + pageInfo
+	// Build meta: page only
+	pageInfo := s.styles.MetricLabel.Render("page: ") + s.styles.MetricValue.Render(fmt.Sprintf("%d/%d", s.currentPage, s.totalPages))
+	meta := pageInfo
 
 	// Get table content
 	content := s.table.View()

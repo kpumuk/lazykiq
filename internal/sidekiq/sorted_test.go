@@ -188,6 +188,100 @@ func TestGetScheduledJobs(t *testing.T) {
 	}
 }
 
+func TestGetDeadBounds(t *testing.T) {
+	mr, client := setupTestRedis(t)
+	ctx := context.Background()
+
+	job1 := `{"jid":"dead1","class":"MyJob","args":[]}`
+	job2 := `{"jid":"dead2","class":"MyJob","args":[]}`
+	job3 := `{"jid":"dead3","class":"MyJob","args":[]}`
+
+	_, _ = mr.ZAdd("dead", 1000.0, job1)
+	_, _ = mr.ZAdd("dead", 3000.0, job3)
+	_, _ = mr.ZAdd("dead", 2000.0, job2)
+
+	oldest, newest, err := client.GetDeadBounds(ctx)
+	if err != nil {
+		t.Fatalf("GetDeadBounds failed: %v", err)
+	}
+	if oldest == nil || newest == nil {
+		t.Fatalf("GetDeadBounds returned nil entries")
+	}
+	if oldest.JID() != "dead1" {
+		t.Errorf("oldest.JID() = %q, want dead1", oldest.JID())
+	}
+	if newest.JID() != "dead3" {
+		t.Errorf("newest.JID() = %q, want dead3", newest.JID())
+	}
+}
+
+func TestGetRetryBounds(t *testing.T) {
+	mr, client := setupTestRedis(t)
+	ctx := context.Background()
+
+	job1 := `{"jid":"retry1","class":"MyJob","args":[]}`
+	job2 := `{"jid":"retry2","class":"MyJob","args":[]}`
+	job3 := `{"jid":"retry3","class":"MyJob","args":[]}`
+
+	_, _ = mr.ZAdd("retry", 3000.0, job3)
+	_, _ = mr.ZAdd("retry", 1000.0, job1)
+	_, _ = mr.ZAdd("retry", 2000.0, job2)
+
+	first, last, err := client.GetRetryBounds(ctx)
+	if err != nil {
+		t.Fatalf("GetRetryBounds failed: %v", err)
+	}
+	if first == nil || last == nil {
+		t.Fatalf("GetRetryBounds returned nil entries")
+	}
+	if first.JID() != "retry1" {
+		t.Errorf("first.JID() = %q, want retry1", first.JID())
+	}
+	if last.JID() != "retry3" {
+		t.Errorf("last.JID() = %q, want retry3", last.JID())
+	}
+}
+
+func TestGetScheduledBounds(t *testing.T) {
+	mr, client := setupTestRedis(t)
+	ctx := context.Background()
+
+	job1 := `{"jid":"sched1","class":"MyJob","args":[]}`
+	job2 := `{"jid":"sched2","class":"MyJob","args":[]}`
+	job3 := `{"jid":"sched3","class":"MyJob","args":[]}`
+
+	_, _ = mr.ZAdd("schedule", 2000.0, job2)
+	_, _ = mr.ZAdd("schedule", 3000.0, job3)
+	_, _ = mr.ZAdd("schedule", 1000.0, job1)
+
+	first, last, err := client.GetScheduledBounds(ctx)
+	if err != nil {
+		t.Fatalf("GetScheduledBounds failed: %v", err)
+	}
+	if first == nil || last == nil {
+		t.Fatalf("GetScheduledBounds returned nil entries")
+	}
+	if first.JID() != "sched1" {
+		t.Errorf("first.JID() = %q, want sched1", first.JID())
+	}
+	if last.JID() != "sched3" {
+		t.Errorf("last.JID() = %q, want sched3", last.JID())
+	}
+}
+
+func TestGetBounds_Empty(t *testing.T) {
+	_, client := setupTestRedis(t)
+	ctx := context.Background()
+
+	first, last, err := client.GetRetryBounds(ctx)
+	if err != nil {
+		t.Fatalf("GetRetryBounds failed: %v", err)
+	}
+	if first != nil || last != nil {
+		t.Errorf("GetRetryBounds returned entries for empty set")
+	}
+}
+
 func TestScanDeadJobs(t *testing.T) {
 	mr, client := setupTestRedis(t)
 	ctx := context.Background()

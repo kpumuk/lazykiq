@@ -230,6 +230,15 @@ type Styles struct {
 	// Frame title filter
 	FilterFocused lipgloss.Style
 	FilterBlurred lipgloss.Style
+
+	// Context bar
+	ContextBar       lipgloss.Style
+	ContextLabel     lipgloss.Style
+	ContextValue     lipgloss.Style
+	ContextMuted     lipgloss.Style
+	ContextKey       lipgloss.Style
+	ContextDesc      lipgloss.Style
+	ContextSeparator lipgloss.Style
 }
 
 // NewStyles creates a Styles instance from the default adaptive theme.
@@ -370,5 +379,29 @@ func NewStyles() Styles {
 
 		FilterBlurred: lipgloss.NewStyle().
 			Foreground(t.Filter),
+
+		// Context bar
+		ContextBar: lipgloss.NewStyle().
+			Padding(0, 1),
+
+		ContextLabel: lipgloss.NewStyle().
+			Foreground(t.TextMuted),
+
+		ContextValue: lipgloss.NewStyle().
+			Foreground(t.Text),
+
+		ContextMuted: lipgloss.NewStyle().
+			Foreground(t.TextMuted),
+
+		ContextKey: lipgloss.NewStyle().
+			Foreground(t.Text).
+			Background(t.Border).
+			Padding(0, 1),
+
+		ContextDesc: lipgloss.NewStyle().
+			Foreground(t.TextMuted),
+
+		ContextSeparator: lipgloss.NewStyle().
+			Foreground(t.Border),
 	}
 }

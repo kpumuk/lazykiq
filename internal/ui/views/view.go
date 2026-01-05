@@ -71,6 +71,57 @@ type View interface {
 	SetStyles(styles Styles) View
 }
 
+// ContextItem represents a contextual label/value pair for the header.
+type ContextItem struct {
+	Label string
+	Value string
+}
+
+// ContextProvider exposes contextual header items for the active view.
+type ContextProvider interface {
+	ContextItems() []ContextItem
+}
+
+// HintProvider exposes key hints for the header.
+type HintProvider interface {
+	HintBindings() []key.Binding
+}
+
+// HelpSection groups help bindings under a title.
+type HelpSection struct {
+	Title    string
+	Bindings []key.Binding
+	Lines    []string
+	Column   HelpColumn
+}
+
+// HelpProvider exposes help sections for the active view.
+type HelpProvider interface {
+	HelpSections() []HelpSection
+}
+
+// HeaderLinesProvider exposes left-column header lines for the context bar.
+type HeaderLinesProvider interface {
+	HeaderLines() []string
+}
+
+// HelpColumn describes which column a section should render in.
+type HelpColumn int
+
+const (
+	// HelpColumnAuto lets the dialog decide placement.
+	HelpColumnAuto HelpColumn = iota
+	// HelpColumnLeft forces placement in the left column.
+	HelpColumnLeft
+	// HelpColumnRight forces placement in the right column.
+	HelpColumnRight
+)
+
+// TableHelpProvider exposes table-specific help bindings.
+type TableHelpProvider interface {
+	TableHelp() []key.Binding
+}
+
 // ShowJobDetailMsg requests a stacked job detail view.
 type ShowJobDetailMsg struct {
 	Job *sidekiq.JobRecord

@@ -140,6 +140,42 @@ func (e *ErrorsSummary) ShortHelp() []key.Binding {
 	return nil
 }
 
+// ContextItems implements ContextProvider.
+func (e *ErrorsSummary) ContextItems() []ContextItem {
+	if e.filter == "" {
+		return nil
+	}
+	return []ContextItem{{Label: "Filter", Value: e.filter}}
+}
+
+// HintBindings implements HintProvider.
+func (e *ErrorsSummary) HintBindings() []key.Binding {
+	return []key.Binding{
+		helpBinding([]string{"/"}, "/", "filter"),
+		helpBinding([]string{"ctrl+u"}, "ctrl+u", "reset filter"),
+		helpBinding([]string{"enter"}, "enter", "error details"),
+	}
+}
+
+// HelpSections implements HelpProvider.
+func (e *ErrorsSummary) HelpSections() []HelpSection {
+	return []HelpSection{
+		{
+			Title: "Errors",
+			Bindings: []key.Binding{
+				helpBinding([]string{"/"}, "/", "filter"),
+				helpBinding([]string{"ctrl+u"}, "ctrl+u", "clear filter"),
+				helpBinding([]string{"enter"}, "enter", "error details"),
+			},
+		},
+	}
+}
+
+// TableHelp implements TableHelpProvider.
+func (e *ErrorsSummary) TableHelp() []key.Binding {
+	return tableHelpBindings(e.table.KeyMap)
+}
+
 // SetSize implements View.
 func (e *ErrorsSummary) SetSize(width, height int) View {
 	e.width = width

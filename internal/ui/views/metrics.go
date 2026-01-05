@@ -171,6 +171,50 @@ func (m *Metrics) ShortHelp() []key.Binding {
 	return nil
 }
 
+// ContextItems implements ContextProvider.
+func (m *Metrics) ContextItems() []ContextItem {
+	items := []ContextItem{}
+	if m.period != "" {
+		items = append(items, ContextItem{Label: "Period", Value: m.period})
+	}
+	if m.filter != "" {
+		items = append(items, ContextItem{Label: "Filter", Value: m.filter})
+	}
+	return items
+}
+
+// HintBindings implements HintProvider.
+func (m *Metrics) HintBindings() []key.Binding {
+	return []key.Binding{
+		helpBinding([]string{"/"}, "/", "filter"),
+		helpBinding([]string{"ctrl+u"}, "ctrl+u", "reset filter"),
+		helpBinding([]string{"["}, "[", "prev period"),
+		helpBinding([]string{"]"}, "]", "next period"),
+		helpBinding([]string{"enter"}, "enter", "job metrics"),
+	}
+}
+
+// HelpSections implements HelpProvider.
+func (m *Metrics) HelpSections() []HelpSection {
+	return []HelpSection{
+		{
+			Title: "Metrics",
+			Bindings: []key.Binding{
+				helpBinding([]string{"/"}, "/", "filter"),
+				helpBinding([]string{"ctrl+u"}, "ctrl+u", "clear filter"),
+				helpBinding([]string{"["}, "[", "previous period"),
+				helpBinding([]string{"]"}, "]", "next period"),
+				helpBinding([]string{"enter"}, "enter", "job metrics"),
+			},
+		},
+	}
+}
+
+// TableHelp implements TableHelpProvider.
+func (m *Metrics) TableHelp() []key.Binding {
+	return tableHelpBindings(m.table.KeyMap)
+}
+
 // SetSize implements View.
 func (m *Metrics) SetSize(width, height int) View {
 	m.width = width

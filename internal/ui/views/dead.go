@@ -22,6 +22,8 @@ const deadPageSize = 25
 // deadDataMsg carries dead jobs data internally.
 type deadDataMsg struct {
 	jobs        []*sidekiq.SortedEntry
+	firstEntry  *sidekiq.SortedEntry
+	lastEntry   *sidekiq.SortedEntry
 	currentPage int
 	totalPages  int
 	totalSize   int64
@@ -34,6 +36,8 @@ type Dead struct {
 	height      int
 	styles      Styles
 	jobs        []*sidekiq.SortedEntry
+	firstEntry  *sidekiq.SortedEntry
+	lastEntry   *sidekiq.SortedEntry
 	table       table.Model
 	ready       bool
 	currentPage int
@@ -68,6 +72,8 @@ func (d *Dead) Update(msg tea.Msg) (View, tea.Cmd) {
 	switch msg := msg.(type) {
 	case deadDataMsg:
 		d.jobs = msg.jobs
+		d.firstEntry = msg.firstEntry
+		d.lastEntry = msg.lastEntry
 		d.currentPage = msg.currentPage
 		d.totalPages = msg.totalPages
 		d.totalSize = msg.totalSize
@@ -163,6 +169,58 @@ func (d *Dead) ShortHelp() []key.Binding {
 	return nil
 }
 
+// ContextItems implements ContextProvider.
+func (d *Dead) ContextItems() []ContextItem {
+	now := time.Now().Unix()
+	lastFailed := "-"
+	oldestFailed := "-"
+	if d.lastEntry != nil {
+		lastFailed = format.Duration(now - d.lastEntry.At())
+	}
+	if d.firstEntry != nil {
+		oldestFailed = format.Duration(now - d.firstEntry.At())
+	}
+
+	items := []ContextItem{
+		{Label: "Last failed", Value: lastFailed},
+		{Label: "Oldest failed", Value: oldestFailed},
+		{Label: "Total items", Value: format.Number(d.totalSize)},
+	}
+	return items
+}
+
+// HintBindings implements HintProvider.
+func (d *Dead) HintBindings() []key.Binding {
+	return []key.Binding{
+		helpBinding([]string{"/"}, "/", "filter"),
+		helpBinding([]string{"ctrl+u"}, "ctrl+u", "reset filter"),
+		helpBinding([]string{"["}, "[", "prev page"),
+		helpBinding([]string{"]"}, "]", "next page"),
+		helpBinding([]string{"enter"}, "enter", "job detail"),
+	}
+}
+
+// HelpSections implements HelpProvider.
+func (d *Dead) HelpSections() []HelpSection {
+	return []HelpSection{
+		{
+			Title: "Dead",
+			Bindings: []key.Binding{
+				helpBinding([]string{"/"}, "/", "filter"),
+				helpBinding([]string{"ctrl+u"}, "ctrl+u", "clear filter"),
+				helpBinding([]string{"["}, "[", "previous page"),
+				helpBinding([]string{"]"}, "]", "next page"),
+				helpBinding([]string{"enter"}, "enter", "job detail"),
+			},
+		},
+	}
+}
+
+// TableHelp implements TableHelpProvider.
+func (d *Dead) TableHelp() []key.Binding {
+	return tableHelpBindings(d.table.KeyMap)
+}
+
 // SetSize implements View.
 func (d *Dead) SetSize(width, height int) View {
 	d.width = width
@@ -223,9 +281,12 @@ func (d *Dead) fetchDataCmd() tea.Cmd {
 			if err != nil {
 				return ConnectionErrorMsg{Err: err}
 			}
+			firstEntry, lastEntry := sortedEntryBounds(jobs)
 
 			return deadDataMsg{
 				jobs:        jobs,
+				firstEntry:  firstEntry,
+				lastEntry:   lastEntry,
 				currentPage: 1,
 				totalPages:  1,
 				totalSize:   int64(len(jobs)),
@@ -241,6 +302,15 @@ func (d *Dead) fetchDataCmd() tea.Cmd {
 			return ConnectionErrorMsg{Err: err}
 		}
 
+		var firstEntry *sidekiq.SortedEntry
+		var lastEntry *sidekiq.SortedEntry
+		if totalSize > 0 {
+			firstEntry, lastEntry, err = d.client.GetDeadBounds(ctx)
+			if err != nil {
+				return ConnectionErrorMsg{Err: err}
+			}
+		}
+
 		if totalSize > 0 {
 			totalPages = int((totalSize + deadPageSize - 1) / deadPageSize)
 		}
@@ -254,6 +324,8 @@ func (d *Dead) fetchDataCmd() tea.Cmd {
 
 		return deadDataMsg{
 			jobs:        jobs,
+			firstEntry:  firstEntry,
+			lastEntry:   lastEntry,
 			currentPage: currentPage,
 			totalPages:  totalPages,
 			totalSize:   totalSize,
@@ -274,6 +346,8 @@ func (d *Dead) reset() {
 	d.totalPages = 1
 	d.totalSize = 0
 	d.jobs = nil
+	d.firstEntry = nil
+	d.lastEntry = nil
 	d.ready = false
 	d.table.SetRows(nil)
 	d.table.SetCursor(0)
@@ -350,11 +424,9 @@ func (d *Dead) openFilterDialog() tea.Cmd {
 
 // renderJobsBox renders the bordered box containing the jobs table.
 func (d *Dead) renderJobsBox() string {
-	// Build meta: SIZE and PAGE info
-	sep := d.styles.Muted.Render(" • ")
-	sizeInfo := d.styles.MetricLabel.Render("SIZE: ") + d.styles.MetricValue.Render(format.ShortNumber(d.totalSize))
-	pageInfo := d.styles.MetricLabel.Render("PAGE: ") + d.styles.MetricValue.Render(fmt.Sprintf("%d/%d", d.currentPage, d.totalPages))
-	meta := sizeInfo + sep + pageInfo
+	// Build meta: page only
+	pageInfo := d.styles.MetricLabel.Render("page: ") + d.styles.MetricValue.Render(fmt.Sprintf("%d/%d", d.currentPage, d.totalPages))
+	meta := pageInfo
 
 	// Get table content
 	content := d.table.View()

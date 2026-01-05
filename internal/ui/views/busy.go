@@ -139,11 +139,6 @@ func (b *Busy) View() string {
 	}
 
 	boxContent := b.renderJobsBox()
-	if !b.treeMode && len(b.data.Processes) > 0 {
-		processList := b.renderProcessList()
-		return lipgloss.JoinVertical(lipgloss.Left, processList, boxContent)
-	}
-
 	return boxContent
 }
 
@@ -155,6 +150,54 @@ func (b *Busy) Name() string {
 // ShortHelp implements View.
 func (b *Busy) ShortHelp() []key.Binding {
 	return nil
+}
+
+// HeaderLines implements HeaderLinesProvider.
+func (b *Busy) HeaderLines() []string {
+	lines := b.processListLines()
+	if len(lines) > 9 {
+		lines = lines[:9]
+	}
+	if len(lines) < 5 {
+		padding := make([]string, 5-len(lines))
+		lines = append(lines, padding...)
+	}
+	if len(lines) == 0 {
+		return make([]string, 5)
+	}
+	return lines
+}
+
+// HintBindings implements HintProvider.
+func (b *Busy) HintBindings() []key.Binding {
+	return []key.Binding{
+		helpBinding([]string{"/"}, "/", "filter"),
+		helpBinding([]string{"ctrl+u"}, "ctrl+u", "reset filter"),
+		helpBinding([]string{"ctrl+0"}, "ctrl+0", "all processes"),
+		helpBinding([]string{"t"}, "t", "toggle tree"),
+		helpBinding([]string{"enter"}, "enter", "job detail"),
+	}
+}
+
+// HelpSections implements HelpProvider.
+func (b *Busy) HelpSections() []HelpSection {
+	sections := []HelpSection{{
+		Title: "Busy",
+		Bindings: []key.Binding{
+			helpBinding([]string{"/"}, "/", "filter"),
+			helpBinding([]string{"ctrl+u"}, "ctrl+u", "clear filter"),
+			helpBinding([]string{"t"}, "t", "toggle tree"),
+			helpBinding([]string{"enter"}, "enter", "job detail"),
+			helpBinding([]string{"ctrl+1"}, "ctrl+1-9", "select process"),
+			helpBinding([]string{"ctrl+0"}, "ctrl+0", "all processes"),
+		},
+	}}
+	return sections
+}
+
+// TableHelp implements TableHelpProvider.
+func (b *Busy) TableHelp() []key.Binding {
+	return tableHelpBindings(b.table.KeyMap)
 }
 
 // SetSize implements View.
@@ -283,8 +326,8 @@ var jobColumnsFlat = []table.Column{
 
 // updateTableSize updates the table dimensions based on current view size.
 func (b *Busy) updateTableSize() {
-	// Calculate table height: total height - process list - box borders
-	tableHeight := max(b.height-b.processListHeight()-2, 3)
+	// Calculate table height: total height - box borders
+	tableHeight := max(b.height-2, 3)
 	// Table width: view width - box borders - padding
 	tableWidth := b.width - 4
 	b.table.SetSize(tableWidth, tableHeight)
@@ -443,8 +486,8 @@ func (b *Busy) renderJobsBox() string {
 		sep + b.styles.MetricLabel.Render("THR: ") + b.styles.MetricValue.Render(fmt.Sprintf("%d/%d (%d%%)", busyThreads, totalThreads, percentage)) +
 		sep + b.styles.MetricLabel.Render("RSS: ") + b.styles.MetricValue.Render(format.Bytes(totalRSS))
 
-	// Calculate box height (account for process list above)
-	boxHeight := b.height - b.processListHeight()
+	// Calculate box height
+	boxHeight := b.height
 
 	// Build title based on selected process
 	title := "Active Jobs"
@@ -530,9 +573,9 @@ func (b *Busy) jobsByProcess(selectedIdentity string) map[string][]sidekiq.Job {
 	return jobsByProcess
 }
 
-func (b *Busy) renderProcessList() string {
+func (b *Busy) processListLines() []string {
 	if len(b.data.Processes) == 0 {
-		return ""
+		return nil
 	}
 
 	maxBusyLen, maxStartedLen, maxRSSLen := b.processStatWidths("")
@@ -559,7 +602,7 @@ func (b *Busy) renderProcessList() string {
 			nameStyle = nameStyle.Bold(true)
 		}
 
-		hotkeyText := strconv.Itoa(i + 1)
+		hotkeyText := fmt.Sprintf("ctrl+%d", i+1)
 		var hotkey string
 		if i == b.selectedProcess {
 			hotkey = b.styles.NavKey.Bold(true).Render(hotkeyText)
@@ -582,14 +625,7 @@ func (b *Busy) renderProcessList() string {
 		lines = append(lines, name+stats+queues)
 	}
 
-	return b.styles.BoxPadding.Render(strings.Join(lines, "\n"))
-}
-
-func (b *Busy) processListHeight() int {
-	if b.treeMode {
-		return 0
-	}
-	return len(b.data.Processes)
+	return lines
 }
 
 func (b *Busy) renderProcessRow(proc sidekiq.Process, maxBusyLen, maxStartedLen, maxRSSLen int) string {

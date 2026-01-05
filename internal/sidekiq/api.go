@@ -54,17 +54,26 @@ type API interface {
 	// ScanDeadJobs scans dead jobs using a match pattern (no paging).
 	ScanDeadJobs(ctx context.Context, match string) ([]*SortedEntry, error)
 
+	// GetDeadBounds fetches the oldest and newest dead jobs.
+	GetDeadBounds(ctx context.Context) (*SortedEntry, *SortedEntry, error)
+
 	// GetRetryJobs fetches retry jobs with pagination (earliest retry first).
 	GetRetryJobs(ctx context.Context, start, count int) ([]*SortedEntry, int64, error)
 
 	// ScanRetryJobs scans retry jobs using a match pattern (no paging).
 	ScanRetryJobs(ctx context.Context, match string) ([]*SortedEntry, error)
 
+	// GetRetryBounds fetches the earliest and latest retry jobs.
+	GetRetryBounds(ctx context.Context) (*SortedEntry, *SortedEntry, error)
+
 	// GetScheduledJobs fetches scheduled jobs with pagination (earliest execution time first).
 	GetScheduledJobs(ctx context.Context, start, count int) ([]*SortedEntry, int64, error)
 
 	// ScanScheduledJobs scans scheduled jobs using a match pattern (no paging).
 	ScanScheduledJobs(ctx context.Context, match string) ([]*SortedEntry, error)
+
+	// GetScheduledBounds fetches the earliest and latest scheduled jobs.
+	GetScheduledBounds(ctx context.Context) (*SortedEntry, *SortedEntry, error)
 }
 
 // Ensure Client implements API at compile time.

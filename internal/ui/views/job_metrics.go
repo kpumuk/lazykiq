@@ -217,6 +217,59 @@ func (j *JobMetrics) ShortHelp() []key.Binding {
 	return nil
 }
 
+// ContextItems implements ContextProvider.
+func (j *JobMetrics) ContextItems() []ContextItem {
+	jobName := j.jobName
+	if strings.TrimSpace(jobName) == "" {
+		jobName = "-"
+	}
+
+	success := "-"
+	failed := "-"
+	avg := "-"
+	rangeText := "-"
+	if j.ready {
+		success = format.Number(j.result.Totals.Success())
+		failed = format.Number(j.result.Totals.Failed)
+		avg = format.Float(j.result.Totals.AvgSeconds(), 2) + "s"
+		if value := formatMetricsRange(j.result.StartsAt, j.result.EndsAt); value != "" {
+			rangeText = value
+		}
+	}
+
+	return []ContextItem{
+		{Label: "Job", Value: jobName},
+		{Label: "Success", Value: success},
+		{Label: "Failed", Value: failed},
+		{Label: "Average", Value: avg},
+		{Label: "Range", Value: rangeText},
+	}
+}
+
+// HintBindings implements HintProvider.
+func (j *JobMetrics) HintBindings() []key.Binding {
+	return []key.Binding{
+		helpBinding([]string{"tab"}, "tab", "switch panel"),
+		helpBinding([]string{"["}, "[", "prev period"),
+		helpBinding([]string{"]"}, "]", "next period"),
+	}
+}
+
+// HelpSections implements HelpProvider.
+func (j *JobMetrics) HelpSections() []HelpSection {
+	return []HelpSection{
+		{
+			Title: "Job Metrics",
+			Bindings: []key.Binding{
+				helpBinding([]string{"tab"}, "tab", "switch panel"),
+				helpBinding([]string{"shift+tab"}, "shift+tab", "switch panel"),
+				helpBinding([]string{"["}, "[", "previous period"),
+				helpBinding([]string{"]"}, "]", "next period"),
+			},
+		},
+	}
+}
+
 // SetSize implements View.
 func (j *JobMetrics) SetSize(width, height int) View {
 	j.width = width
@@ -334,13 +387,8 @@ func (j *JobMetrics) renderColumnsChart(width, height int, totals []int64, label
 		return renderCentered(width, height, j.noDataMessage(width))
 	}
 
-	legend := j.renderBucketsLegend(width)
-	showLegend := legend != "" && height >= 2
 	showLabels := height >= 3
 	chartHeight := height
-	if showLegend {
-		chartHeight--
-	}
 	if showLabels {
 		chartHeight--
 	}
@@ -383,9 +431,6 @@ func (j *JobMetrics) renderColumnsChart(width, height int, totals []int64, label
 		labelLine := j.styles.Muted.Render(buildBucketLabelLine(canvasWidth, labels))
 		chartLines = append(chartLines, strings.Repeat(" ", labelWidth)+" "+labelLine)
 	}
-	if showLegend {
-		chartLines = append(chartLines, legend)
-	}
 	return strings.Join(chartLines, "\n")
 }
 
@@ -427,13 +472,8 @@ func (j *JobMetrics) renderScatter(width, height int, buckets []time.Time) strin
 	maxY := float64(max(maxBucket, 1))
 	yLabelWidth := maxLabelWidthFromSlice(labels)
 
-	legend := j.renderScatterLegend(width)
-	showLegend := legend != "" && height >= 2
 	showLabels := height >= 3
 	chartHeight := height
-	if showLegend {
-		chartHeight--
-	}
 	chartHeight = max(chartHeight, 1)
 	yStep := max(chartHeight/6, 1)
 	xStep := 0
@@ -474,9 +514,6 @@ func (j *JobMetrics) renderScatter(width, height int, buckets []time.Time) strin
 		} else {
 			chartLines = append(chartLines, labelLine)
 		}
-	}
-	if showLegend {
-		chartLines = append(chartLines, legend)
 	}
 	return strings.Join(chartLines, "\n")
 }
@@ -726,30 +763,6 @@ func buildBucketLabelLine(width int, labels []string) string {
 		lastEnd = start + len(labelRunes) - 1
 	}
 	return string(line)
-}
-
-func (j *JobMetrics) renderBucketsLegend(width int) string {
-	if width < 1 {
-		return ""
-	}
-	sep := j.styles.Muted.Render(" | ")
-	success := j.styles.MetricLabel.Render("Success: ") + j.styles.MetricValue.Render(format.ShortNumber(j.result.Totals.Success()))
-	failed := j.styles.MetricLabel.Render("Failed: ") + j.styles.MetricValue.Render(format.ShortNumber(j.result.Totals.Failed))
-	avg := j.styles.MetricLabel.Render("Avg: ") + j.styles.MetricValue.Render(fmt.Sprintf("%.2fs", j.result.Totals.AvgSeconds()))
-	line := success + sep + failed + sep + avg
-	return maxWidthStyle.MaxWidth(width).Render(line)
-}
-
-func (j *JobMetrics) renderScatterLegend(width int) string {
-	if width < 1 {
-		return ""
-	}
-	rangeText := formatMetricsRange(j.result.StartsAt, j.result.EndsAt)
-	if rangeText == "" {
-		return ""
-	}
-	line := j.styles.MetricLabel.Render("Range: ") + j.styles.MetricValue.Render(rangeText)
-	return maxWidthStyle.MaxWidth(width).Render(line)
 }
 
 func buildTimeBucketLabels(buckets []time.Time) []string {

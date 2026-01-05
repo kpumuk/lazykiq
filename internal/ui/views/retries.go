@@ -21,6 +21,8 @@ import (
 // retriesDataMsg is internal to the Retries view.
 type retriesDataMsg struct {
 	jobs        []*sidekiq.SortedEntry
+	firstEntry  *sidekiq.SortedEntry
+	lastEntry   *sidekiq.SortedEntry
 	currentPage int
 	totalPages  int
 	totalSize   int64
@@ -35,6 +37,8 @@ type Retries struct {
 	height      int
 	styles      Styles
 	jobs        []*sidekiq.SortedEntry
+	firstEntry  *sidekiq.SortedEntry
+	lastEntry   *sidekiq.SortedEntry
 	table       table.Model
 	ready       bool
 	currentPage int
@@ -69,6 +73,8 @@ func (r *Retries) Update(msg tea.Msg) (View, tea.Cmd) {
 	switch msg := msg.(type) {
 	case retriesDataMsg:
 		r.jobs = msg.jobs
+		r.firstEntry = msg.firstEntry
+		r.lastEntry = msg.lastEntry
 		r.currentPage = msg.currentPage
 		r.totalPages = msg.totalPages
 		r.totalSize = msg.totalSize
@@ -165,6 +171,58 @@ func (r *Retries) ShortHelp() []key.Binding {
 	return nil
 }
 
+// ContextItems implements ContextProvider.
+func (r *Retries) ContextItems() []ContextItem {
+	now := time.Now().Unix()
+	nextRetry := "-"
+	latestRetry := "-"
+	if r.firstEntry != nil {
+		nextRetry = format.Duration(r.firstEntry.At() - now)
+	}
+	if r.lastEntry != nil {
+		latestRetry = format.Duration(r.lastEntry.At() - now)
+	}
+
+	items := []ContextItem{
+		{Label: "Next retry in", Value: nextRetry},
+		{Label: "Latest retry in", Value: latestRetry},
+		{Label: "Total items", Value: format.Number(r.totalSize)},
+	}
+	return items
+}
+
+// HintBindings implements HintProvider.
+func (r *Retries) HintBindings() []key.Binding {
+	return []key.Binding{
+		helpBinding([]string{"/"}, "/", "filter"),
+		helpBinding([]string{"ctrl+u"}, "ctrl+u", "reset filter"),
+		helpBinding([]string{"["}, "[", "prev page"),
+		helpBinding([]string{"]"}, "]", "next page"),
+		helpBinding([]string{"enter"}, "enter", "job detail"),
+	}
+}
+
+// HelpSections implements HelpProvider.
+func (r *Retries) HelpSections() []HelpSection {
+	return []HelpSection{
+		{
+			Title: "Retries",
+			Bindings: []key.Binding{
+				helpBinding([]string{"/"}, "/", "filter"),
+				helpBinding([]string{"ctrl+u"}, "ctrl+u", "clear filter"),
+				helpBinding([]string{"["}, "[", "previous page"),
+				helpBinding([]string{"]"}, "]", "next page"),
+				helpBinding([]string{"enter"}, "enter", "job detail"),
+			},
+		},
+	}
+}
+
+// TableHelp implements TableHelpProvider.
+func (r *Retries) TableHelp() []key.Binding {
+	return tableHelpBindings(r.table.KeyMap)
+}
+
 // SetSize implements View.
 func (r *Retries) SetSize(width, height int) View {
 	r.width = width
@@ -225,9 +283,12 @@ func (r *Retries) fetchDataCmd() tea.Cmd {
 			if err != nil {
 				return ConnectionErrorMsg{Err: err}
 			}
+			firstEntry, lastEntry := sortedEntryBounds(jobs)
 
 			return retriesDataMsg{
 				jobs:        jobs,
+				firstEntry:  firstEntry,
+				lastEntry:   lastEntry,
 				currentPage: 1,
 				totalPages:  1,
 				totalSize:   int64(len(jobs)),
@@ -243,6 +304,15 @@ func (r *Retries) fetchDataCmd() tea.Cmd {
 			return ConnectionErrorMsg{Err: err}
 		}
 
+		var firstEntry *sidekiq.SortedEntry
+		var lastEntry *sidekiq.SortedEntry
+		if totalSize > 0 {
+			firstEntry, lastEntry, err = r.client.GetRetryBounds(ctx)
+			if err != nil {
+				return ConnectionErrorMsg{Err: err}
+			}
+		}
+
 		if totalSize > 0 {
 			totalPages = int((totalSize + retriesPageSize - 1) / retriesPageSize)
 		}
@@ -256,6 +326,8 @@ func (r *Retries) fetchDataCmd() tea.Cmd {
 
 		return retriesDataMsg{
 			jobs:        jobs,
+			firstEntry:  firstEntry,
+			lastEntry:   lastEntry,
 			currentPage: currentPage,
 			totalPages:  totalPages,
 			totalSize:   totalSize,
@@ -276,6 +348,8 @@ func (r *Retries) reset() {
 	r.totalPages = 1
 	r.totalSize = 0
 	r.jobs = nil
+	r.firstEntry = nil
+	r.lastEntry = nil
 	r.ready = false
 	r.table.SetRows(nil)
 	r.table.SetCursor(0)
@@ -357,11 +431,9 @@ func (r *Retries) openFilterDialog() tea.Cmd {
 
 // renderJobsBox renders the bordered box containing the jobs table.
 func (r *Retries) renderJobsBox() string {
-	// Build meta: SIZE and PAGE info
-	sep := r.styles.Muted.Render(" • ")
-	sizeInfo := r.styles.MetricLabel.Render("SIZE: ") + r.styles.MetricValue.Render(format.ShortNumber(r.totalSize))
-	pageInfo := r.styles.MetricLabel.Render("PAGE: ") + r.styles.MetricValue.Render(fmt.Sprintf("%d/%d", r.currentPage, r.totalPages))
-	meta := sizeInfo + sep + pageInfo
+	// Build meta: page only
+	pageInfo := r.styles.MetricLabel.Render("page: ") + r.styles.MetricValue.Render(fmt.Sprintf("%d/%d", r.currentPage, r.totalPages))
+	meta := pageInfo
 
 	// Get table content
 	content := r.table.View()
