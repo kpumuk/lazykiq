@@ -12,7 +12,7 @@ Set Height 1600
 Set Padding 40
 
 Hide
-Type@1ms "go run ./cmd/lazykiq" Enter
+Type@1ms "go run ./cmd/lazykiq --redis redis://localhost:6379/1" Enter
 Sleep 1s
 Show
 
