@@ -227,8 +227,8 @@ func (m *Model) renderColumnLines(width int) []string {
 		gap = 2
 	}
 	columnWidth := max((width-gap)/2, 1)
-	leftLines := renderSectionLines(left, columnWidth, m.styles)
-	rightLines := renderSectionLines(right, columnWidth, m.styles)
+	leftLines := renderSections(left, columnWidth, m.styles)
+	rightLines := renderSections(right, columnWidth, m.styles)
 
 	lines := make([]string, 0, max(len(leftLines), len(rightLines)))
 	rows := max(len(leftLines), len(rightLines))
@@ -355,121 +355,84 @@ func splitSections(sections []Section) ([]Section, []Section) {
 	return left, right
 }
 
-func renderSectionLines(sections []Section, width int, styles Styles) []string {
+func renderSections(sections []Section, width int, styles Styles) []string {
 	if len(sections) == 0 || width <= 0 {
 		return nil
 	}
 
-	lines := []string{}
+	lines := make([]string, 0, len(sections)*4)
+	keyPadWidth := max(ansi.StringWidth(styles.Key.Render("x"))-ansi.StringWidth("x"), 0)
+
 	for i, section := range sections {
-		sectionLines := renderSection(section, width, styles)
-		lines = append(lines, sectionLines...)
-		if i < len(sections)-1 {
+		if i > 0 {
 			lines = append(lines, "")
 		}
-	}
-	return lines
-}
+		title := strings.TrimSpace(section.Title)
+		if title != "" {
+			lines = append(lines, ansi.Truncate(styles.Section.Render(title), width, ""))
+		}
 
-func renderSection(section Section, width int, styles Styles) []string {
-	if width <= 0 {
-		return nil
-	}
+		if len(section.Lines) > 0 {
+			for _, line := range section.Lines {
+				lines = append(lines, ansi.Truncate(line, width, ""))
+			}
+		}
 
-	lines := []string{}
-	title := strings.TrimSpace(section.Title)
-	if title != "" {
-		lines = append(lines, ansi.Truncate(styles.Section.Render(title), width, ""))
-	}
+		keys := make([]string, 0, len(section.Bindings))
+		descs := make([]string, 0, len(section.Bindings))
+		keyWidths := make([]int, 0, len(section.Bindings))
+		maxKeyWidth := 0
+		for _, binding := range section.Bindings {
+			if !binding.Enabled() {
+				continue
+			}
+			help := binding.Help()
+			keyText := strings.TrimSpace(help.Key)
+			if keyText == "" {
+				continue
+			}
+			keyWidth := ansi.StringWidth(keyText)
+			maxKeyWidth = max(maxKeyWidth, keyWidth)
+			keys = append(keys, keyText)
+			descs = append(descs, strings.TrimSpace(help.Desc))
+			keyWidths = append(keyWidths, keyWidth)
+		}
+		if len(keys) == 0 {
+			continue
+		}
 
-	if len(section.Lines) > 0 {
-		for _, line := range section.Lines {
+		if len(section.Lines) > 0 {
+			lines = append(lines, "")
+		}
+
+		keyCellWidth := maxKeyWidth + keyPadWidth
+		for i, keyText := range keys {
+			keyRendered := styles.Key.Render(keyText)
+			if keyCellWidth > keyWidths[i]+keyPadWidth {
+				keyRendered += strings.Repeat(" ", keyCellWidth-(keyWidths[i]+keyPadWidth))
+			}
+			if descs[i] == "" {
+				lines = append(lines, ansi.Truncate(keyRendered, width, ""))
+				continue
+			}
+			line := keyRendered + " " + styles.Desc.Render(descs[i])
 			lines = append(lines, ansi.Truncate(line, width, ""))
 		}
 	}
-
-	bindings := filterBindings(section.Bindings)
-	if len(bindings) == 0 {
-		return lines
-	}
-
-	if len(section.Lines) > 0 {
-		lines = append(lines, "")
-	}
-
-	keyWidth := maxHelpKeyWidth(bindings)
-	for _, binding := range bindings {
-		help := binding.Help()
-		keyText := strings.TrimSpace(help.Key)
-		descText := strings.TrimSpace(help.Desc)
-		if keyText == "" {
-			continue
-		}
-
-		keyRendered := renderKey(keyText, keyWidth, styles.Key)
-		if descText == "" {
-			lines = append(lines, ansi.Truncate(keyRendered, width, ""))
-			continue
-		}
-		line := keyRendered + " " + styles.Desc.Render(descText)
-		lines = append(lines, ansi.Truncate(line, width, ""))
-	}
-
 	return lines
-}
-
-func filterBindings(bindings []key.Binding) []key.Binding {
-	filtered := make([]key.Binding, 0, len(bindings))
-	for _, binding := range bindings {
-		if binding.Enabled() && binding.Help().Key != "" {
-			filtered = append(filtered, binding)
-		}
-	}
-	return filtered
-}
-
-func maxHelpKeyWidth(bindings []key.Binding) int {
-	maxWidth := 0
-	for _, binding := range bindings {
-		if !binding.Enabled() {
-			continue
-		}
-		if keyText := strings.TrimSpace(binding.Help().Key); keyText != "" {
-			width := ansi.StringWidth(keyText)
-			if width > maxWidth {
-				maxWidth = width
-			}
-		}
-	}
-	return maxWidth
-}
-
-func renderKey(keyText string, width int, style lipgloss.Style) string {
-	keyText = strings.TrimSpace(keyText)
-	if keyText == "" {
-		return ""
-	}
-	rawWidth := ansi.StringWidth(keyText)
-	rendered := style.Render(keyText)
-	renderedWidth := ansi.StringWidth(rendered)
-	paddingWidth := renderedWidth - rawWidth
-	targetWidth := renderedWidth
-	if width > 0 {
-		targetWidth = width + paddingWidth
-	}
-	if renderedWidth >= targetWidth {
-		return rendered
-	}
-	return rendered + strings.Repeat(" ", targetWidth-renderedWidth)
 }
 
 func padRight(value string, width int) string {
 	if width <= 0 {
 		return ""
 	}
-	truncated := ansi.Truncate(value, width, "")
-	if ansi.StringWidth(truncated) >= width {
-		return truncated
+
+	stringWidth := ansi.StringWidth(value)
+	if stringWidth == width {
+		return value
 	}
-	return truncated + strings.Repeat(" ", width-ansi.StringWidth(truncated))
+	if stringWidth > width {
+		return ansi.Truncate(value, width, "")
+	}
+	return value + strings.Repeat(" ", width-stringWidth)
 }
