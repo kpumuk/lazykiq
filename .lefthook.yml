@@ -3,7 +3,7 @@ pre-push:
     - name: packages audit
       tags:
         - security
-      run: mise exec golang -- govulncheck ./...
+      run: mise exec golang -- go tool golang.org/x/vuln/cmd/govulncheck ./...
 
     - name: gems audit
       tags:
