@@ -155,13 +155,11 @@ func New(client sidekiq.API, version string) App {
 		),
 		contextbar: contextbar.New(
 			contextbar.WithStyles(contextbar.Styles{
-				Bar:       styles.ContextBar,
-				Label:     styles.ContextLabel,
-				Value:     styles.ContextValue,
-				Muted:     styles.ContextMuted,
-				Key:       styles.ContextKey,
-				Desc:      styles.ContextDesc,
-				Separator: styles.ContextSeparator,
+				Bar:   styles.ContextBar,
+				Label: styles.ContextLabel,
+				Value: styles.ContextValue,
+				Key:   styles.ContextKey,
+				Desc:  styles.ContextDesc,
 			}),
 			contextbar.WithHeight(contextbarDefaultHeight),
 		),

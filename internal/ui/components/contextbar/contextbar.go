@@ -2,7 +2,6 @@
 package contextbar
 
 import (
-	"fmt"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
@@ -24,7 +23,26 @@ type KeyValueItem struct {
 
 // Render renders the key/value item.
 func (i KeyValueItem) Render(styles Styles) string {
-	return renderKeyValueLine(styles, i.Label, i.Value, 0)
+	label := strings.TrimSpace(i.Label)
+	value := strings.TrimSpace(i.Value)
+	if label == "" && value == "" {
+		return ""
+	}
+	if value == "" {
+		value = "—"
+	}
+
+	valueStyle := styles.Value.Bold(true)
+	if label == "" {
+		return valueStyle.Render(value)
+	}
+
+	labelText := label + ":"
+	labelStyle := styles.Label
+	if labelStyle.GetWidth() > 0 {
+		return labelStyle.Render(labelText) + valueStyle.Render(value)
+	}
+	return labelStyle.Render(labelText) + " " + valueStyle.Render(value)
 }
 
 // FormattedItem renders a pre-formatted line.
@@ -39,25 +57,21 @@ func (i FormattedItem) Render(_ Styles) string {
 
 // Styles holds the styles for rendering the context bar.
 type Styles struct {
-	Bar       lipgloss.Style
-	Label     lipgloss.Style
-	Value     lipgloss.Style
-	Muted     lipgloss.Style
-	Key       lipgloss.Style
-	Desc      lipgloss.Style
-	Separator lipgloss.Style
+	Bar   lipgloss.Style
+	Label lipgloss.Style
+	Value lipgloss.Style
+	Key   lipgloss.Style
+	Desc  lipgloss.Style
 }
 
 // DefaultStyles returns default styles for the context bar.
 func DefaultStyles() Styles {
 	return Styles{
-		Bar:       lipgloss.NewStyle().Padding(0, 1),
-		Label:     lipgloss.NewStyle(),
-		Value:     lipgloss.NewStyle(),
-		Muted:     lipgloss.NewStyle(),
-		Key:       lipgloss.NewStyle(),
-		Desc:      lipgloss.NewStyle(),
-		Separator: lipgloss.NewStyle(),
+		Bar:   lipgloss.NewStyle().Padding(0, 1),
+		Label: lipgloss.NewStyle(),
+		Value: lipgloss.NewStyle(),
+		Key:   lipgloss.NewStyle(),
+		Desc:  lipgloss.NewStyle(),
 	}
 }
 
@@ -155,11 +169,8 @@ func (m Model) View() string {
 		return strings.TrimRight(strings.Repeat(barStyle.Render("")+"\n", m.height), "\n")
 	}
 
-	leftLines := m.buildItemLines(innerWidth)
-	maxLeftWidth := 0
-	for _, line := range leftLines {
-		maxLeftWidth = max(maxLeftWidth, ansi.StringWidth(line))
-	}
+	labelWidth := maxLabelWidth(m.items)
+	leftLines, maxLeftWidth := m.buildItemLines(innerWidth, labelWidth)
 	leftWidth := min(maxLeftWidth, innerWidth)
 	if leftWidth > 0 {
 		leftWidth = min(leftWidth, max(innerWidth-2, 0))
@@ -213,12 +224,30 @@ func (m Model) View() string {
 	return strings.Join(lines, "\n")
 }
 
-func (m Model) buildItemLines(width int) []string {
+func (m Model) buildItemLines(width int, labelWidth int) ([]string, int) {
 	if width <= 0 || len(m.items) == 0 {
-		return nil
+		return nil, 0
 	}
+
+	styles := m.styles
+	if labelWidth > 0 {
+		styles.Label = styles.Label.Width(labelWidth + 1)
+	}
+
+	lines := make([]string, 0, min(len(m.items), m.height))
+	maxLineWidth := 0
+	for i := 0; i < len(m.items) && len(lines) < m.height; i++ {
+		line := m.items[i].Render(styles)
+		line = ansi.Truncate(line, width, "")
+		maxLineWidth = max(maxLineWidth, ansi.StringWidth(line))
+		lines = append(lines, line)
+	}
+	return lines, maxLineWidth
+}
+
+func maxLabelWidth(items []Item) int {
 	labelWidth := 0
-	for _, item := range m.items {
+	for _, item := range items {
 		label := ""
 		switch v := item.(type) {
 		case KeyValueItem:
@@ -238,53 +267,7 @@ func (m Model) buildItemLines(width int) []string {
 			labelWidth = w
 		}
 	}
-
-	lines := make([]string, 0, min(len(m.items), m.height))
-	for i := 0; i < len(m.items) && len(lines) < m.height; i++ {
-		item := m.items[i]
-		line := ""
-		switch v := item.(type) {
-		case KeyValueItem:
-			line = renderKeyValueLine(m.styles, v.Label, v.Value, labelWidth)
-		case *KeyValueItem:
-			line = renderKeyValueLine(m.styles, v.Label, v.Value, labelWidth)
-		default:
-			line = item.Render(m.styles)
-		}
-		line = ansi.Truncate(line, width, "")
-		lines = append(lines, line)
-	}
-	return lines
-}
-
-func renderKeyValueLine(styles Styles, label, value string, labelWidth int) string {
-	label = strings.TrimSpace(label)
-	value = strings.TrimSpace(value)
-	if label == "" && value == "" {
-		return ""
-	}
-	if value == "" {
-		value = "—"
-	}
-
-	valueStyle := styles.Value.Bold(true)
-	mutedStyle := styles.Muted.Bold(true)
-
-	if label == "" {
-		if value == "—" {
-			return mutedStyle.Render(value)
-		}
-		return valueStyle.Render(value)
-	}
-
-	labelText := label + ":"
-	if labelWidth > 0 {
-		labelText = fmt.Sprintf("%-*s", labelWidth, labelText)
-	}
-	if value == "—" {
-		return styles.Label.Render(labelText) + " " + mutedStyle.Render(value)
-	}
-	return styles.Label.Render(labelText) + " " + valueStyle.Render(value)
+	return labelWidth
 }
 
 func (m Model) buildHintLines(width int) []string {
@@ -292,14 +275,13 @@ func (m Model) buildHintLines(width int) []string {
 		return nil
 	}
 	type hintItem struct {
-		keyStyled string
-		keyWidth  int
-		desc      string
+		displayKey string
+		keyWidth   int
+		desc       string
 	}
 
 	items := make([]hintItem, 0, len(m.hints))
 	maxKeyWidth := 0
-	keyStyle := m.styles.Key.Padding(0, 0)
 	for _, hint := range m.hints {
 		if !hint.Enabled() {
 			continue
@@ -310,11 +292,10 @@ func (m Model) buildHintLines(width int) []string {
 		if keyText == "" {
 			continue
 		}
-		displayKey := " " + keyText + " "
-		keyStyled := keyStyle.Render(displayKey)
+		displayKey := keyText
 		keyWidth := ansi.StringWidth(displayKey)
 		maxKeyWidth = max(maxKeyWidth, keyWidth)
-		items = append(items, hintItem{keyStyled: keyStyled, keyWidth: keyWidth, desc: descText})
+		items = append(items, hintItem{displayKey: displayKey, keyWidth: keyWidth, desc: descText})
 	}
 	if len(items) == 0 {
 		return nil
@@ -325,7 +306,7 @@ func (m Model) buildHintLines(width int) []string {
 	maxLineWidth := 0
 	for i := range rows {
 		item := items[i]
-		keyCell := item.keyStyled + strings.Repeat(" ", maxKeyWidth-item.keyWidth)
+		keyCell := m.styles.Key.Render(item.displayKey) + strings.Repeat(" ", maxKeyWidth-item.keyWidth)
 		line := keyCell
 		if item.desc != "" {
 			line += " " + m.styles.Desc.Render(item.desc)
