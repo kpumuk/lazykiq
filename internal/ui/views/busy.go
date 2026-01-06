@@ -627,13 +627,9 @@ func (b *Busy) processListLines() []string {
 	}
 
 	lines := make([]string, 0, len(b.data.Processes))
+	nameStyle := b.styles.Text.Bold(true).Width(maxNameLen)
 	for i, proc := range b.data.Processes {
-		name := fmt.Sprintf("%-*s", maxNameLen, names[i])
-
-		nameStyle := b.styles.Text
-		if i == b.selectedProcess {
-			nameStyle = nameStyle.Bold(true)
-		}
+		name := nameStyle.Render(names[i])
 
 		hotkeyText := fmt.Sprintf("ctrl+%d", i+1)
 		var hotkey string

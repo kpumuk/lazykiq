@@ -236,16 +236,33 @@ func (j *JobDetail) ShortHelp() []key.Binding {
 
 // ContextItems implements ContextProvider.
 func (j *JobDetail) ContextItems() []ContextItem {
-	items := []ContextItem{}
-	if j.job != nil {
-		items = append(items, ContextItem{Label: "Job", Value: j.job.JID()})
+	if j.job == nil {
+		return nil
 	}
-	panel := "Details"
-	if j.focusRight {
-		panel = "JSON"
+
+	queue := j.job.Queue()
+	if queue == "" {
+		queue = "-"
+	} else {
+		queue = j.styles.QueueText.Render(queue)
 	}
-	items = append(items, ContextItem{Label: "Panel", Value: panel})
-	return items
+
+	className := j.job.DisplayClass()
+	if strings.TrimSpace(className) == "" {
+		className = "-"
+	}
+
+	latency := "-"
+	if value := j.job.Latency(); value > 0 {
+		latency = format.Duration(int64(math.Round(value)))
+	}
+
+	return []ContextItem{
+		{Label: "JID", Value: j.job.JID()},
+		{Label: "Queue", Value: queue},
+		{Label: "Class", Value: className},
+		{Label: "Latency", Value: latency},
+	}
 }
 
 // HintBindings implements HintProvider.

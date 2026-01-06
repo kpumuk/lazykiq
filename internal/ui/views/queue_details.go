@@ -401,6 +401,7 @@ func (q *QueueDetails) queueListLines() []string {
 	}
 
 	lines := make([]string, 0, len(displayQueues))
+	nameStyle := q.styles.QueueText.Bold(true).Width(maxNameLen)
 	for i, queue := range displayQueues {
 		queueIdx := q.displayOrder[i]
 
@@ -414,7 +415,7 @@ func (q *QueueDetails) queueListLines() []string {
 		}
 
 		// Queue name (left-aligned)
-		name := q.styles.QueueText.Render(fmt.Sprintf("%-*s", maxNameLen, queue.Name))
+		name := nameStyle.Render(queue.Name)
 
 		// Size and latency (right-aligned)
 		sizeStr := fmt.Sprintf("%*d", maxSizeLen, queue.Size)
