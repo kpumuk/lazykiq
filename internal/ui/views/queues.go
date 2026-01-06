@@ -327,7 +327,7 @@ func (q *QueuesList) updateTableRows() {
 		row := table.Row{
 			ID: queue.Name,
 			Cells: []string{
-				queue.Name,
+				q.styles.QueueText.Render(queue.Name),
 				format.Number(queue.Size),
 				formatLatency(queue.Latency),
 				oldestJobStr,

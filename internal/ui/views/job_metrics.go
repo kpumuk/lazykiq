@@ -249,8 +249,7 @@ func (j *JobMetrics) ContextItems() []ContextItem {
 func (j *JobMetrics) HintBindings() []key.Binding {
 	return []key.Binding{
 		helpBinding([]string{"tab"}, "tab", "switch panel"),
-		helpBinding([]string{"{"}, "{", "prev period"),
-		helpBinding([]string{"}"}, "}", "next period"),
+		helpBinding([]string{"{", "}"}, "{ ⋰ }", "change period"),
 	}
 }
 

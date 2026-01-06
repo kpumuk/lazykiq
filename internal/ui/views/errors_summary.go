@@ -295,7 +295,7 @@ func (e *ErrorsSummary) updateTableRows() {
 			Cells: []string{
 				row.displayClass,
 				row.errorClass,
-				row.queue,
+				e.styles.QueueText.Render(row.queue),
 				format.Number(row.count),
 				row.errorMessage,
 			},

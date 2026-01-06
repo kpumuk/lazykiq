@@ -157,7 +157,7 @@ func (e *ErrorsDetails) ContextItems() []ContextItem {
 		items = append(items, ContextItem{Label: "Error", Value: e.groupKey.errorClass})
 	}
 	if e.groupKey.queue != "" {
-		items = append(items, ContextItem{Label: "Queue", Value: e.groupKey.queue})
+		items = append(items, ContextItem{Label: "Queue", Value: e.styles.QueueText.Render(e.groupKey.queue)})
 	}
 	if e.filter != "" {
 		items = append(items, ContextItem{Label: "Filter", Value: e.filter})
@@ -300,6 +300,7 @@ func (e *ErrorsDetails) updateTableRows() {
 		if queue == "" {
 			queue = "unknown"
 		}
+		queue = e.styles.QueueText.Render(queue)
 		message := errorDisplay(job.entry)
 		rows = append(rows, table.Row{
 			ID: job.entry.JID(),

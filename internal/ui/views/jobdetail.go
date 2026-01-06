@@ -78,6 +78,7 @@ type jobDetailStyles struct {
 	Title           lipgloss.Style
 	Label           lipgloss.Style
 	Value           lipgloss.Style
+	QueueText       lipgloss.Style
 	JSON            lipgloss.Style
 	JSONKey         lipgloss.Style
 	JSONString      lipgloss.Style
@@ -292,6 +293,7 @@ func (j *JobDetail) SetStyles(styles Styles) View {
 		Title:           styles.Title,
 		Label:           styles.Muted,
 		Value:           styles.Text,
+		QueueText:       styles.QueueText,
 		JSON:            styles.Text,
 		JSONKey:         styles.JSONKey,
 		JSONString:      styles.JSONString,
@@ -522,12 +524,16 @@ func (j *JobDetail) renderLeftPanel() string {
 		label := j.styles.Label.Render(prop.Label + ":")
 		allLines = append(allLines, label)
 		// Value rows (indented, wrapped if needed)
+		valueStyle := j.styles.Value
+		if prop.Label == "Queue" {
+			valueStyle = j.styles.QueueText
+		}
 		valueLines := wrapText(prop.Value, valueWidth)
 		if len(valueLines) == 0 {
 			valueLines = []string{""}
 		}
 		for _, vl := range valueLines {
-			allLines = append(allLines, valueIndent+j.styles.Value.Render(vl))
+			allLines = append(allLines, valueIndent+valueStyle.Render(vl))
 		}
 	}
 

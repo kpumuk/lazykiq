@@ -194,8 +194,7 @@ func (d *Dead) HintBindings() []key.Binding {
 	return []key.Binding{
 		helpBinding([]string{"/"}, "/", "filter"),
 		helpBinding([]string{"ctrl+u"}, "ctrl+u", "reset filter"),
-		helpBinding([]string{"["}, "[", "prev page"),
-		helpBinding([]string{"]"}, "]", "next page"),
+		helpBinding([]string{"[", "]"}, "[ ⋰ ]", "change page"),
 		helpBinding([]string{"enter"}, "enter", "job detail"),
 	}
 }
@@ -399,7 +398,7 @@ func (d *Dead) updateTableRows() {
 			ID: job.JID(),
 			Cells: []string{
 				lastRetry,
-				job.Queue(),
+				d.styles.QueueText.Render(job.Queue()),
 				job.DisplayClass(),
 				format.Args(job.DisplayArgs()),
 				errorStr,

@@ -186,7 +186,7 @@ func (q *QueueDetails) ContextItems() []ContextItem {
 	}
 	items := []ContextItem{}
 	if queueName != "" {
-		items = append(items, ContextItem{Label: "Queue", Value: queueName})
+		items = append(items, ContextItem{Label: "Queue", Value: q.styles.QueueText.Render(queueName)})
 	}
 	if q.totalPages > 0 {
 		items = append(items, ContextItem{Label: "Page", Value: fmt.Sprintf("%d/%d", q.currentPage, q.totalPages)})
@@ -198,8 +198,7 @@ func (q *QueueDetails) ContextItems() []ContextItem {
 func (q *QueueDetails) HintBindings() []key.Binding {
 	return []key.Binding{
 		helpBinding([]string{"s"}, "s", "switch queue"),
-		helpBinding([]string{"["}, "[", "prev page"),
-		helpBinding([]string{"]"}, "]", "next page"),
+		helpBinding([]string{"[", "]"}, "[ ⋰ ]", "change page"),
 		helpBinding([]string{"enter"}, "enter", "job detail"),
 	}
 }
@@ -415,7 +414,7 @@ func (q *QueueDetails) queueListLines() []string {
 		}
 
 		// Queue name (left-aligned)
-		name := q.styles.Text.Render(fmt.Sprintf("%-*s", maxNameLen, queue.Name))
+		name := q.styles.QueueText.Render(fmt.Sprintf("%-*s", maxNameLen, queue.Name))
 
 		// Size and latency (right-aligned)
 		sizeStr := fmt.Sprintf("%*d", maxSizeLen, queue.Size)

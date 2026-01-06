@@ -197,8 +197,7 @@ func (d *Dashboard) ContextItems() []ContextItem {
 func (d *Dashboard) HintBindings() []key.Binding {
 	return []key.Binding{
 		helpBinding([]string{"tab"}, "tab", "switch pane"),
-		helpBinding([]string{"{"}, "{", "prev range"),
-		helpBinding([]string{"}"}, "}", "next range"),
+		helpBinding([]string{"{", "}"}, "{ ⋰ }", "change period"),
 	}
 }
 

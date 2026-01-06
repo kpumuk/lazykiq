@@ -196,8 +196,7 @@ func (r *Retries) HintBindings() []key.Binding {
 	return []key.Binding{
 		helpBinding([]string{"/"}, "/", "filter"),
 		helpBinding([]string{"ctrl+u"}, "ctrl+u", "reset filter"),
-		helpBinding([]string{"["}, "[", "prev page"),
-		helpBinding([]string{"]"}, "]", "next page"),
+		helpBinding([]string{"[", "]"}, "[ ⋰ ]", "change page"),
 		helpBinding([]string{"enter"}, "enter", "job detail"),
 	}
 }
@@ -406,7 +405,7 @@ func (r *Retries) updateTableRows() {
 			Cells: []string{
 				nextRetry,
 				retryCount,
-				job.Queue(),
+				r.styles.QueueText.Render(job.Queue()),
 				job.DisplayClass(),
 				format.Args(job.DisplayArgs()),
 				errorStr,

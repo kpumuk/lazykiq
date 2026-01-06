@@ -353,8 +353,6 @@ func (p *ProcessesList) updateTableRows() {
 
 // renderProcessesBox renders the bordered box containing the processes table.
 func (p *ProcessesList) renderProcessesBox() string {
-	meta := p.styles.MetricLabel.Render("processes: ") + p.styles.MetricValue.Render(strconv.Itoa(len(p.processes)))
-
 	boxHeight := p.height
 	content := p.table.View()
 
@@ -363,7 +361,6 @@ func (p *ProcessesList) renderProcessesBox() string {
 		frame.WithTitle("Select process"),
 		frame.WithFilter(p.filter),
 		frame.WithTitlePadding(0),
-		frame.WithMeta(meta),
 		frame.WithContent(content),
 		frame.WithPadding(1),
 		frame.WithSize(p.width, boxHeight),

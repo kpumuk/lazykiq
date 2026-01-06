@@ -194,8 +194,7 @@ func (s *Scheduled) HintBindings() []key.Binding {
 	return []key.Binding{
 		helpBinding([]string{"/"}, "/", "filter"),
 		helpBinding([]string{"ctrl+u"}, "ctrl+u", "reset filter"),
-		helpBinding([]string{"["}, "[", "prev page"),
-		helpBinding([]string{"]"}, "]", "next page"),
+		helpBinding([]string{"[", "]"}, "[ ⋰ ]", "change page"),
 		helpBinding([]string{"enter"}, "enter", "job detail"),
 	}
 }
@@ -388,7 +387,7 @@ func (s *Scheduled) updateTableRows() {
 			ID: job.JID(),
 			Cells: []string{
 				when,
-				job.Queue(),
+				s.styles.QueueText.Render(job.Queue()),
 				job.DisplayClass(),
 				format.Args(job.DisplayArgs()),
 			},
