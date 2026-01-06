@@ -109,14 +109,31 @@ func (c *Client) DetectVersion(ctx context.Context) Version {
 	// We can distinguish by the date portion length after "j|"
 	// If both formats exist (during upgrade), prefer Version8
 
-	keys, _, err := c.redis.Scan(ctx, 0, "j|*", 10).Result()
-	if err != nil || len(keys) == 0 {
+	// Iterate SCAN until we have at least 10 keys or reach cursor 0
+	var allKeys []string
+	cursor := uint64(0)
+	for {
+		// It is possible that Redis will return 0 key and an interator to the next scan
+		keys, nextCursor, err := c.redis.Scan(ctx, cursor, "j|*", 100).Result()
+		if err != nil {
+			return VersionUnknown
+		}
+		allKeys = append(allKeys, keys...)
+		cursor = nextCursor
+
+		// Stop if we've collected enough keys or completed the scan
+		if len(allKeys) >= 10 || cursor == 0 {
+			break
+		}
+	}
+
+	if len(allKeys) == 0 {
 		return VersionUnknown
 	}
 
 	// Check all keys, prefer Version8 over Version7
 	detected := VersionUnknown
-	for _, key := range keys {
+	for _, key := range allKeys {
 		if len(key) < 4 {
 			continue
 		}
