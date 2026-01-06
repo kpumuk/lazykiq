@@ -1,0 +1,13 @@
+# frozen_string_literal: true
+
+source "https://rubygems.org"
+
+gem "sidekiq", "~> 7.3.10"
+gem "redis", "~> 5.0"
+gem "rackup", "~> 2.0"
+gem "puma", "~> 7.1"
+gem "rack-session", "~> 2.0"
+
+# Fundamental change, currently incompatible
+# https://github.com/mperham/connection_pool/issues/210
+gem "connection_pool", "~> 2.5", ">= 2.5.5"

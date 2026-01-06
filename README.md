@@ -95,10 +95,19 @@ docker-compose up --build
 This will:
 
 - Start a Redis server
-- Start a Sidekiq server with some demo jobs
-- Start a web server to monitor Sidekiq
+- Start Sidekiq servers for different Sidekiq versions with some demo jobs (with Web interface)
 
-You can access the Sidekiq dashboard at `http://localhost:9292` and connect `lazykiq` to Redis at `localhost:6379`.
+| Sidekiq   | Redis URL                  | Web Dashboard         |
+| --------- | -------------------------- | --------------------- |
+| **7.3.x** | `redis://localhost:6379/0` | http://localhost:9292 |
+| **8.0.0** | `redis://localhost:6379/1` | http://localhost:9293 |
+| **8.1.0** | `redis://localhost:6379/2` | http://localhost:9294 |
+
+You can connect to a specific Sidekiq version using:
+
+```bash
+go run ./cmd/lazykiq --redis redis://localhost:6379/2
+```
 
 ### Website
 

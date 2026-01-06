@@ -28,7 +28,16 @@ alias = "cov"
 
 [tasks.deps]
 description = "Update development dependencies"
+depends = ["deps-go", "deps-ruby"]
+
+[tasks.deps-go]
+description = "Update Go dependencies"
 run = "go get -u ./... && go mod tidy"
+
+[tasks.deps-ruby]
+description = "Update Ruby dependencies"
+run = "find . -maxdepth 1 -name 'Gemfile*' ! -name '*.lock' -exec mise exec ruby -- bundle update --gemfile '{}' --all \\;"
+dir = "demo"
 
 [tasks.website-dev]
 description = "Run Hugo in development mode"

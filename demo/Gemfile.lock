@@ -49,7 +49,7 @@ GEM
     unicode-emoji (4.2.0)
 
 PLATFORMS
-  arm64-darwin-25
+  arm64-darwin
   ruby
 
 DEPENDENCIES
