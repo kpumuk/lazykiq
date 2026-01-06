@@ -2,13 +2,16 @@ package views
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/kpumuk/lazykiq/internal/mathutil"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
 	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
@@ -291,7 +294,7 @@ func (m *Metrics) fetchListCmd() tea.Cmd {
 }
 
 func (m *Metrics) adjustPeriod(delta int) (View, tea.Cmd) {
-	next := clampInt(m.periodIdx+delta, len(m.periods)-1)
+	next := mathutil.Clamp(m.periodIdx+delta, 0, len(m.periods)-1)
 	if next == m.periodIdx {
 		return m, nil
 	}
@@ -403,4 +406,18 @@ func (m *Metrics) listMeta() string {
 		entries = append(entries, m.styles.MetricLabel.Render("range: ")+m.styles.MetricValue.Render(rangeText))
 	}
 	return strings.Join(entries, sep)
+}
+
+func formatMetricsRange(start, end time.Time) string {
+	if start.IsZero() || end.IsZero() {
+		return ""
+	}
+
+	start = start.UTC()
+	end = end.UTC()
+	if start.Format("2006-01-02") == end.Format("2006-01-02") {
+		return fmt.Sprintf("%s-%s UTC", start.Format("15:04"), end.Format("15:04"))
+	}
+
+	return fmt.Sprintf("%s-%s UTC", start.Format("Jan 2 15:04"), end.Format("Jan 2 15:04"))
 }

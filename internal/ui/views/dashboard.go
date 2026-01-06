@@ -9,11 +9,11 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	tslc "github.com/NimbleMarkets/ntcharts/v2/linechart/timeserieslinechart"
 
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
 	"github.com/kpumuk/lazykiq/internal/ui/components/metrics"
+	"github.com/kpumuk/lazykiq/internal/ui/components/timeseries"
 	"github.com/kpumuk/lazykiq/internal/ui/format"
 )
 
@@ -329,18 +329,45 @@ func (d *Dashboard) renderRealtimeContent(contentHeight int) string {
 	if contentHeight < 1 || width < 1 {
 		return ""
 	}
-	if len(d.realtimeProcessed) == 0 {
-		return renderCenteredLoading(width, contentHeight)
-	}
 
 	chartHeight := contentHeight - 1
 	if chartHeight < 1 {
-		return renderCenteredLoading(width, contentHeight)
+		chartHeight = contentHeight
 	}
 
-	chart := d.renderTimeSeriesChart(width, chartHeight, d.realtimeTimes, d.realtimeProcessed, d.realtimeFailed, realtimeTimeLabelFormatter())
+	chart := timeseries.New(
+		timeseries.WithSize(width, chartHeight),
+		timeseries.WithSeries(
+			timeseries.Series{
+				Name:   "processed",
+				Times:  d.realtimeTimes,
+				Values: int64ToFloat64(d.realtimeProcessed),
+				Style:  d.styles.ChartSuccess,
+			},
+			timeseries.Series{
+				Name:   "failed",
+				Times:  d.realtimeTimes,
+				Values: int64ToFloat64(d.realtimeFailed),
+				Style:  d.styles.ChartFailure,
+			},
+		),
+		timeseries.WithStyles(timeseries.Styles{
+			Axis:  d.styles.ChartAxis,
+			Label: d.styles.ChartLabel,
+		}),
+		timeseries.WithXFormatter(realtimeTimeLabelFormatter()),
+		timeseries.WithYFormatter(shortYLabelFormatter()),
+		timeseries.WithXYSteps(2, 2),
+		timeseries.WithEmptyMessage("Loading..."),
+	)
+
+	// Don't show legend if no data
+	if len(d.realtimeProcessed) == 0 {
+		return chart.View()
+	}
+
 	legend := d.renderRealtimeLegend(width)
-	return chart + "\n" + legend
+	return chart.View() + "\n" + legend
 }
 
 func (d *Dashboard) renderHistoryContent(contentHeight int) string {
@@ -348,18 +375,45 @@ func (d *Dashboard) renderHistoryContent(contentHeight int) string {
 	if contentHeight < 1 || width < 1 {
 		return ""
 	}
-	if len(d.historyProcessed) == 0 {
-		return renderCenteredLoading(width, contentHeight)
-	}
 
 	chartHeight := contentHeight - 1
 	if chartHeight < 1 {
-		return renderCenteredLoading(width, contentHeight)
+		chartHeight = contentHeight
 	}
 
-	chart := d.renderTimeSeriesChart(width, chartHeight, d.historyDates, d.historyProcessed, d.historyFailed, historyTimeLabelFormatter())
+	chart := timeseries.New(
+		timeseries.WithSize(width, chartHeight),
+		timeseries.WithSeries(
+			timeseries.Series{
+				Name:   "processed",
+				Times:  d.historyDates,
+				Values: int64ToFloat64(d.historyProcessed),
+				Style:  d.styles.ChartSuccess,
+			},
+			timeseries.Series{
+				Name:   "failed",
+				Times:  d.historyDates,
+				Values: int64ToFloat64(d.historyFailed),
+				Style:  d.styles.ChartFailure,
+			},
+		),
+		timeseries.WithStyles(timeseries.Styles{
+			Axis:  d.styles.ChartAxis,
+			Label: d.styles.ChartLabel,
+		}),
+		timeseries.WithXFormatter(historyTimeLabelFormatter()),
+		timeseries.WithYFormatter(shortYLabelFormatter()),
+		timeseries.WithXYSteps(2, 2),
+		timeseries.WithEmptyMessage("Loading..."),
+	)
+
+	// Don't show legend if no data
+	if len(d.historyProcessed) == 0 {
+		return chart.View()
+	}
+
 	legend := d.renderHistoryLegend(width)
-	return chart + "\n" + legend
+	return chart.View() + "\n" + legend
 }
 
 func (d *Dashboard) renderRealtimeLegend(width int) string {
@@ -432,75 +486,12 @@ func trimSeries(values []int64, maxItems int) []int64 {
 	return values[len(values)-maxItems:]
 }
 
-func (d *Dashboard) renderTimeSeriesChart(width, height int, times []time.Time, processed, failed []int64, xFormatter func(int, float64) string) string {
-	if width < 1 || height < 1 {
-		return ""
+func int64ToFloat64(values []int64) []float64 {
+	result := make([]float64, len(values))
+	for i, v := range values {
+		result[i] = float64(v)
 	}
-	n := min(len(times), len(processed), len(failed))
-	if n == 0 {
-		return renderCenteredLoading(width, height)
-	}
-
-	times = times[len(times)-n:]
-	processed = processed[len(processed)-n:]
-	failed = failed[len(failed)-n:]
-
-	minTime := times[0]
-	maxTime := times[len(times)-1]
-	if !maxTime.After(minTime) {
-		maxTime = minTime.Add(time.Second)
-	}
-
-	maxVal := int64(1)
-	for i := range n {
-		if processed[i] > maxVal {
-			maxVal = processed[i]
-		}
-		if failed[i] > maxVal {
-			maxVal = failed[i]
-		}
-	}
-
-	chart := tslc.New(width, height,
-		tslc.WithXYSteps(2, 2),
-		tslc.WithXLabelFormatter(xFormatter),
-		tslc.WithYLabelFormatter(shortYLabelFormatter()),
-		tslc.WithAxesStyles(d.styles.ChartAxis, d.styles.ChartLabel),
-		tslc.WithTimeRange(minTime, maxTime),
-		tslc.WithYRange(0, float64(maxVal)),
-	)
-	chart.AutoMinX = false
-	chart.AutoMaxX = false
-	chart.AutoMinY = false
-	chart.AutoMaxY = false
-	chart.SetStyle(d.styles.ChartSuccess)
-	chart.SetDataSetStyle("failed", d.styles.ChartFailure)
-
-	for i := range n {
-		pointTime := times[i]
-		chart.Push(tslc.TimePoint{Time: pointTime, Value: float64(processed[i])})
-		chart.PushDataSet("failed", tslc.TimePoint{Time: pointTime, Value: float64(failed[i])})
-	}
-
-	chart.DrawBrailleAll()
-	return chart.View()
-}
-
-func renderCenteredLoading(width, height int) string {
-	if height < 1 {
-		return ""
-	}
-	lines := make([]string, height)
-	target := height / 2
-	for i := range height {
-		lines[i] = strings.Repeat(" ", width)
-	}
-	if width > 0 {
-		trimmed := lipgloss.NewStyle().MaxWidth(width).Render("Loading...")
-		padding := max((width-lipgloss.Width(trimmed))/2, 0)
-		lines[target] = strings.Repeat(" ", padding) + trimmed
-	}
-	return strings.Join(lines, "\n")
+	return result
 }
 
 func sumSeries(values []int64) int64 {

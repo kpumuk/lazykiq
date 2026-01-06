@@ -167,7 +167,6 @@ Key principles:
 * charm.land/bubbletea/v2
 * charm.land/lipgloss/v2
 * charm.land/bubbles/v2
-* github.com/charmbracelet/lipgloss (v1 for ntcharts)
 * github.com/charmbracelet/x/ansi
 * go-redis/v9
 * cobra/fang
@@ -183,7 +182,7 @@ Key principles:
 - Textinput placeholder rendering needs Width set; otherwise only the first placeholder rune appears.
 - Views with filter inputs should expose `FilterFocused() bool`; the app checks this to route keys before global shortcuts.
 - When an input component is focused, the app must route key events to the view before global shortcuts to avoid stealing keys (view switch, quit).
-- Dashboard charts use ntcharts + lipgloss v1; keep colors aligned with `theme.DefaultTheme` until ntcharts upgrades.
+- Dashboard charts use ntcharts (patched to use lipgloss v2); keep colors aligned with `theme.DefaultTheme`.
 - Height calculations: app.go renders metrics bar (top) + view content + stackbar + navbar (bottom). Views must output exactly the same number of lines consistently. If view outputs too many lines, metrics bar gets pushed off screen. Specific issues:
   - Title is part of the border line, not a separate line (so -2 for borders, not -3)
   - Views with header areas outside the main box (Busy, Queues) get extra height (+3 instead of +2). When showing alternative content (like job detail), must output the same total lines as normal view - add empty lines at top if needed to match the header area

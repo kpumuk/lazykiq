@@ -9,6 +9,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/kpumuk/lazykiq/internal/mathutil"
 )
 
 // Row represents one line in the table. ID is used to preserve selection across refreshes.
@@ -285,7 +287,7 @@ func (m *Model) SetSelectionSpans(spans map[int]SelectionSpan) {
 
 // SetCursor sets the cursor position in the table.
 func (m *Model) SetCursor(n int) {
-	m.cursor = clamp(n, 0, len(m.rows)-1)
+	m.cursor = mathutil.Clamp(n, 0, len(m.rows)-1)
 	m.ensureSelectedVisible()
 	m.updateViewport()
 }
@@ -367,14 +369,14 @@ func (m Model) View() string {
 
 // MoveUp moves the selection up by n rows.
 func (m *Model) MoveUp(n int) {
-	m.cursor = clamp(m.cursor-n, 0, len(m.rows)-1)
+	m.cursor = mathutil.Clamp(m.cursor-n, 0, len(m.rows)-1)
 	m.ensureSelectedVisible()
 	m.updateViewport()
 }
 
 // MoveDown moves the selection down by n rows.
 func (m *Model) MoveDown(n int) {
-	m.cursor = clamp(m.cursor+n, 0, len(m.rows)-1)
+	m.cursor = mathutil.Clamp(m.cursor+n, 0, len(m.rows)-1)
 	m.ensureSelectedVisible()
 	m.updateViewport()
 }
@@ -745,14 +747,6 @@ func padRight(s string, width int) string {
 		return s
 	}
 	return s + strings.Repeat(" ", width-lipgloss.Width(s))
-}
-
-// clamp restricts a value to a range.
-func clamp(v, low, high int) int {
-	if high < low {
-		return low
-	}
-	return min(max(v, low), high)
 }
 
 func indexRowByID(rows []Row, id string) int {

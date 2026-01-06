@@ -11,6 +11,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/kpumuk/lazykiq/internal/mathutil"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
 	"github.com/kpumuk/lazykiq/internal/ui/components/jsonview"
@@ -152,26 +153,26 @@ func (j *JobDetail) Update(msg tea.Msg) (View, tea.Cmd) {
 
 		case key.Matches(msg, j.KeyMap.LineUp):
 			if j.focusRight {
-				j.rightYOffset = clampZeroMax(j.rightYOffset-1, j.maxRightYOffset())
+				j.rightYOffset = mathutil.Clamp(j.rightYOffset-1, 0, j.maxRightYOffset())
 			} else {
-				j.leftYOffset = clampZeroMax(j.leftYOffset-1, j.maxLeftYOffset())
+				j.leftYOffset = mathutil.Clamp(j.leftYOffset-1, 0, j.maxLeftYOffset())
 			}
 
 		case key.Matches(msg, j.KeyMap.LineDown):
 			if j.focusRight {
-				j.rightYOffset = clampZeroMax(j.rightYOffset+1, j.maxRightYOffset())
+				j.rightYOffset = mathutil.Clamp(j.rightYOffset+1, 0, j.maxRightYOffset())
 			} else {
-				j.leftYOffset = clampZeroMax(j.leftYOffset+1, j.maxLeftYOffset())
+				j.leftYOffset = mathutil.Clamp(j.leftYOffset+1, 0, j.maxLeftYOffset())
 			}
 
 		case key.Matches(msg, j.KeyMap.ScrollLeft):
 			if j.focusRight {
-				j.rightXOffset = clampZeroMax(j.rightXOffset-4, j.maxRightXOffset())
+				j.rightXOffset = mathutil.Clamp(j.rightXOffset-4, 0, j.maxRightXOffset())
 			}
 
 		case key.Matches(msg, j.KeyMap.ScrollRight):
 			if j.focusRight {
-				j.rightXOffset = clampZeroMax(j.rightXOffset+4, j.maxRightXOffset())
+				j.rightXOffset = mathutil.Clamp(j.rightXOffset+4, 0, j.maxRightXOffset())
 			}
 
 		case key.Matches(msg, j.KeyMap.GotoTop):
@@ -369,16 +370,6 @@ func (j *JobDetail) maxRightXOffset() int {
 		return 0
 	}
 	return maxX
-}
-
-func clampZeroMax(value, maxValue int) int {
-	if value < 0 {
-		return 0
-	}
-	if value > maxValue {
-		return maxValue
-	}
-	return value
 }
 
 // clampScroll ensures scroll offsets are in valid range.
