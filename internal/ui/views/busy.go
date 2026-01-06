@@ -398,10 +398,7 @@ func (b *Busy) updateTableRowsTree() {
 
 		processLine := b.renderProcessRow(proc, maxBusyLen, maxStartedLen, maxRSSLen)
 		rows = append(rows, table.Row{ID: proc.Identity, Cells: make([]string, len(jobColumnsTree))})
-		selectionSpans[len(rows)-1] = table.SelectionSpan{
-			Start: glyphWidth + 1,
-			End:   glyphWidth + 1 + lipgloss.Width(processIdentity(proc)),
-		}
+		selectionSpans[len(rows)-1] = table.SelectionSpan{Start: glyphWidth + 1, End: -1}
 		fullRows[len(rows)-1] = processLine
 		rowJobIndex = append(rowJobIndex, -1)
 
