@@ -26,10 +26,23 @@ type SelectionSpan struct {
 	End   int
 }
 
+// Alignment defines how cell content should be aligned.
+type Alignment int
+
+const (
+	// AlignLeft aligns content to the left (default).
+	AlignLeft Alignment = iota
+	// AlignRight aligns content to the right.
+	AlignRight
+	// AlignCenter centers content.
+	AlignCenter
+)
+
 // Column defines a table column.
 type Column struct {
 	Title string
 	Width int
+	Align Alignment
 }
 
 // KeyMap defines keybindings for the table.
@@ -578,11 +591,15 @@ func (m *Model) renderBody() string {
 		}
 		var cols []string
 		for i, cell := range row.Cells {
+			align := AlignLeft
+			if i < len(m.columns) {
+				align = m.columns[i].Align
+			}
 			if i < lastCol {
-				cols = append(cols, padRight(cell, m.colWidths[i]))
+				cols = append(cols, padCell(cell, m.colWidths[i], align))
 			} else {
 				// Last column: stretch to fill remaining width when needed
-				cols = append(cols, padRight(cell, m.lastColWidth))
+				cols = append(cols, padCell(cell, m.lastColWidth, align))
 			}
 		}
 		rowStr := strings.Join(cols, " ")
@@ -747,6 +764,33 @@ func padRight(s string, width int) string {
 		return s
 	}
 	return s + strings.Repeat(" ", width-lipgloss.Width(s))
+}
+
+// padCell pads a string to the specified width with the given alignment.
+func padCell(s string, width int, align Alignment) string {
+	if width <= 0 {
+		return s
+	}
+	contentWidth := lipgloss.Width(s)
+	if contentWidth >= width {
+		return s
+	}
+
+	padding := width - contentWidth
+
+	switch align {
+	case AlignRight:
+		return strings.Repeat(" ", padding) + s
+	case AlignCenter:
+		leftPad := padding / 2
+		rightPad := padding - leftPad
+		return strings.Repeat(" ", leftPad) + s + strings.Repeat(" ", rightPad)
+	case AlignLeft:
+		return s + strings.Repeat(" ", padding)
+	default:
+		// Default to left alignment for any future alignment types
+		return s + strings.Repeat(" ", padding)
+	}
 }
 
 func indexRowByID(rows []Row, id string) int {

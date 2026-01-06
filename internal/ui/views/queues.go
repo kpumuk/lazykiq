@@ -2,83 +2,73 @@ package views
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
+	"sort"
 	"strconv"
+	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
 	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
+	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
+	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
 	"github.com/kpumuk/lazykiq/internal/ui/format"
 )
 
-// QueueInfo holds pre-fetched queue information for display.
-type QueueInfo struct {
-	Name    string
-	Size    int64
-	Latency float64
+// QueuesListInfo holds queue information for the list view.
+type QueuesListInfo struct {
+	Name          string
+	Size          int64
+	Latency       float64
+	OldestJobTime time.Time
+	HasOldestJob  bool
 }
 
-// queuesDataMsg carries queues data internally.
-type queuesDataMsg struct {
-	queues        []*QueueInfo
-	jobs          []*sidekiq.PositionedEntry
-	currentPage   int
-	totalPages    int
-	selectedQueue int
+// queuesListDataMsg carries queues list data internally.
+type queuesListDataMsg struct {
+	queues []*QueuesListInfo
 }
 
-const queuesPageSize = 25
-
-// Queues shows the list of Sidekiq queues.
-type Queues struct {
-	client        sidekiq.API
-	width         int
-	height        int
-	styles        Styles
-	queues        []*QueueInfo
-	jobs          []*sidekiq.PositionedEntry
-	table         table.Model
-	ready         bool
-	currentPage   int
-	totalPages    int
-	selectedQueue int
+// QueuesList shows all Sidekiq queues in a table.
+type QueuesList struct {
+	client      sidekiq.API
+	width       int
+	height      int
+	styles      Styles
+	queues      []*QueuesListInfo
+	table       table.Model
+	ready       bool
+	filter      string
+	frameStyles frame.Styles
+	filterStyle filterdialog.Styles
 }
 
-// NewQueues creates a new Queues view.
-func NewQueues(client sidekiq.API) *Queues {
-	return &Queues{
-		client:        client,
-		currentPage:   1,
-		totalPages:    1,
-		selectedQueue: 0,
+// NewQueuesList creates a new QueuesList view.
+func NewQueuesList(client sidekiq.API) *QueuesList {
+	return &QueuesList{
+		client: client,
 		table: table.New(
-			table.WithColumns(queueJobColumns),
-			table.WithEmptyMessage("No jobs in queue"),
+			table.WithColumns(queuesListColumns),
+			table.WithEmptyMessage("No queues"),
 		),
 	}
 }
 
 // Init implements View.
-func (q *Queues) Init() tea.Cmd {
+func (q *QueuesList) Init() tea.Cmd {
 	q.reset()
 	return q.fetchDataCmd()
 }
 
 // Update implements View.
-func (q *Queues) Update(msg tea.Msg) (View, tea.Cmd) {
+func (q *QueuesList) Update(msg tea.Msg) (View, tea.Cmd) {
 	switch msg := msg.(type) {
-	case queuesDataMsg:
+	case queuesListDataMsg:
 		q.queues = msg.queues
-		q.jobs = msg.jobs
-		q.currentPage = msg.currentPage
-		q.totalPages = msg.totalPages
-		q.selectedQueue = msg.selectedQueue
 		q.ready = true
 		q.updateTableRows()
 		return q, nil
@@ -86,33 +76,33 @@ func (q *Queues) Update(msg tea.Msg) (View, tea.Cmd) {
 	case RefreshMsg:
 		return q, q.fetchDataCmd()
 
+	case filterdialog.ActionMsg:
+		if msg.Action == filterdialog.ActionNone {
+			return q, nil
+		}
+		if msg.Query == q.filter {
+			return q, nil
+		}
+		q.filter = msg.Query
+		q.table.SetCursor(0)
+		return q, q.fetchDataCmd()
+
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+1", "ctrl+2", "ctrl+3", "ctrl+4", "ctrl+5", "ctrl+6", "ctrl+7", "ctrl+8", "ctrl+9":
-			idx := int(msg.String()[5] - '1')
-			if idx >= 0 && idx < len(q.queues) && q.selectedQueue != idx {
-				q.selectedQueue = idx
-				q.currentPage = 1
-				return q, q.fetchDataCmd()
+		case "/":
+			return q, func() tea.Msg {
+				return dialogs.OpenDialogMsg{
+					Model: filterdialog.New(
+						filterdialog.WithStyles(q.filterStyle),
+						filterdialog.WithQuery(q.filter),
+					),
+				}
 			}
-			return q, nil
-		case "alt+left", "[":
-			if q.currentPage > 1 {
-				q.currentPage--
-				return q, q.fetchDataCmd()
-			}
-			return q, nil
-		case "alt+right", "]":
-			if q.currentPage < q.totalPages {
-				q.currentPage++
-				return q, q.fetchDataCmd()
-			}
-			return q, nil
 		case "enter":
-			// Show detail for selected job
-			if idx := q.table.Cursor(); idx >= 0 && idx < len(q.jobs) {
+			// Show queue details for selected queue
+			if idx := q.table.Cursor(); idx >= 0 && idx < len(q.queues) {
 				return q, func() tea.Msg {
-					return ShowJobDetailMsg{Job: q.jobs[idx].JobRecord}
+					return ShowQueueDetailsMsg{QueueName: q.queues[idx].Name}
 				}
 			}
 			return q, nil
@@ -126,90 +116,88 @@ func (q *Queues) Update(msg tea.Msg) (View, tea.Cmd) {
 }
 
 // View implements View.
-func (q *Queues) View() string {
+func (q *QueuesList) View() string {
 	if !q.ready {
 		return q.renderMessage("Loading...")
 	}
 
 	if len(q.queues) == 0 {
+		if q.filter != "" {
+			return q.renderMessage("No queues matching filter")
+		}
 		return q.renderMessage("No queues")
 	}
 
-	return q.renderJobsBox()
+	return q.renderQueuesBox()
 }
 
 // Name implements View.
-func (q *Queues) Name() string {
-	return "Queues"
+func (q *QueuesList) Name() string {
+	return "Select queue"
 }
 
 // ShortHelp implements View.
-func (q *Queues) ShortHelp() []key.Binding {
+func (q *QueuesList) ShortHelp() []key.Binding {
 	return nil
 }
 
-// HeaderLines implements HeaderLinesProvider.
-func (q *Queues) HeaderLines() []string {
-	lines := q.queueListLines()
-	if len(lines) > 9 {
-		lines = lines[:9]
-	}
-	if len(lines) < 5 {
-		padding := make([]string, 5-len(lines))
-		lines = append(lines, padding...)
-	}
-	if len(lines) == 0 {
-		return make([]string, 5)
-	}
-	return lines
-}
-
 // ContextItems implements ContextProvider.
-func (q *Queues) ContextItems() []ContextItem {
-	queueName := ""
-	if q.selectedQueue >= 0 && q.selectedQueue < len(q.queues) {
-		queueName = q.queues[q.selectedQueue].Name
-	}
+func (q *QueuesList) ContextItems() []ContextItem {
 	items := []ContextItem{}
-	if queueName != "" {
-		items = append(items, ContextItem{Label: "Queue", Value: queueName})
+
+	// Calculate total items across all queues
+	var totalItems int64
+	var highestLatency float64
+	var oldestJob time.Time
+
+	for _, queue := range q.queues {
+		totalItems += queue.Size
+		if queue.Latency > highestLatency {
+			highestLatency = queue.Latency
+		}
+		if queue.HasOldestJob {
+			if oldestJob.IsZero() || queue.OldestJobTime.Before(oldestJob) {
+				oldestJob = queue.OldestJobTime
+			}
+		}
 	}
-	if q.totalPages > 0 {
-		items = append(items, ContextItem{Label: "Page", Value: fmt.Sprintf("%d/%d", q.currentPage, q.totalPages)})
+
+	items = append(items, ContextItem{Label: "Total Items", Value: format.Number(totalItems)})
+	items = append(items, ContextItem{Label: "Highest Latency", Value: formatLatency(highestLatency)})
+	if !oldestJob.IsZero() {
+		items = append(items, ContextItem{Label: "Oldest Job", Value: oldestJob.Format("2006-01-02 15:04:05")})
 	}
+
 	return items
 }
 
 // HintBindings implements HintProvider.
-func (q *Queues) HintBindings() []key.Binding {
+func (q *QueuesList) HintBindings() []key.Binding {
 	return []key.Binding{
-		helpBinding([]string{"["}, "[", "prev page"),
-		helpBinding([]string{"]"}, "]", "next page"),
-		helpBinding([]string{"enter"}, "enter", "job detail"),
+		helpBinding([]string{"/"}, "/", "filter"),
+		helpBinding([]string{"enter"}, "enter", "view queue"),
 	}
 }
 
 // HelpSections implements HelpProvider.
-func (q *Queues) HelpSections() []HelpSection {
+func (q *QueuesList) HelpSections() []HelpSection {
 	sections := []HelpSection{{
 		Title: "Queue Actions",
 		Bindings: []key.Binding{
-			helpBinding([]string{"ctrl+1"}, "ctrl+1-9", "select queue"),
-			helpBinding([]string{"["}, "[", "previous page"),
-			helpBinding([]string{"]"}, "]", "next page"),
-			helpBinding([]string{"enter"}, "enter", "job detail"),
+			helpBinding([]string{"/"}, "/", "filter queues"),
+			helpBinding([]string{"enter"}, "enter", "view queue details"),
 		},
 	}}
 	return sections
 }
 
 // TableHelp implements TableHelpProvider.
-func (q *Queues) TableHelp() []key.Binding {
+func (q *QueuesList) TableHelp() []key.Binding {
 	return tableHelpBindings(q.table.KeyMap)
 }
 
 // SetSize implements View.
-func (q *Queues) SetSize(width, height int) View {
+func (q *QueuesList) SetSize(width, height int) View {
 	q.width = width
 	q.height = height
 	q.updateTableSize()
@@ -217,13 +205,13 @@ func (q *Queues) SetSize(width, height int) View {
 }
 
 // Dispose clears cached data when the view is removed from the stack.
-func (q *Queues) Dispose() {
+func (q *QueuesList) Dispose() {
 	q.reset()
 	q.updateTableSize()
 }
 
 // SetStyles implements View.
-func (q *Queues) SetStyles(styles Styles) View {
+func (q *QueuesList) SetStyles(styles Styles) View {
 	q.styles = styles
 	q.table.SetStyles(table.Styles{
 		Text:      styles.Text,
@@ -232,11 +220,33 @@ func (q *Queues) SetStyles(styles Styles) View {
 		Selected:  styles.TableSelected,
 		Separator: styles.TableSeparator,
 	})
+	q.frameStyles = frame.Styles{
+		Focused: frame.StyleState{
+			Title:  styles.Title,
+			Muted:  styles.Muted,
+			Filter: styles.FilterFocused,
+			Border: styles.FocusBorder,
+		},
+		Blurred: frame.StyleState{
+			Title:  styles.Title,
+			Muted:  styles.Muted,
+			Filter: styles.FilterBlurred,
+			Border: styles.BorderStyle,
+		},
+	}
+	q.filterStyle = filterdialog.Styles{
+		Title:       styles.Title,
+		Border:      styles.FocusBorder,
+		Prompt:      styles.Text,
+		Text:        styles.Text,
+		Placeholder: styles.Muted,
+		Cursor:      styles.Text,
+	}
 	return q
 }
 
 // fetchDataCmd fetches queues data from Redis.
-func (q *Queues) fetchDataCmd() tea.Cmd {
+func (q *QueuesList) fetchDataCmd() tea.Cmd {
 	return func() tea.Msg {
 		ctx := context.Background()
 
@@ -245,131 +255,59 @@ func (q *Queues) fetchDataCmd() tea.Cmd {
 			return ConnectionErrorMsg{Err: err}
 		}
 
-		queueInfos := make([]*QueueInfo, len(queues))
-		for i, queue := range queues {
+		queueInfos := make([]*QueuesListInfo, 0, len(queues))
+		for _, queue := range queues {
+			// Apply filter
+			if q.filter != "" && !strings.Contains(strings.ToLower(queue.Name()), strings.ToLower(q.filter)) {
+				continue
+			}
+
 			size, _ := queue.Size(ctx)
 			latency, _ := queue.Latency(ctx)
-			queueInfos[i] = &QueueInfo{
+
+			info := &QueuesListInfo{
 				Name:    queue.Name(),
 				Size:    size,
 				Latency: latency,
 			}
-		}
 
-		var jobs []*sidekiq.PositionedEntry
-		var totalSize int64
-		currentPage := q.currentPage
-		totalPages := 1
-		selectedQueue := q.selectedQueue
-
-		if selectedQueue >= len(queues) {
-			selectedQueue = 0
-		}
-
-		if len(queues) > 0 && selectedQueue < len(queues) {
-			start := (currentPage - 1) * queuesPageSize
-			jobs, totalSize, _ = queues[selectedQueue].GetJobs(ctx, start, queuesPageSize)
-
-			if totalSize > 0 {
-				totalPages = int((totalSize + queuesPageSize - 1) / queuesPageSize)
+			// Calculate oldest job timestamp from latency
+			if size > 0 && latency > 0 {
+				info.HasOldestJob = true
+				info.OldestJobTime = time.Now().Add(-time.Duration(latency * float64(time.Second)))
 			}
 
-			if currentPage > totalPages {
-				currentPage = totalPages
-			}
-			if currentPage < 1 {
-				currentPage = 1
-			}
+			queueInfos = append(queueInfos, info)
 		}
 
-		return queuesDataMsg{
-			queues:        queueInfos,
-			jobs:          jobs,
-			currentPage:   currentPage,
-			totalPages:    totalPages,
-			selectedQueue: selectedQueue,
+		// Sort by name
+		sort.Slice(queueInfos, func(i, j int) bool {
+			return queueInfos[i].Name < queueInfos[j].Name
+		})
+
+		return queuesListDataMsg{
+			queues: queueInfos,
 		}
 	}
 }
 
-func (q *Queues) reset() {
+func (q *QueuesList) reset() {
 	q.ready = false
-	q.currentPage = 1
-	q.totalPages = 1
-	q.selectedQueue = 0
 	q.queues = nil
-	q.jobs = nil
 	q.table.SetRows(nil)
 	q.table.SetCursor(0)
 }
 
-// renderQueueList renders the compact queue list (outside the border).
-func (q *Queues) queueListLines() []string {
-	if len(q.queues) == 0 {
-		return nil
-	}
-
-	// First pass: find max widths for alignment
-	maxNameLen := 0
-	maxSizeLen := 0
-	maxLatencyLen := 0
-	for _, queue := range q.queues {
-		if len(queue.Name) > maxNameLen {
-			maxNameLen = len(queue.Name)
-		}
-		sizeStr := strconv.FormatInt(queue.Size, 10)
-		if len(sizeStr) > maxSizeLen {
-			maxSizeLen = len(sizeStr)
-		}
-		latencyStr := formatLatency(queue.Latency)
-		if len(latencyStr) > maxLatencyLen {
-			maxLatencyLen = len(latencyStr)
-		}
-	}
-
-	lines := make([]string, 0, len(q.queues))
-	for i, queue := range q.queues {
-		// Hotkey with grey background (like navbar), bold if selected
-		hotkeyText := fmt.Sprintf("ctrl+%d", i+1)
-		var hotkey string
-		if i == q.selectedQueue {
-			hotkey = q.styles.NavKey.Bold(true).Render(hotkeyText)
-		} else {
-			hotkey = q.styles.NavKey.Render(hotkeyText)
-		}
-
-		// Queue name (left-aligned)
-		name := q.styles.Text.Render(fmt.Sprintf("%-*s", maxNameLen, queue.Name))
-
-		// Size and latency (right-aligned)
-		sizeStr := fmt.Sprintf("%*d", maxSizeLen, queue.Size)
-		latencyStr := fmt.Sprintf("%*s", maxLatencyLen, formatLatency(queue.Latency))
-		stats := q.styles.Muted.Render(fmt.Sprintf("  %s  %s", sizeStr, latencyStr))
-
-		lines = append(lines, hotkey+name+stats)
-	}
-
-	return lines
-}
-
-// formatLatency formats latency in seconds as a readable string.
-func formatLatency(seconds float64) string {
-	if seconds < 1 {
-		return fmt.Sprintf("%.0fms", seconds*1000)
-	}
-	return format.Duration(int64(seconds))
-}
-
-// Table columns for queue job list.
-var queueJobColumns = []table.Column{
-	{Title: "#", Width: 6},
-	{Title: "Job", Width: 30},
-	{Title: "Arguments", Width: 60},
-	{Title: "Context", Width: 40},
+// Table columns for queues list.
+var queuesListColumns = []table.Column{
+	{Title: "Name", Width: 30},
+	{Title: "Size", Width: 15, Align: table.AlignRight},
+	{Title: "Latency", Width: 15, Align: table.AlignRight},
+	{Title: "Oldest Job", Width: 30},
 }
 
 // updateTableSize updates the table dimensions based on current view size.
-func (q *Queues) updateTableSize() {
+func (q *QueuesList) updateTableSize() {
 	// Calculate table height: total height - box borders
 	tableHeight := max(q.height-2, 3)
 	// Table width: view width - box borders - padding
@@ -377,17 +315,22 @@ func (q *Queues) updateTableSize() {
 	q.table.SetSize(tableWidth, tableHeight)
 }
 
-// updateTableRows converts job data to table rows.
-func (q *Queues) updateTableRows() {
-	rows := make([]table.Row, 0, len(q.jobs))
-	for _, job := range q.jobs {
+// updateTableRows converts queue data to table rows.
+func (q *QueuesList) updateTableRows() {
+	rows := make([]table.Row, 0, len(q.queues))
+	for _, queue := range q.queues {
+		oldestJobStr := ""
+		if queue.HasOldestJob {
+			oldestJobStr = queue.OldestJobTime.Format("2006-01-02 15:04:05")
+		}
+
 		row := table.Row{
-			ID: job.JID(),
+			ID: queue.Name,
 			Cells: []string{
-				strconv.Itoa(job.Position),
-				job.DisplayClass(),
-				format.Args(job.DisplayArgs()),
-				formatContext(job.Context()),
+				queue.Name,
+				format.Number(queue.Size),
+				formatLatency(queue.Latency),
+				oldestJobStr,
 			},
 		}
 		rows = append(rows, row)
@@ -396,34 +339,10 @@ func (q *Queues) updateTableRows() {
 	q.updateTableSize()
 }
 
-// formatContext formats the context map as a string.
-func formatContext(ctx map[string]any) string {
-	if len(ctx) == 0 {
-		return ""
-	}
-	b, err := json.Marshal(ctx)
-	if err != nil {
-		return ""
-	}
-	return string(b)
-}
-
-// renderJobsBox renders the bordered box containing the jobs table.
-func (q *Queues) renderJobsBox() string {
-	// Build dynamic title with queue name
-	queueName := ""
-	queueSize := int64(0)
-	if q.selectedQueue < len(q.queues) {
-		queueName = q.queues[q.selectedQueue].Name
-		queueSize = q.queues[q.selectedQueue].Size
-	}
-	title := "Jobs in " + queueName
-
-	// Build meta: SIZE and PAGE info
-	sep := q.styles.Muted.Render(" • ")
-	sizeInfo := q.styles.MetricLabel.Render("SIZE: ") + q.styles.MetricValue.Render(format.ShortNumber(queueSize))
-	pageInfo := q.styles.MetricLabel.Render("PAGE: ") + q.styles.MetricValue.Render(fmt.Sprintf("%d/%d", q.currentPage, q.totalPages))
-	meta := sizeInfo + sep + pageInfo
+// renderQueuesBox renders the bordered box containing the queues table.
+func (q *QueuesList) renderQueuesBox() string {
+	// Build meta: queue count
+	meta := q.styles.MetricLabel.Render("queues: ") + q.styles.MetricValue.Render(strconv.Itoa(len(q.queues)))
 
 	// Calculate box height
 	boxHeight := q.height
@@ -432,21 +351,9 @@ func (q *Queues) renderJobsBox() string {
 	content := q.table.View()
 
 	box := frame.New(
-		frame.WithStyles(frame.Styles{
-			Focused: frame.StyleState{
-				Title:  q.styles.Title,
-				Muted:  q.styles.Muted,
-				Filter: q.styles.FilterFocused,
-				Border: q.styles.FocusBorder,
-			},
-			Blurred: frame.StyleState{
-				Title:  q.styles.Title,
-				Muted:  q.styles.Muted,
-				Filter: q.styles.FilterBlurred,
-				Border: q.styles.BorderStyle,
-			},
-		}),
-		frame.WithTitle(title),
+		frame.WithStyles(q.frameStyles),
+		frame.WithTitle("Select queue"),
+		frame.WithFilter(q.filter),
 		frame.WithTitlePadding(0),
 		frame.WithMeta(meta),
 		frame.WithContent(content),
@@ -458,20 +365,12 @@ func (q *Queues) renderJobsBox() string {
 	return box.View()
 }
 
-func (q *Queues) renderMessage(msg string) string {
-	// Header: "No queues" placeholder
-	header := q.styles.BoxPadding.Render(q.styles.Muted.Render("No queues"))
-	headerHeight := lipgloss.Height(header)
-
-	// Bordered box with centered message
-	boxHeight := q.height - headerHeight
+func (q *QueuesList) renderMessage(msg string) string {
 	box := messagebox.Render(messagebox.Styles{
 		Title:  q.styles.Title,
 		Muted:  q.styles.Muted,
 		Border: q.styles.FocusBorder,
-	}, "Jobs", msg, q.width, boxHeight)
+	}, "Select queue", msg, q.width, q.height)
 
-	return header + "\n" + box
+	return box
 }
-
-// renderJobDetail renders the job detail view.

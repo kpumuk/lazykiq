@@ -34,7 +34,8 @@ type viewID int
 const (
 	viewDashboard viewID = iota
 	viewBusy
-	viewQueues
+	viewQueueDetails
+	viewQueuesList
 	viewRetries
 	viewScheduled
 	viewDead
@@ -79,7 +80,7 @@ func New(client sidekiq.API, version string) App {
 	viewOrder := []viewID{
 		viewDashboard,
 		viewBusy,
-		viewQueues,
+		viewQueueDetails,
 		viewRetries,
 		viewScheduled,
 		viewDead,
@@ -89,7 +90,8 @@ func New(client sidekiq.API, version string) App {
 	viewRegistry := map[viewID]views.View{
 		viewDashboard:     views.NewDashboard(client),
 		viewBusy:          views.NewBusy(client),
-		viewQueues:        views.NewQueues(client),
+		viewQueueDetails:  views.NewQueueDetails(client),
+		viewQueuesList:    views.NewQueuesList(client),
 		viewRetries:       views.NewRetries(client),
 		viewScheduled:     views.NewScheduled(client),
 		viewDead:          views.NewDead(client),
@@ -133,6 +135,7 @@ func New(client sidekiq.API, version string) App {
 	for _, id := range viewOrder {
 		viewRegistry[id] = viewRegistry[id].SetStyles(viewStyles)
 	}
+	viewRegistry[viewQueuesList] = viewRegistry[viewQueuesList].SetStyles(viewStyles)
 	viewRegistry[viewErrorsDetails] = viewRegistry[viewErrorsDetails].SetStyles(viewStyles)
 	viewRegistry[viewJobDetail] = viewRegistry[viewJobDetail].SetStyles(viewStyles)
 	viewRegistry[viewJobMetrics] = viewRegistry[viewJobMetrics].SetStyles(viewStyles)
@@ -272,6 +275,17 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		cmds = append(cmds, a.pushView(viewJobMetrics))
 
+	case views.ShowQueuesListMsg:
+		cmds = append(cmds, a.pushView(viewQueuesList))
+
+	case views.ShowQueueDetailsMsg:
+		if setter, ok := a.viewRegistry[viewQueueDetails].(views.QueueDetailsSetter); ok {
+			setter.SetQueue(msg.QueueName)
+		}
+		cmds = append(cmds, a.setActiveView(viewQueueDetails))
+		// Trigger immediate refresh to load the selected queue's jobs
+		cmds = append(cmds, a.updateView(viewQueueDetails, views.RefreshMsg{}))
+
 	case tea.KeyMsg:
 		if a.dialogs.HasDialogs() {
 			if key.Matches(msg, a.keys.Quit) && a.dialogs.ActiveDialogID() == helpdialog.DialogID {
@@ -302,7 +316,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, a.setActiveView(viewBusy))
 
 		case key.Matches(msg, a.keys.View3):
-			cmds = append(cmds, a.setActiveView(viewQueues))
+			cmds = append(cmds, a.setActiveView(viewQueueDetails))
 
 		case key.Matches(msg, a.keys.View4):
 			cmds = append(cmds, a.setActiveView(viewRetries))

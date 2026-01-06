@@ -144,6 +144,14 @@ type ShowJobMetricsMsg struct {
 	Period string
 }
 
+// ShowQueuesListMsg requests the queues list view.
+type ShowQueuesListMsg struct{}
+
+// ShowQueueDetailsMsg requests the queue details view for a specific queue.
+type ShowQueueDetailsMsg struct {
+	QueueName string
+}
+
 // JobDetailSetter allows setting job data on a job detail view.
 type JobDetailSetter interface {
 	SetJob(job *sidekiq.JobRecord)
@@ -157,6 +165,11 @@ type ErrorDetailsSetter interface {
 // JobMetricsSetter allows setting job metrics data on a job metrics view.
 type JobMetricsSetter interface {
 	SetJobMetrics(jobName, period string)
+}
+
+// QueueDetailsSetter allows setting queue name on a queue details view.
+type QueueDetailsSetter interface {
+	SetQueue(queueName string)
 }
 
 // Disposable allows views to clean up when removed from the stack.
