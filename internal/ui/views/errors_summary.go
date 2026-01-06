@@ -266,7 +266,7 @@ var errorsSummaryColumns = []table.Column{
 	{Title: "Job", Width: 30},
 	{Title: "Error", Width: 40},
 	{Title: "Queue", Width: 15},
-	{Title: "Count", Width: 7},
+	{Title: "Count", Width: 10, Align: table.AlignRight},
 	{Title: "Message", Width: 60},
 }
 
@@ -296,7 +296,7 @@ func (e *ErrorsSummary) updateTableRows() {
 				row.displayClass,
 				row.errorClass,
 				row.queue,
-				format.ShortNumber(row.count),
+				format.Number(row.count),
 				row.errorMessage,
 			},
 		})

@@ -9,7 +9,6 @@ import (
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 
 	"github.com/kpumuk/lazykiq/internal/mathutil"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
@@ -262,10 +261,11 @@ func (m *Metrics) SetStyles(styles Styles) View {
 
 var metricsColumns = []table.Column{
 	{Title: "Job", Width: 36},
-	{Title: "Success", Width: 12},
-	{Title: "Failure", Width: 12},
-	{Title: "Total (s)", Width: 12},
-	{Title: "Avg (s)", Width: 12},
+	{Title: "Success", Width: 12, Align: table.AlignRight},
+	{Title: "Failure", Width: 12, Align: table.AlignRight},
+	{Title: "Total (s)", Width: 12, Align: table.AlignRight},
+	{Title: "Avg (s)", Width: 12, Align: table.AlignRight},
+	{Title: "", Width: 0},
 }
 
 func (m *Metrics) fetchListCmd() tea.Cmd {
@@ -334,46 +334,18 @@ func (m *Metrics) updateTableRows() {
 		return
 	}
 
-	numericCellStyle := lipgloss.NewStyle().Align(lipgloss.Right)
-
-	// First pass: format values into table rows and track max widths
 	rows := make([]table.Row, len(m.rows))
-
-	maxWidths := make([]int, len(metricsColumns))
 	for i, row := range m.rows {
-		success := format.Number(row.totals.Success())
-		failure := format.Number(row.totals.Failed)
-		totalSec := format.Float(row.totals.Seconds, 2)
-		avgSec := format.Float(row.totals.AvgSeconds(), 2)
-
 		rows[i] = table.Row{
 			ID: row.class,
 			Cells: []string{
 				row.class,
-				success,
-				failure,
-				totalSec,
-				avgSec,
+				format.Number(row.totals.Success()),
+				format.Number(row.totals.Failed),
+				format.Float(row.totals.Seconds, 2),
+				format.Float(row.totals.AvgSeconds(), 2),
+				"",
 			},
-		}
-
-		for j := range metricsColumns {
-			maxWidths[j] = max(metricsColumns[j].Width, maxWidths[j], len(rows[i].Cells[j]))
-		}
-	}
-
-	// Second pass: apply right-alignment styling to headers and cells
-	m.table.SetColumns([]table.Column{
-		{Title: "Job", Width: maxWidths[0]},
-		{Title: numericCellStyle.Width(maxWidths[1]).Render(metricsColumns[1].Title), Width: maxWidths[1] + 1},
-		{Title: numericCellStyle.Width(maxWidths[2]).Render(metricsColumns[2].Title), Width: maxWidths[2] + 1},
-		{Title: numericCellStyle.Width(maxWidths[3]).Render(metricsColumns[3].Title), Width: maxWidths[3] + 1},
-		{Title: numericCellStyle.Width(maxWidths[4]).Render(metricsColumns[4].Title), Width: maxWidths[4] + 1},
-	})
-
-	for i := range rows {
-		for j := 1; j < len(metricsColumns); j++ {
-			rows[i].Cells[j] = numericCellStyle.Width(maxWidths[j]).Render(rows[i].Cells[j])
 		}
 	}
 

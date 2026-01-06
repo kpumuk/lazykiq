@@ -309,7 +309,7 @@ var jobColumnsTree = []table.Column{
 	{Title: "Process", Width: 14},
 	{Title: "JID", Width: 24},
 	{Title: "Queue", Width: 12},
-	{Title: "Age", Width: 6},
+	{Title: "Age", Width: 6, Align: table.AlignRight},
 	{Title: "Class", Width: 24},
 	{Title: "Args", Width: 60},
 }
@@ -319,7 +319,7 @@ var jobColumnsFlat = []table.Column{
 	{Title: "TID", Width: 6},
 	{Title: "JID", Width: 24},
 	{Title: "Queue", Width: 12},
-	{Title: "Age", Width: 6},
+	{Title: "Age", Width: 6, Align: table.AlignRight},
 	{Title: "Class", Width: 24},
 	{Title: "Args", Width: 60},
 }

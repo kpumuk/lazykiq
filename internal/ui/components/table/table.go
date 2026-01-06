@@ -501,15 +501,16 @@ func (m Model) renderHeader() string {
 			width = m.colWidths[i]
 		}
 
+		align := col.Align
 		if i < lastCol {
-			cols = append(cols, padRight(col.Title, width))
+			cols = append(cols, padCell(col.Title, width, align))
 		} else {
 			// Last column: stretch to fill available width when shorter
 			lastWidth := width
 			if m.lastColWidth > 0 {
 				lastWidth = m.lastColWidth
 			}
-			cols = append(cols, padRight(col.Title, lastWidth))
+			cols = append(cols, padCell(col.Title, lastWidth, align))
 		}
 	}
 	header := strings.Join(cols, " ")
@@ -753,17 +754,6 @@ func (m Model) computeLastColWidth(colWidths []int) int {
 	}
 
 	return lastWidth
-}
-
-// padRight pads a string to the specified width (no truncation).
-func padRight(s string, width int) string {
-	if width <= 0 {
-		return s
-	}
-	if lipgloss.Width(s) >= width {
-		return s
-	}
-	return s + strings.Repeat(" ", width-lipgloss.Width(s))
 }
 
 // padCell pads a string to the specified width with the given alignment.
