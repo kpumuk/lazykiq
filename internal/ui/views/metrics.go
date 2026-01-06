@@ -186,17 +186,26 @@ func (m *Metrics) ShortHelp() []key.Binding {
 
 // ContextItems implements ContextProvider.
 func (m *Metrics) ContextItems() []ContextItem {
-	items := []ContextItem{}
-	if m.period != "" {
-		items = append(items, ContextItem{Label: "Period", Value: m.period})
+	rangeText := "-"
+	jobsText := "-"
+	succeededText := "-"
+	failedText := "-"
+	if m.ready {
+		if value := formatMetricsRange(m.result.StartsAt, m.result.EndsAt); value != "" {
+			rangeText = value
+		}
+		jobs, succeeded, failed := m.aggregateTotals()
+		jobsText = format.Number(jobs)
+		succeededText = format.Number(succeeded)
+		failedText = format.Number(failed)
 	}
-	if m.filter != "" {
-		items = append(items, ContextItem{Label: "Filter", Value: m.filter})
+
+	return []ContextItem{
+		{Label: "Jobs", Value: jobsText},
+		{Label: "Succeeded", Value: succeededText},
+		{Label: "Failed", Value: failedText},
+		{Label: "Range", Value: rangeText},
 	}
-	if m.totalPages > 1 {
-		items = append(items, ContextItem{Label: "Page", Value: fmt.Sprintf("%d/%d", m.currentPage, m.totalPages)})
-	}
-	return items
 }
 
 // HintBindings implements HintProvider.
@@ -439,16 +448,26 @@ func (m *Metrics) updateTableSize() {
 
 func (m *Metrics) listMeta() string {
 	sep := m.styles.Muted.Render(" • ")
-	period := m.styles.MetricLabel.Render("period: ") + m.styles.MetricValue.Render(m.period)
-	entries := []string{period}
-	if rangeText := formatMetricsRange(m.result.StartsAt, m.result.EndsAt); rangeText != "" {
-		entries = append(entries, m.styles.MetricLabel.Render("range: ")+m.styles.MetricValue.Render(rangeText))
+	entries := []string{}
+	if m.period != "" {
+		entries = append(entries, m.styles.MetricLabel.Render("period: ")+m.styles.MetricValue.Render(m.period))
 	}
 	if m.totalPages > 1 {
 		pageInfo := m.styles.MetricLabel.Render("page: ") + m.styles.MetricValue.Render(fmt.Sprintf("%d/%d", m.currentPage, m.totalPages))
 		entries = append(entries, pageInfo)
 	}
 	return strings.Join(entries, sep)
+}
+
+func (m *Metrics) aggregateTotals() (int64, int64, int64) {
+	var processed int64
+	var failed int64
+	for _, totals := range m.result.Jobs {
+		processed += totals.Processed
+		failed += totals.Failed
+	}
+	succeeded := max(processed-failed, 0)
+	return int64(len(m.result.Jobs)), succeeded, failed
 }
 
 func formatMetricsRange(start, end time.Time) string {
