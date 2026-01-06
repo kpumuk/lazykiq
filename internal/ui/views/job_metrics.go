@@ -79,9 +79,9 @@ func (j *JobMetrics) Update(msg tea.Msg) (View, tea.Cmd) {
 				return j, nil
 			}
 			return j, nil
-		case "[":
+		case "{":
 			return j.adjustPeriod(-1)
-		case "]":
+		case "}":
 			return j.adjustPeriod(1)
 		}
 	}
@@ -249,8 +249,8 @@ func (j *JobMetrics) ContextItems() []ContextItem {
 func (j *JobMetrics) HintBindings() []key.Binding {
 	return []key.Binding{
 		helpBinding([]string{"tab"}, "tab", "switch panel"),
-		helpBinding([]string{"["}, "[", "prev period"),
-		helpBinding([]string{"]"}, "]", "next period"),
+		helpBinding([]string{"{"}, "{", "prev period"),
+		helpBinding([]string{"}"}, "}", "next period"),
 	}
 }
 
@@ -262,8 +262,8 @@ func (j *JobMetrics) HelpSections() []HelpSection {
 			Bindings: []key.Binding{
 				helpBinding([]string{"tab"}, "tab", "switch panel"),
 				helpBinding([]string{"shift+tab"}, "shift+tab", "switch panel"),
-				helpBinding([]string{"["}, "[", "previous period"),
-				helpBinding([]string{"]"}, "]", "next period"),
+				helpBinding([]string{"{"}, "{", "previous period"),
+				helpBinding([]string{"}"}, "}", "next period"),
 			},
 		},
 	}

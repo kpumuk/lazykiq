@@ -20,7 +20,7 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/format"
 )
 
-const metricsTableLimit = 20
+const metricsPageSize = 25
 
 // metricsListMsg carries list metrics data.
 type metricsListMsg struct {
@@ -42,6 +42,8 @@ type Metrics struct {
 	ready       bool
 	result      sidekiq.MetricsTopJobsResult
 	rows        []metricsRow
+	currentPage int
+	totalPages  int
 	periods     []string
 	period      string
 	periodIdx   int
@@ -54,9 +56,11 @@ type Metrics struct {
 // NewMetrics creates a new Metrics view.
 func NewMetrics(client sidekiq.API) *Metrics {
 	m := &Metrics{
-		client:  client,
-		periods: sidekiq.MetricsPeriodOrder,
-		period:  sidekiq.MetricsPeriodOrder[0],
+		client:      client,
+		periods:     sidekiq.MetricsPeriodOrder,
+		period:      sidekiq.MetricsPeriodOrder[0],
+		currentPage: 1,
+		totalPages:  1,
 		table: table.New(
 			table.WithColumns(metricsColumns),
 			table.WithEmptyMessage("No recent metrics"),
@@ -69,6 +73,8 @@ func NewMetrics(client sidekiq.API) *Metrics {
 // Init implements View.
 func (m *Metrics) Init() tea.Cmd {
 	m.ready = false
+	m.currentPage = 1
+	m.totalPages = 1
 	m.table.SetCursor(0)
 	return m.fetchListCmd()
 }
@@ -93,6 +99,7 @@ func (m *Metrics) Update(msg tea.Msg) (View, tea.Cmd) {
 			return m, nil
 		}
 		m.filter = msg.Query
+		m.currentPage = 1
 		m.table.SetCursor(0)
 		return m, m.fetchListCmd()
 
@@ -103,24 +110,28 @@ func (m *Metrics) Update(msg tea.Msg) (View, tea.Cmd) {
 		case "ctrl+u":
 			if m.filter != "" {
 				m.filter = ""
+				m.currentPage = 1
 				m.table.SetCursor(0)
 				return m, m.fetchListCmd()
 			}
 			return m, nil
+		case "alt+left", "[":
+			return m.adjustPage(-1)
+		case "alt+right", "]":
+			return m.adjustPage(1)
 		}
 
 		switch msg.String() {
 		case "enter":
-			if idx := m.table.Cursor(); idx >= 0 && idx < len(m.rows) {
-				selected := m.rows[idx]
+			if selected, ok := m.selectedRow(); ok {
 				return m, func() tea.Msg {
 					return ShowJobMetricsMsg{Job: selected.class, Period: m.period}
 				}
 			}
 			return m, nil
-		case "[":
+		case "{":
 			return m.adjustPeriod(-1)
-		case "]":
+		case "}":
 			return m.adjustPeriod(1)
 		}
 
@@ -182,6 +193,9 @@ func (m *Metrics) ContextItems() []ContextItem {
 	if m.filter != "" {
 		items = append(items, ContextItem{Label: "Filter", Value: m.filter})
 	}
+	if m.totalPages > 1 {
+		items = append(items, ContextItem{Label: "Page", Value: fmt.Sprintf("%d/%d", m.currentPage, m.totalPages)})
+	}
 	return items
 }
 
@@ -190,8 +204,10 @@ func (m *Metrics) HintBindings() []key.Binding {
 	return []key.Binding{
 		helpBinding([]string{"/"}, "/", "filter"),
 		helpBinding([]string{"ctrl+u"}, "ctrl+u", "reset filter"),
-		helpBinding([]string{"["}, "[", "prev period"),
-		helpBinding([]string{"]"}, "]", "next period"),
+		helpBinding([]string{"{"}, "{", "prev period"),
+		helpBinding([]string{"}"}, "}", "next period"),
+		helpBinding([]string{"["}, "[", "prev page"),
+		helpBinding([]string{"]"}, "]", "next page"),
 		helpBinding([]string{"enter"}, "enter", "job metrics"),
 	}
 }
@@ -204,8 +220,10 @@ func (m *Metrics) HelpSections() []HelpSection {
 			Bindings: []key.Binding{
 				helpBinding([]string{"/"}, "/", "filter"),
 				helpBinding([]string{"ctrl+u"}, "ctrl+u", "clear filter"),
-				helpBinding([]string{"["}, "[", "previous period"),
-				helpBinding([]string{"]"}, "]", "next period"),
+				helpBinding([]string{"{"}, "{", "previous period"),
+				helpBinding([]string{"}"}, "}", "next period"),
+				helpBinding([]string{"["}, "[", "previous page"),
+				helpBinding([]string{"]"}, "]", "next page"),
 				helpBinding([]string{"enter"}, "enter", "job metrics"),
 			},
 		},
@@ -300,6 +318,8 @@ func (m *Metrics) adjustPeriod(delta int) (View, tea.Cmd) {
 	}
 	m.periodIdx = next
 	m.period = m.periods[next]
+	m.currentPage = 1
+	m.table.SetCursor(0)
 	return m, m.fetchListCmd()
 }
 
@@ -313,12 +333,23 @@ func (m *Metrics) buildListRows() {
 		return rows[i].totals.Seconds > rows[j].totals.Seconds
 	})
 
-	if len(rows) > metricsTableLimit {
-		rows = rows[:metricsTableLimit]
+	m.rows = rows
+	if len(rows) == 0 {
+		m.totalPages = 1
+		m.currentPage = 1
+		m.updateTableRows()
+		m.table.SetCursor(0)
+		return
 	}
 
-	m.rows = rows
+	totalPages := max(1, (len(rows)+metricsPageSize-1)/metricsPageSize)
+	prevPage := m.currentPage
+	m.totalPages = totalPages
+	m.currentPage = mathutil.Clamp(m.currentPage, 1, m.totalPages)
 	m.updateTableRows()
+	if m.currentPage != prevPage {
+		m.table.SetCursor(0)
+	}
 }
 
 func (m *Metrics) updateTableRows() {
@@ -328,14 +359,15 @@ func (m *Metrics) updateTableRows() {
 		m.table.SetEmptyMessage("No recent metrics")
 	}
 
-	if len(m.rows) == 0 {
+	pageRows := m.pageRows()
+	if len(pageRows) == 0 {
 		m.table.SetRows(nil)
 		m.updateTableSize()
 		return
 	}
 
-	rows := make([]table.Row, len(m.rows))
-	for i, row := range m.rows {
+	rows := make([]table.Row, len(pageRows))
+	for i, row := range pageRows {
 		rows[i] = table.Row{
 			ID: row.class,
 			Cells: []string{
@@ -351,6 +383,41 @@ func (m *Metrics) updateTableRows() {
 
 	m.table.SetRows(rows)
 	m.updateTableSize()
+}
+
+func (m *Metrics) pageRows() []metricsRow {
+	if len(m.rows) == 0 {
+		return nil
+	}
+	start := (m.currentPage - 1) * metricsPageSize
+	if start >= len(m.rows) || start < 0 {
+		return nil
+	}
+	end := min(start+metricsPageSize, len(m.rows))
+	return m.rows[start:end]
+}
+
+func (m *Metrics) selectedRow() (metricsRow, bool) {
+	pageRows := m.pageRows()
+	idx := m.table.Cursor()
+	if idx < 0 || idx >= len(pageRows) {
+		return metricsRow{}, false
+	}
+	return pageRows[idx], true
+}
+
+func (m *Metrics) adjustPage(delta int) (View, tea.Cmd) {
+	if m.totalPages <= 1 {
+		return m, nil
+	}
+	next := mathutil.Clamp(m.currentPage+delta, 1, m.totalPages)
+	if next == m.currentPage {
+		return m, nil
+	}
+	m.currentPage = next
+	m.updateTableRows()
+	m.table.SetCursor(0)
+	return m, nil
 }
 
 func (m *Metrics) openFilterDialog() tea.Cmd {
@@ -376,6 +443,10 @@ func (m *Metrics) listMeta() string {
 	entries := []string{period}
 	if rangeText := formatMetricsRange(m.result.StartsAt, m.result.EndsAt); rangeText != "" {
 		entries = append(entries, m.styles.MetricLabel.Render("range: ")+m.styles.MetricValue.Render(rangeText))
+	}
+	if m.totalPages > 1 {
+		pageInfo := m.styles.MetricLabel.Render("page: ") + m.styles.MetricValue.Render(fmt.Sprintf("%d/%d", m.currentPage, m.totalPages))
+		entries = append(entries, pageInfo)
 	}
 	return strings.Join(entries, sep)
 }

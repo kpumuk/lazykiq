@@ -139,9 +139,9 @@ func (d *Dashboard) Update(msg tea.Msg) (View, tea.Cmd) {
 				d.focusedPane = dashboardPaneRealtime
 			}
 			return d, nil
-		case "[":
+		case "{":
 			return d.adjustHistoryRange(-1)
-		case "]":
+		case "}":
 			return d.adjustHistoryRange(1)
 		}
 	}
@@ -197,8 +197,8 @@ func (d *Dashboard) ContextItems() []ContextItem {
 func (d *Dashboard) HintBindings() []key.Binding {
 	return []key.Binding{
 		helpBinding([]string{"tab"}, "tab", "switch pane"),
-		helpBinding([]string{"["}, "[", "prev range"),
-		helpBinding([]string{"]"}, "]", "next range"),
+		helpBinding([]string{"{"}, "{", "prev range"),
+		helpBinding([]string{"}"}, "}", "next range"),
 	}
 }
 
@@ -209,8 +209,8 @@ func (d *Dashboard) HelpSections() []HelpSection {
 			Title: "Dashboard",
 			Bindings: []key.Binding{
 				helpBinding([]string{"tab"}, "tab", "switch pane"),
-				helpBinding([]string{"["}, "[", "previous range"),
-				helpBinding([]string{"]"}, "]", "next range"),
+				helpBinding([]string{"{"}, "{", "previous range"),
+				helpBinding([]string{"}"}, "}", "next range"),
 			},
 		},
 	}
