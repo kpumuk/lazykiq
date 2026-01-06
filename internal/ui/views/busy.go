@@ -99,6 +99,10 @@ func (b *Busy) Update(msg tea.Msg) (View, tea.Cmd) {
 				return b, b.fetchDataCmd()
 			}
 			return b, nil
+		case "s":
+			return b, func() tea.Msg {
+				return ShowProcessesListMsg{}
+			}
 		}
 		if b.handleProcessSelectKey(key) {
 			return b, nil
@@ -155,8 +159,8 @@ func (b *Busy) ShortHelp() []key.Binding {
 // HeaderLines implements HeaderLinesProvider.
 func (b *Busy) HeaderLines() []string {
 	lines := b.processListLines()
-	if len(lines) > 9 {
-		lines = lines[:9]
+	if len(lines) > 5 {
+		lines = lines[:5]
 	}
 	if len(lines) < 5 {
 		padding := make([]string, 5-len(lines))
@@ -173,6 +177,7 @@ func (b *Busy) HintBindings() []key.Binding {
 	return []key.Binding{
 		helpBinding([]string{"/"}, "/", "filter"),
 		helpBinding([]string{"ctrl+u"}, "ctrl+u", "reset filter"),
+		helpBinding([]string{"s"}, "s", "select process"),
 		helpBinding([]string{"ctrl+0"}, "ctrl+0", "all processes"),
 		helpBinding([]string{"t"}, "t", "toggle tree"),
 		helpBinding([]string{"enter"}, "enter", "job detail"),
@@ -186,6 +191,7 @@ func (b *Busy) HelpSections() []HelpSection {
 		Bindings: []key.Binding{
 			helpBinding([]string{"/"}, "/", "filter"),
 			helpBinding([]string{"ctrl+u"}, "ctrl+u", "clear filter"),
+			helpBinding([]string{"s"}, "s", "select process"),
 			helpBinding([]string{"t"}, "t", "toggle tree"),
 			helpBinding([]string{"enter"}, "enter", "job detail"),
 			helpBinding([]string{"ctrl+1"}, "ctrl+1-9", "select process"),
@@ -232,6 +238,28 @@ func (b *Busy) SetStyles(styles Styles) View {
 		Cursor:      styles.Text,
 	}
 	return b
+}
+
+// SetProcessIdentity updates the selected process by identity.
+func (b *Busy) SetProcessIdentity(identity string) {
+	if identity == "" {
+		if b.selectedProcess != -1 {
+			b.selectedProcess = -1
+			b.updateTableRows()
+		}
+		return
+	}
+
+	for i, proc := range b.data.Processes {
+		if proc.Identity != identity {
+			continue
+		}
+		if b.selectedProcess != i {
+			b.selectedProcess = i
+			b.updateTableRows()
+		}
+		return
+	}
 }
 
 // fetchDataCmd fetches busy data from Redis.
@@ -578,18 +606,26 @@ func (b *Busy) processListLines() []string {
 		return nil
 	}
 
-	maxBusyLen, maxStartedLen, maxRSSLen := b.processStatWidths("")
-
 	names := make([]string, 0, len(b.data.Processes))
 	maxNameLen := 0
 	for _, proc := range b.data.Processes {
 		name := processIdentity(proc)
-		if proc.Tag != "" {
-			name += " [" + proc.Tag + "]"
-		}
 		names = append(names, name)
 		if len(name) > maxNameLen {
 			maxNameLen = len(name)
+		}
+	}
+
+	maxBusyLen := 0
+	maxStartedLen := 0
+	for _, proc := range b.data.Processes {
+		busy := fmt.Sprintf("%d/%d", proc.Busy, proc.Concurrency)
+		started := format.DurationSince(proc.StartedAt)
+		if len(busy) > maxBusyLen {
+			maxBusyLen = len(busy)
+		}
+		if len(started) > maxStartedLen {
+			maxStartedLen = len(started)
 		}
 	}
 
@@ -614,15 +650,9 @@ func (b *Busy) processListLines() []string {
 
 		busy := fmt.Sprintf("%d/%d", proc.Busy, proc.Concurrency)
 		started := format.DurationSince(proc.StartedAt)
-		rss := format.Bytes(proc.RSS)
-		stats := b.styles.Muted.Render(fmt.Sprintf("  %*s  %*s  %*s", maxBusyLen, busy, maxStartedLen, started, maxRSSLen, rss))
+		stats := b.styles.Muted.Render(fmt.Sprintf("  %*s  %*s", maxBusyLen, busy, maxStartedLen, started))
 
-		queues := formatProcessCapsules(proc, b.styles.QueueText, b.styles.QueueWeight, b.styles.Muted)
-		if queues != "" {
-			queues = "  " + queues
-		}
-
-		lines = append(lines, name+stats+queues)
+		lines = append(lines, name+stats)
 	}
 
 	return lines
@@ -656,7 +686,7 @@ func formatProcessQueues(queues []string, weights map[string]int, queueStyle, we
 		queueText := queueStyle.Render(queue)
 		weight := weights[queue]
 		if weight >= 2 {
-			queueText += queueStyle.Render("") + weightStyle.Render(strconv.Itoa(weight)) + queueStyle.Render("")
+			queueText += queueStyle.Render("[") + weightStyle.Render(strconv.Itoa(weight)) + queueStyle.Render("]")
 		}
 		formatted = append(formatted, queueText)
 	}

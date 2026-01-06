@@ -51,9 +51,7 @@ type Theme struct {
 	JSONPunctuation compat.CompleteAdaptiveColor
 
 	// Queue colors
-	QueueText     compat.CompleteAdaptiveColor
-	QueueWeightFg compat.CompleteAdaptiveColor
-	QueueWeightBg compat.CompleteAdaptiveColor
+	QueueText compat.CompleteAdaptiveColor
 }
 
 // DefaultTheme is the adaptive color scheme used by default.
@@ -174,14 +172,6 @@ var DefaultTheme = Theme{
 
 	// Queues
 	QueueText: compat.CompleteAdaptiveColor{
-		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#1098AD"), ANSI256: lipgloss.Color("30"), ANSI: lipgloss.Color("6")},
-		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#66D9E8"), ANSI256: lipgloss.Color("81"), ANSI: lipgloss.Color("6")},
-	},
-	QueueWeightFg: compat.CompleteAdaptiveColor{
-		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#F8F9FA"), ANSI256: lipgloss.Color("255"), ANSI: lipgloss.Color("15")},
-		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#F8F9FA"), ANSI256: lipgloss.Color("255"), ANSI: lipgloss.Color("15")},
-	},
-	QueueWeightBg: compat.CompleteAdaptiveColor{
 		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#1098AD"), ANSI256: lipgloss.Color("30"), ANSI: lipgloss.Color("6")},
 		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#66D9E8"), ANSI256: lipgloss.Color("81"), ANSI: lipgloss.Color("6")},
 	},
@@ -392,8 +382,8 @@ func NewStyles() Styles {
 			Foreground(t.QueueText),
 
 		QueueWeight: lipgloss.NewStyle().
-			Foreground(t.QueueWeightFg).
-			Background(t.QueueWeightBg),
+			Foreground(t.QueueText).
+			Bold(true),
 
 		ErrorTitle: lipgloss.NewStyle().
 			Foreground(t.Error).

@@ -152,6 +152,14 @@ type ShowQueueDetailsMsg struct {
 	QueueName string
 }
 
+// ShowProcessesListMsg requests the processes list view.
+type ShowProcessesListMsg struct{}
+
+// ShowProcessSelectMsg requests selecting a process by identity.
+type ShowProcessSelectMsg struct {
+	Identity string
+}
+
 // JobDetailSetter allows setting job data on a job detail view.
 type JobDetailSetter interface {
 	SetJob(job *sidekiq.JobRecord)
@@ -170,6 +178,11 @@ type JobMetricsSetter interface {
 // QueueDetailsSetter allows setting queue name on a queue details view.
 type QueueDetailsSetter interface {
 	SetQueue(queueName string)
+}
+
+// ProcessSelector allows selecting a process in the busy view.
+type ProcessSelector interface {
+	SetProcessIdentity(identity string)
 }
 
 // Disposable allows views to clean up when removed from the stack.

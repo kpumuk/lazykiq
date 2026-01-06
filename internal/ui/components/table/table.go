@@ -639,7 +639,7 @@ func (m *Model) renderBody() string {
 			if hasSpan {
 				row = applySelection(row, span, maxWidth, m.xOffset, m.width, m.styles.Selected)
 			} else {
-				row = m.styles.Selected.Render(row)
+				row = m.styles.Selected.Render(ansi.Strip(row))
 			}
 		} else if !isFullRow {
 			row = m.styles.Text.Render(row)

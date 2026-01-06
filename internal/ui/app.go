@@ -36,6 +36,7 @@ const (
 	viewBusy
 	viewQueueDetails
 	viewQueuesList
+	viewProcessesList
 	viewRetries
 	viewScheduled
 	viewDead
@@ -92,6 +93,7 @@ func New(client sidekiq.API, version string) App {
 		viewBusy:          views.NewBusy(client),
 		viewQueueDetails:  views.NewQueueDetails(client),
 		viewQueuesList:    views.NewQueuesList(client),
+		viewProcessesList: views.NewProcessesList(client),
 		viewRetries:       views.NewRetries(client),
 		viewScheduled:     views.NewScheduled(client),
 		viewDead:          views.NewDead(client),
@@ -136,6 +138,7 @@ func New(client sidekiq.API, version string) App {
 		viewRegistry[id] = viewRegistry[id].SetStyles(viewStyles)
 	}
 	viewRegistry[viewQueuesList] = viewRegistry[viewQueuesList].SetStyles(viewStyles)
+	viewRegistry[viewProcessesList] = viewRegistry[viewProcessesList].SetStyles(viewStyles)
 	viewRegistry[viewErrorsDetails] = viewRegistry[viewErrorsDetails].SetStyles(viewStyles)
 	viewRegistry[viewJobDetail] = viewRegistry[viewJobDetail].SetStyles(viewStyles)
 	viewRegistry[viewJobMetrics] = viewRegistry[viewJobMetrics].SetStyles(viewStyles)
@@ -285,6 +288,15 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, a.setActiveView(viewQueueDetails))
 		// Trigger immediate refresh to load the selected queue's jobs
 		cmds = append(cmds, a.updateView(viewQueueDetails, views.RefreshMsg{}))
+
+	case views.ShowProcessesListMsg:
+		cmds = append(cmds, a.pushView(viewProcessesList))
+
+	case views.ShowProcessSelectMsg:
+		if selector, ok := a.viewRegistry[viewBusy].(views.ProcessSelector); ok {
+			selector.SetProcessIdentity(msg.Identity)
+		}
+		cmds = append(cmds, a.popAndRefresh(viewBusy))
 
 	case tea.KeyMsg:
 		if a.dialogs.HasDialogs() {
@@ -751,4 +763,20 @@ func (a *App) popView() {
 		}
 	}
 	a.stackbar.SetStack(a.stackNames())
+}
+
+func (a *App) popAndRefresh(id viewID) tea.Cmd {
+	if len(a.viewStack) <= 1 {
+		return a.updateView(id, views.RefreshMsg{})
+	}
+
+	popped := a.viewStack[len(a.viewStack)-1]
+	a.viewStack = a.viewStack[:len(a.viewStack)-1]
+	if popped != viewDashboard {
+		if disposable, ok := a.viewRegistry[popped].(views.Disposable); ok {
+			disposable.Dispose()
+		}
+	}
+	a.stackbar.SetStack(a.stackNames())
+	return a.updateView(id, views.RefreshMsg{})
 }
