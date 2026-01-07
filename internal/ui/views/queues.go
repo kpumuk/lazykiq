@@ -2,6 +2,7 @@ package views
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
+	confirmdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/confirm"
 	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
 	"github.com/kpumuk/lazykiq/internal/ui/format"
 )
@@ -35,16 +37,17 @@ type queuesListDataMsg struct {
 
 // QueuesList shows all Sidekiq queues in a table.
 type QueuesList struct {
-	client      sidekiq.API
-	width       int
-	height      int
-	styles      Styles
-	queues      []*QueuesListInfo
-	table       table.Model
-	ready       bool
-	filter      string
-	frameStyles frame.Styles
-	filterStyle filterdialog.Styles
+	client                  sidekiq.API
+	width                   int
+	height                  int
+	styles                  Styles
+	queues                  []*QueuesListInfo
+	table                   table.Model
+	ready                   bool
+	filter                  string
+	dangerousActionsEnabled bool
+	frameStyles             frame.Styles
+	filterStyle             filterdialog.Styles
 }
 
 // NewQueuesList creates a new QueuesList view.
@@ -87,6 +90,18 @@ func (q *QueuesList) Update(msg tea.Msg) (View, tea.Cmd) {
 		q.table.SetCursor(0)
 		return q, q.fetchDataCmd()
 
+	case confirmdialog.ActionMsg:
+		if !q.dangerousActionsEnabled {
+			return q, nil
+		}
+		if !msg.Confirmed {
+			return q, nil
+		}
+		if msg.Target == "" {
+			return q, nil
+		}
+		return q, q.deleteQueueCmd(msg.Target)
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "/":
@@ -106,6 +121,36 @@ func (q *QueuesList) Update(msg tea.Msg) (View, tea.Cmd) {
 				}
 			}
 			return q, nil
+		}
+
+		if q.dangerousActionsEnabled {
+			switch msg.String() {
+			case "d":
+				if queueName, ok := q.selectedQueueName(); ok {
+					return q, func() tea.Msg {
+						return dialogs.OpenDialogMsg{
+							Model: confirmdialog.New(
+								confirmdialog.WithStyles(confirmdialog.Styles{
+									Title:           q.styles.Title,
+									Border:          q.styles.FocusBorder,
+									Text:            q.styles.Text,
+									Muted:           q.styles.Muted,
+									Button:          q.styles.Muted.Padding(0, 1),
+									ButtonYesActive: q.styles.DangerAction,
+									ButtonNoActive:  q.styles.NeutralAction,
+								}),
+								confirmdialog.WithTitle("Delete queue"),
+								confirmdialog.WithMessage(fmt.Sprintf(
+									"Are you sure you want to delete the %s queue?\n\nThis will remove all jobs currently in the queue.\nThe queue will be created again automatically if you add new jobs to it later.",
+									q.styles.Text.Bold(true).Render(queueName),
+								)),
+								confirmdialog.WithTarget(queueName),
+							),
+						}
+					}
+				}
+				return q, nil
+			}
 		}
 
 		q.table, _ = q.table.Update(msg)
@@ -179,6 +224,16 @@ func (q *QueuesList) HintBindings() []key.Binding {
 	}
 }
 
+// MutationBindings implements MutationHintProvider.
+func (q *QueuesList) MutationBindings() []key.Binding {
+	if !q.dangerousActionsEnabled {
+		return nil
+	}
+	return []key.Binding{
+		helpBinding([]string{"d"}, "d", "delete queue"),
+	}
+}
+
 // HelpSections implements HelpProvider.
 func (q *QueuesList) HelpSections() []HelpSection {
 	sections := []HelpSection{{
@@ -188,6 +243,14 @@ func (q *QueuesList) HelpSections() []HelpSection {
 			helpBinding([]string{"enter"}, "enter", "view queue details"),
 		},
 	}}
+	if q.dangerousActionsEnabled {
+		sections = append(sections, HelpSection{
+			Title: "Dangerous Actions",
+			Bindings: []key.Binding{
+				helpBinding([]string{"d"}, "d", "delete queue"),
+			},
+		})
+	}
 	return sections
 }
 
@@ -202,6 +265,11 @@ func (q *QueuesList) SetSize(width, height int) View {
 	q.height = height
 	q.updateTableSize()
 	return q
+}
+
+// SetDangerousActionsEnabled toggles mutational actions for the view.
+func (q *QueuesList) SetDangerousActionsEnabled(enabled bool) {
+	q.dangerousActionsEnabled = enabled
 }
 
 // Dispose clears cached data when the view is removed from the stack.
@@ -298,6 +366,14 @@ func (q *QueuesList) reset() {
 	q.table.SetCursor(0)
 }
 
+func (q *QueuesList) selectedQueueName() (string, bool) {
+	idx := q.table.Cursor()
+	if idx < 0 || idx >= len(q.queues) {
+		return "", false
+	}
+	return q.queues[idx].Name, true
+}
+
 // Table columns for queues list.
 var queuesListColumns = []table.Column{
 	{Title: "Name", Width: 30},
@@ -337,6 +413,16 @@ func (q *QueuesList) updateTableRows() {
 	}
 	q.table.SetRows(rows)
 	q.updateTableSize()
+}
+
+func (q *QueuesList) deleteQueueCmd(queueName string) tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+		if err := q.client.NewQueue(queueName).Clear(ctx); err != nil {
+			return ConnectionErrorMsg{Err: err}
+		}
+		return RefreshMsg{}
+	}
 }
 
 // renderQueuesBox renders the bordered box containing the queues table.

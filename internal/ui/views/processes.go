@@ -217,7 +217,7 @@ func (p *ProcessesList) HelpSections() []HelpSection {
 	}}
 	if p.dangerousActionsEnabled {
 		sections = append(sections, HelpSection{
-			Title: "Mutations",
+			Title: "Dangerous Actions",
 			Bindings: []key.Binding{
 				helpBinding([]string{"p"}, "p", "pause process"),
 				helpBinding([]string{"s"}, "s", "stop process"),

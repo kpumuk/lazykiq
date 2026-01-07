@@ -137,3 +137,17 @@ func (q *Queue) GetJobs(ctx context.Context, start, count int) ([]*PositionedEnt
 
 	return jobs, size, nil
 }
+
+// Clear deletes all jobs within this queue and removes it from the queues set.
+func (q *Queue) Clear(ctx context.Context) error {
+	if q.client == nil {
+		return errors.New("queue client is nil")
+	}
+
+	_, err := q.client.redis.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+		pipe.Unlink(ctx, "queue:"+q.name)
+		pipe.SRem(ctx, "queues", q.name)
+		return nil
+	})
+	return err
+}

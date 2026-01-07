@@ -460,3 +460,48 @@ func TestQueueGetJobs_BeyondEnd(t *testing.T) {
 		t.Errorf("len(jobs) = %d, want 0", len(jobs))
 	}
 }
+
+func TestQueueClear_RemovesJobsAndQueueSet(t *testing.T) {
+	mr, client := setupTestRedis(t)
+	ctx := testContext(t)
+
+	q := client.NewQueue("default")
+
+	_, _ = mr.SetAdd("queues", "default")
+	_, _ = mr.Lpush("queue:default", "job1")
+	_, _ = mr.Lpush("queue:default", "job2")
+
+	if err := q.Clear(ctx); err != nil {
+		t.Fatalf("Clear failed: %v", err)
+	}
+
+	exists, err := client.redis.Exists(ctx, "queue:default").Result()
+	if err != nil {
+		t.Fatalf("Exists failed: %v", err)
+	}
+	if exists != 0 {
+		t.Errorf("queue key exists = %d, want 0", exists)
+	}
+
+	queues, err := client.redis.SMembers(ctx, "queues").Result()
+	if err != nil {
+		t.Fatalf("SMembers failed: %v", err)
+	}
+	for _, name := range queues {
+		if name == "default" {
+			t.Errorf("queues set still contains %q", name)
+		}
+	}
+}
+
+func TestQueueClear_NilClient(t *testing.T) {
+	q := &Queue{name: "default"}
+
+	err := q.Clear(testContext(t))
+	if err == nil {
+		t.Fatal("Clear should fail with nil client")
+	}
+	if err.Error() != "queue client is nil" {
+		t.Fatalf("Clear error = %q, want %q", err.Error(), "queue client is nil")
+	}
+}
