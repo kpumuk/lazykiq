@@ -5,8 +5,8 @@
 {{- $alt := .Get "alt" | default "" -}}
 {{- $class := .Get "class" | default "" -}}
 {{- $thumbClass := .Get "thumbClass" | default "" -}}
-{{- $close := .Get "close" | default "#" -}}
-{{- $id := .Get "id" | default "" -}}
+{{- $close := .Get "close" | default (printf "#%s-close" (urlize (.Get "alt"))) -}}
+{{- $id := .Get "id" | default (urlize (.Get "alt")) -}}
 
 {{- partial "lightbox.html" (dict
   "src" $src

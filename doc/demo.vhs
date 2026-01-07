@@ -35,6 +35,10 @@ Screenshot "doc/assets/dashboard.png" Sleep 1s
 # Busy
 Type "2" Sleep 1.5s
 Screenshot "doc/assets/busy.png" Sleep 1s
+Type "t" Sleep 0.5s
+Screenshot "doc/assets/busy_tree.png" Sleep 1s
+Type "s" Sleep 0.5s
+Screenshot "doc/assets/processes.png" Sleep 2s
 
 # Queues
 Type "3" Sleep 1s
@@ -42,7 +46,7 @@ Down Sleep 0.5s Down Sleep 0.5s Enter Sleep 2s
 Screenshot "doc/assets/job_details.png" Sleep 1s
 Escape Sleep 0.5s
 Screenshot "doc/assets/queue_details.png" Sleep 1s
-Type "s" Sleep 1s
+Type "s" Sleep 0.5s
 Screenshot "doc/assets/queues.png" Sleep 2s
 
 # Retries

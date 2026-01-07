@@ -14,16 +14,19 @@ and dead counts in real time, plus per-job metrics.
 
 {{< lightbox src="assets/metrics.png" alt="Metrics screen" >}}
 
-## Key bindings
+**Key bindings:**
 
-| Key | Description |
-| --- | --- |
-| `Up` / `k` | Move up one row. |
-| `Down` / `j` | Move down one row. |
-| `Enter` | Open job metrics. |
-| `/` | Filter jobs by case-sensitive string. |
-| `[` / `]` | Change time interval or historical range. |
-| `q` | Quit. |
+| Key          | Description                               |
+|--------------|-------------------------------------------|
+| `8`          | Go to Metrics.                            |
+| `Up` / `k`   | Move up one row.                          |
+| `Down` / `j` | Move down one row.                        |
+| `Enter`      | Open job metrics.                         |
+| `/`          | Filter jobs by case-sensitive string.     |
+| `Ctrl+u`     | Reset filter.                             |
+| `[` / `]`    | Go to previos or next page.               |
+| `{` / `}`    | Change time interval or historical range. |
+| `q`          | Quit.                                     |
 
 ## Job metrics
 
@@ -31,10 +34,10 @@ Job metrics show per-job performance and breakdowns.
 
 {{< lightbox src="assets/job_metrics.png" alt="Job metrics screen" >}}
 
-## Key bindings
+**Key bindings:**
 
-| Key | Description |
-| --- | --- |
-| `Tab` | Switch pane. |
-| `[` / `]` | Change time interval or historical range. |
-| `Esc` | Close job metrics. |
+| Key       | Description                               |
+|-----------|-------------------------------------------|
+| `Tab`     | Switch pane.                              |
+| `{` / `}` | Change time interval or historical range. |
+| `Esc`     | Close job metrics.                        |

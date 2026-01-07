@@ -13,17 +13,17 @@ Errors group failures by exception so you can spot the biggest problems fast.
 
 {{< lightbox src="assets/errors_summary.png" alt="Errors screen" >}}
 
-## Key bindings
+**Key bindings:**
 
-| Key | Description |
-| --- | --- |
-| `7` | Go to Errors. |
-| `Up` / `k` | Move up one row. |
-| `Down` / `j` | Move down one row. |
-| `Enter` | Open error details. |
-| `/` | Filter jobs by case-sensitive string. |
-| `Esc` | Close error details. |
-| `q` | Quit. |
+| Key          | Description                           |
+|--------------|---------------------------------------|
+| `7`          | Go to Errors.                         |
+| `Up` / `k`   | Move up one row.                      |
+| `Down` / `j` | Move down one row.                    |
+| `Enter`      | Open error details.                   |
+| `/`          | Filter jobs by case-sensitive string. |
+| `Ctrl+u`     | Reset filter.                         |
+| `q`          | Quit.                                 |
 
 ## Error details
 
@@ -31,12 +31,33 @@ Drill into a specific error to see its backtrace, payload, and occurrence data.
 
 {{< lightbox src="assets/errors_details.png" alt="Error details screen" >}}
 
-## Key bindings
+**Key bindings:**
 
-| Key | Description |
-| --- | --- |
-| `Up` / `k` | Move up one row. |
-| `Down` / `j` | Move down one row. |
-| `Enter` | Open error data. |
-| `/` | Filter errors by case-sensitive string. |
-| `Esc` | Close error details. |
+| Key          | Description                             |
+|--------------|-----------------------------------------|
+| `Up` / `k`   | Move up one row.                        |
+| `Down` / `j` | Move down one row.                      |
+| `Enter`      | Open error data.                        |
+| `/`          | Filter errors by case-sensitive string. |
+| `Ctrl+u`     | Reset filter.                           |
+| `Enter`      | Show job details.                       |
+| `Esc`        | Close error details.                    |
+| `q`          | Quit.                                   |
+
+## Job Details
+
+Shows detailed information about a failing job.
+
+{{< lightbox src="assets/job_details.png" alt="Job details screen" >}}
+
+**Key bindings:**
+
+| Key          | Description                                    |
+|--------------|------------------------------------------------|
+| `Up` / `k`   | Move up one row.                               |
+| `Down` / `j` | Move down one row.                             |
+| `Left` / `h` | Move up one row.                               |
+| `Down` / `j` | Move down one row.                             |
+| `Tab`        | Switch between job details panel and job data. |
+| `Esc`        | Back to Queue details view.                    |
+| `q`          | Quit.                                          |

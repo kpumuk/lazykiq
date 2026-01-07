@@ -14,10 +14,10 @@ throughput, failures, and queue depth over time.
 
 {{< lightbox src="assets/dashboard.png" alt="Dashboard screen" >}}
 
-## Key bindings
+**Key bindings:**
 
-| Key | Description |
-| --- | --- |
-| `1` | Go to Dashboard. |
-| `[` / `]` | Change time interval or historical range. |
-| `q` | Quit. |
+| Key       | Description                               |
+|-----------|-------------------------------------------|
+| `1`       | Go to Dashboard.                          |
+| `{` / `}` | Change time interval or historical range. |
+| `q`       | Quit.                                     |
