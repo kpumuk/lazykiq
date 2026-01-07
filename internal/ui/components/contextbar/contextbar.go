@@ -15,6 +15,28 @@ type Item interface {
 	Render(styles Styles) string
 }
 
+// HintKind describes the visual treatment for a hint.
+type HintKind int
+
+const (
+	// HintNormal renders with standard hint styles.
+	HintNormal HintKind = iota
+	// HintDanger highlights mutational operations.
+	HintDanger
+)
+
+// Hint describes a keybinding to render in the context bar.
+type Hint struct {
+	Binding key.Binding
+	Kind    HintKind
+}
+
+type hintItem struct {
+	displayKey string
+	keyWidth   int
+	desc       string
+}
+
 // KeyValueItem renders a label/value pair.
 type KeyValueItem struct {
 	Label string
@@ -57,21 +79,25 @@ func (i FormattedItem) Render(_ Styles) string {
 
 // Styles holds the styles for rendering the context bar.
 type Styles struct {
-	Bar   lipgloss.Style
-	Label lipgloss.Style
-	Value lipgloss.Style
-	Key   lipgloss.Style
-	Desc  lipgloss.Style
+	Bar        lipgloss.Style
+	Label      lipgloss.Style
+	Value      lipgloss.Style
+	Key        lipgloss.Style
+	Desc       lipgloss.Style
+	DangerKey  lipgloss.Style
+	DangerDesc lipgloss.Style
 }
 
 // DefaultStyles returns default styles for the context bar.
 func DefaultStyles() Styles {
 	return Styles{
-		Bar:   lipgloss.NewStyle().Padding(0, 1),
-		Label: lipgloss.NewStyle(),
-		Value: lipgloss.NewStyle(),
-		Key:   lipgloss.NewStyle(),
-		Desc:  lipgloss.NewStyle(),
+		Bar:        lipgloss.NewStyle().Padding(0, 1),
+		Label:      lipgloss.NewStyle(),
+		Value:      lipgloss.NewStyle(),
+		Key:        lipgloss.NewStyle(),
+		Desc:       lipgloss.NewStyle(),
+		DangerKey:  lipgloss.NewStyle(),
+		DangerDesc: lipgloss.NewStyle(),
 	}
 }
 
@@ -79,7 +105,7 @@ func DefaultStyles() Styles {
 type Model struct {
 	styles Styles
 	items  []Item
-	hints  []key.Binding
+	hints  []Hint
 	width  int
 	height int
 	gap    int
@@ -112,7 +138,7 @@ func WithItems(items []Item) Option {
 }
 
 // WithHints sets the key hints.
-func WithHints(hints []key.Binding) Option {
+func WithHints(hints []Hint) Option {
 	return func(m *Model) { m.hints = hints }
 }
 
@@ -136,7 +162,7 @@ func (m *Model) SetStyles(s Styles) { m.styles = s }
 func (m *Model) SetItems(items []Item) { m.items = items }
 
 // SetHints updates the key hints.
-func (m *Model) SetHints(hints []key.Binding) { m.hints = hints }
+func (m *Model) SetHints(hints []Hint) { m.hints = hints }
 
 // SetWidth updates the width.
 func (m *Model) SetWidth(width int) { m.width = width }
@@ -274,42 +300,72 @@ func (m Model) buildHintLines(width int) []string {
 	if width <= 0 || len(m.hints) == 0 {
 		return nil
 	}
-	type hintItem struct {
-		displayKey string
-		keyWidth   int
-		desc       string
-	}
-
-	items := make([]hintItem, 0, len(m.hints))
-	maxKeyWidth := 0
+	normalItems := make([]hintItem, 0, len(m.hints))
+	dangerItems := make([]hintItem, 0, len(m.hints))
 	for _, hint := range m.hints {
-		if !hint.Enabled() {
+		if !hint.Binding.Enabled() {
 			continue
 		}
-		help := hint.Help()
+		help := hint.Binding.Help()
 		keyText := strings.TrimSpace(help.Key)
 		descText := strings.TrimSpace(help.Desc)
 		if keyText == "" {
 			continue
 		}
 		displayKey := keyText
-		keyWidth := ansi.StringWidth(displayKey)
-		maxKeyWidth = max(maxKeyWidth, keyWidth)
-		items = append(items, hintItem{displayKey: displayKey, keyWidth: keyWidth, desc: descText})
+		item := hintItem{displayKey: displayKey, keyWidth: ansi.StringWidth(displayKey), desc: descText}
+		if hint.Kind == HintDanger {
+			dangerItems = append(dangerItems, item)
+		} else {
+			normalItems = append(normalItems, item)
+		}
 	}
-	if len(items) == 0 {
+	if len(normalItems) == 0 && len(dangerItems) == 0 {
 		return nil
 	}
+
+	if len(dangerItems) == 0 {
+		lines, _ := m.buildHintColumn(normalItems, width, m.styles.Key, m.styles.Desc)
+		return lines
+	}
+	if len(normalItems) == 0 {
+		lines, _ := m.buildHintColumn(dangerItems, width, m.styles.DangerKey, m.styles.DangerDesc)
+		return lines
+	}
+
+	gap := max(m.gap, 1)
+	normalLines, normalWidth := m.buildHintColumn(normalItems, width, m.styles.Key, m.styles.Desc)
+	dangerLines, dangerWidth := m.buildHintColumn(dangerItems, width, m.styles.DangerKey, m.styles.DangerDesc)
+	if normalWidth+gap+dangerWidth > width {
+		normalWidth = min(normalWidth, max(width-gap, 0))
+		dangerWidth = min(dangerWidth, max(width-normalWidth-gap, 0))
+		normalLines, _ = m.buildHintColumn(normalItems, normalWidth, m.styles.Key, m.styles.Desc)
+		dangerLines, _ = m.buildHintColumn(dangerItems, dangerWidth, m.styles.DangerKey, m.styles.DangerDesc)
+	}
+
 	rows := max(m.height, 1)
-	rows = min(rows, len(items))
+	rows = min(rows, max(len(normalLines), len(dangerLines)))
 	lines := make([]string, 0, rows)
 	maxLineWidth := 0
 	for i := range rows {
-		item := items[i]
-		keyCell := m.styles.Key.Render(item.displayKey) + strings.Repeat(" ", maxKeyWidth-item.keyWidth)
-		line := keyCell
-		if item.desc != "" {
-			line += " " + m.styles.Desc.Render(item.desc)
+		left := ""
+		right := ""
+		if i < len(normalLines) {
+			left = padRight(normalLines[i], normalWidth)
+		}
+		if i < len(dangerLines) {
+			right = padRight(dangerLines[i], dangerWidth)
+		}
+		line := strings.TrimRight(left, " ")
+		if line != "" {
+			line = padRight(line, normalWidth)
+		}
+		if right != "" {
+			if line != "" {
+				line += strings.Repeat(" ", gap) + right
+			} else {
+				line = right
+			}
 		}
 		lines = append(lines, line)
 		maxLineWidth = max(maxLineWidth, ansi.StringWidth(line))
@@ -325,6 +381,42 @@ func (m Model) buildHintLines(width int) []string {
 		lines[i] = padRight(line, maxLineWidth)
 	}
 	return lines
+}
+
+func (m Model) buildHintColumn(items []hintItem, width int, keyStyle, descStyle lipgloss.Style) ([]string, int) {
+	if width <= 0 || len(items) == 0 {
+		return nil, 0
+	}
+	maxKeyWidth := 0
+	for _, item := range items {
+		maxKeyWidth = max(maxKeyWidth, item.keyWidth)
+	}
+
+	rows := max(m.height, 1)
+	rows = min(rows, len(items))
+	lines := make([]string, 0, rows)
+	maxLineWidth := 0
+	for i := range rows {
+		item := items[i]
+		keyCell := keyStyle.Render(item.displayKey) + strings.Repeat(" ", maxKeyWidth-item.keyWidth)
+		line := keyCell
+		if item.desc != "" {
+			line += " " + descStyle.Render(item.desc)
+		}
+		lines = append(lines, line)
+		maxLineWidth = max(maxLineWidth, ansi.StringWidth(line))
+	}
+	if maxLineWidth > width {
+		maxLineWidth = width
+	}
+	for i := range lines {
+		line := lines[i]
+		if ansi.StringWidth(line) > maxLineWidth {
+			line = ansi.Truncate(line, maxLineWidth, "")
+		}
+		lines[i] = padRight(line, maxLineWidth)
+	}
+	return lines, maxLineWidth
 }
 
 func padRight(value string, width int) string {

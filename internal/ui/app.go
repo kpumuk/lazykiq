@@ -51,26 +51,27 @@ const contextbarDefaultHeight = 5
 
 // App is the main application model.
 type App struct {
-	keys            KeyMap
-	width           int
-	height          int
-	ready           bool
-	viewStack       []viewID
-	viewOrder       []viewID
-	viewRegistry    map[viewID]views.View
-	metrics         metrics.Model
-	contextbar      contextbar.Model
-	stackbar        stackbar.Model
-	navbar          navbar.Model
-	errorPopup      errorpopup.Model
-	dialogs         dialogs.DialogCmp
-	styles          theme.Styles
-	sidekiq         sidekiq.API
-	connectionError error
+	keys                    KeyMap
+	width                   int
+	height                  int
+	ready                   bool
+	viewStack               []viewID
+	viewOrder               []viewID
+	viewRegistry            map[viewID]views.View
+	metrics                 metrics.Model
+	contextbar              contextbar.Model
+	stackbar                stackbar.Model
+	navbar                  navbar.Model
+	errorPopup              errorpopup.Model
+	dialogs                 dialogs.DialogCmp
+	styles                  theme.Styles
+	sidekiq                 sidekiq.API
+	connectionError         error
+	dangerousActionsEnabled bool
 }
 
 // New creates a new App instance.
-func New(client sidekiq.API, version string) App {
+func New(client sidekiq.API, version string, dangerousActionsEnabled bool) App {
 	styles := theme.NewStyles()
 	keys := DefaultKeyMap()
 	brand := "Lazykiq"
@@ -133,6 +134,8 @@ func New(client sidekiq.API, version string) App {
 		QueueWeight:     styles.QueueWeight,
 		FilterFocused:   styles.FilterFocused,
 		FilterBlurred:   styles.FilterBlurred,
+		DangerAction:    styles.ContextDangerKey,
+		NeutralAction:   styles.ContextKey,
 	}
 	for _, id := range viewOrder {
 		viewRegistry[id] = viewRegistry[id].SetStyles(viewStyles)
@@ -142,6 +145,12 @@ func New(client sidekiq.API, version string) App {
 	viewRegistry[viewErrorsDetails] = viewRegistry[viewErrorsDetails].SetStyles(viewStyles)
 	viewRegistry[viewJobDetail] = viewRegistry[viewJobDetail].SetStyles(viewStyles)
 	viewRegistry[viewJobMetrics] = viewRegistry[viewJobMetrics].SetStyles(viewStyles)
+
+	for _, view := range viewRegistry {
+		if toggle, ok := view.(views.DangerousActionsToggle); ok {
+			toggle.SetDangerousActionsEnabled(dangerousActionsEnabled)
+		}
+	}
 
 	// Build navbar view infos
 	navViews := make([]navbar.ViewInfo, len(viewOrder))
@@ -164,11 +173,13 @@ func New(client sidekiq.API, version string) App {
 		),
 		contextbar: contextbar.New(
 			contextbar.WithStyles(contextbar.Styles{
-				Bar:   styles.ContextBar,
-				Label: styles.ContextLabel,
-				Value: styles.ContextValue,
-				Key:   styles.ContextKey,
-				Desc:  styles.ContextDesc,
+				Bar:        styles.ContextBar,
+				Label:      styles.ContextLabel,
+				Value:      styles.ContextValue,
+				Key:        styles.ContextKey,
+				Desc:       styles.ContextDesc,
+				DangerKey:  styles.ContextDangerKey,
+				DangerDesc: styles.ContextDangerDesc,
 			}),
 			contextbar.WithHeight(contextbarDefaultHeight),
 		),
@@ -199,9 +210,10 @@ func New(client sidekiq.API, version string) App {
 				Border:  styles.ErrorBorder,
 			}),
 		),
-		dialogs: dialogs.NewDialogCmp(),
-		styles:  styles,
-		sidekiq: client,
+		dialogs:                 dialogs.NewDialogCmp(),
+		styles:                  styles,
+		sidekiq:                 client,
+		dangerousActionsEnabled: dangerousActionsEnabled,
 	}
 }
 
@@ -300,7 +312,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		if a.dialogs.HasDialogs() {
-			if key.Matches(msg, a.keys.Quit) && a.dialogs.ActiveDialogID() == helpdialog.DialogID {
+			if key.Matches(msg, a.keys.Quit) {
 				return a, tea.Quit
 			}
 			updated, cmd := a.dialogs.Update(msg)
@@ -522,14 +534,46 @@ func (a App) contextHeaderItems() []contextbar.Item {
 	return items
 }
 
-func (a App) contextHints() []key.Binding {
-	hints := a.globalHeaderHints()
+func (a App) contextHints() []contextbar.Hint {
+	normal := a.globalHeaderHints()
+	mutations := []key.Binding{}
+
 	active := a.viewRegistry[a.activeViewID()]
 	if provider, ok := active.(views.HintProvider); ok {
-		hints = append(hints, provider.HintBindings()...)
+		normal = append(normal, provider.HintBindings()...)
 	}
-	hints = filterMiniHelpBindings(hints)
-	return dedupeBindings(hints)
+	if a.dangerousActionsEnabled {
+		if provider, ok := active.(views.MutationHintProvider); ok {
+			mutations = append(mutations, provider.MutationBindings()...)
+		}
+	}
+
+	normal = dedupeBindings(filterMiniHelpBindings(normal))
+	mutations = dedupeBindings(filterMiniHelpBindings(mutations))
+
+	result := make([]contextbar.Hint, 0, len(normal)+len(mutations))
+	seen := map[string]bool{}
+	appendHint := func(binding key.Binding, kind contextbar.HintKind) {
+		help := binding.Help()
+		if help.Key == "" {
+			return
+		}
+		key := help.Key + "\x00" + help.Desc
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		result = append(result, contextbar.Hint{Binding: binding, Kind: kind})
+	}
+
+	for _, binding := range normal {
+		appendHint(binding, contextbar.HintNormal)
+	}
+	for _, binding := range mutations {
+		appendHint(binding, contextbar.HintDanger)
+	}
+
+	return result
 }
 
 func (a App) globalHeaderHints() []key.Binding {

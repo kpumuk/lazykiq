@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"maps"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -27,11 +28,20 @@ type Process struct {
 	Busy        int                // From busy field (converted to int)
 	Beat        time.Time          // From beat field (heartbeat timestamp)
 	Quiet       bool               // From quiet field
+	Status      string             // Running, Pausing, Quiet, Stopping
 	Capsules    map[string]Capsule // From info.capsules (Sidekiq 8+)
 	RSS         int64              // From rss field in KB, convert to bytes (*1024)
 	RTTUS       int64              // From rtt_us field (microseconds)
 	StartedAt   time.Time          // From info.started_at (timestamp)
 }
+
+// Process status values.
+const (
+	ProcessStatusRunning  = "running"
+	ProcessStatusPausing  = "pausing"
+	ProcessStatusQuiet    = "quiet"
+	ProcessStatusStopping = "stopping"
+)
 
 // Job represents an active Sidekiq job (currently running).
 type Job struct {
@@ -135,7 +145,18 @@ func (c *Client) GetBusyData(ctx context.Context, filter string) (BusyData, erro
 		return data, err
 	}
 
-	// Step 3: Pipeline all work data fetches
+	// Step 3: Pipeline all signal fetches
+	signalResults, err := c.redis.Pipelined(ctx, func(pipe redis.Pipeliner) error {
+		for _, identity := range identities {
+			pipe.LRange(ctx, identity+"-signals", 0, -1)
+		}
+		return nil
+	})
+	if err != nil {
+		return data, err
+	}
+
+	// Step 4: Pipeline all work data fetches
 	workResults, err := c.redis.Pipelined(ctx, func(pipe redis.Pipeliner) error {
 		for _, identity := range identities {
 			pipe.HGetAll(ctx, identity+":work")
@@ -146,7 +167,7 @@ func (c *Client) GetBusyData(ctx context.Context, filter string) (BusyData, erro
 		return data, err
 	}
 
-	// Step 4: Parse results
+	// Step 5: Parse results
 	data.Processes = make([]Process, 0, len(identities))
 	data.Jobs = make([]Job, 0)
 
@@ -158,6 +179,12 @@ func (c *Client) GetBusyData(ctx context.Context, filter string) (BusyData, erro
 				continue
 			}
 			process.refreshFromFields(fields)
+		}
+		if cmd, ok := signalResults[i].(*redis.StringSliceCmd); ok {
+			signals, err := cmd.Result()
+			if err == nil || errors.Is(err, redis.Nil) {
+				process.updateStatus(signals)
+			}
 		}
 
 		// Only include processes that have valid info
@@ -212,6 +239,33 @@ func (p *Process) GetJobs(ctx context.Context, filter string) ([]Job, error) {
 	return p.parseJobsFromWork(work, filter), nil
 }
 
+// Pause signals the process to stop accepting new jobs.
+func (p *Process) Pause(ctx context.Context) error {
+	return p.signal(ctx, "TSTP")
+}
+
+// Stop signals the process to shutdown.
+func (p *Process) Stop(ctx context.Context) error {
+	return p.signal(ctx, "TERM")
+}
+
+func (p *Process) signal(ctx context.Context, sig string) error {
+	if p.client == nil {
+		return errors.New("process client is nil")
+	}
+	if p.Identity == "" {
+		return errors.New("process identity is empty")
+	}
+
+	key := p.Identity + "-signals"
+	_, err := p.client.redis.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+		pipe.LPush(ctx, key, sig)
+		pipe.Expire(ctx, key, time.Minute)
+		return nil
+	})
+	return err
+}
+
 // refreshFromFields updates process fields from HMGET results.
 func (p *Process) refreshFromFields(fields []any) {
 	p.Hostname = ""
@@ -224,6 +278,7 @@ func (p *Process) refreshFromFields(fields []any) {
 	p.Busy = 0
 	p.Beat = time.Time{}
 	p.Quiet = false
+	p.Status = ProcessStatusRunning
 	p.RSS = 0
 	p.RTTUS = 0
 
@@ -257,6 +312,21 @@ func (p *Process) refreshFromFields(fields []any) {
 	if rtt, ok := parseOptionalInt64(fieldAt(fields, 5)); ok {
 		p.RTTUS = rtt
 	}
+
+	p.updateStatus(nil)
+}
+
+func (p *Process) updateStatus(signals []string) {
+	status := ProcessStatusRunning
+	switch {
+	case slices.Contains(signals, "TERM"):
+		status = ProcessStatusStopping
+	case p.Quiet:
+		status = ProcessStatusQuiet
+	case slices.Contains(signals, "TSTP"):
+		status = ProcessStatusPausing
+	}
+	p.Status = status
 }
 
 // parseJobsFromWork parses work hash data into jobs.

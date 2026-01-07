@@ -38,6 +38,8 @@ type Styles struct {
 	QueueWeight     lipgloss.Style
 	FilterFocused   lipgloss.Style
 	FilterBlurred   lipgloss.Style
+	DangerAction    lipgloss.Style
+	NeutralAction   lipgloss.Style
 }
 
 // RefreshMsg is broadcast by the app on the 5-second ticker.
@@ -88,6 +90,16 @@ type ContextProvider interface {
 // HintProvider exposes key hints for the header.
 type HintProvider interface {
 	HintBindings() []key.Binding
+}
+
+// MutationHintProvider exposes mutational key hints for the header.
+type MutationHintProvider interface {
+	MutationBindings() []key.Binding
+}
+
+// DangerousActionsToggle allows views to enable or disable mutational actions.
+type DangerousActionsToggle interface {
+	SetDangerousActionsEnabled(enabled bool)
 }
 
 // HelpSection groups help bindings under a title.

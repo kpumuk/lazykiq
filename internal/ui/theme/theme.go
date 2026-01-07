@@ -29,6 +29,7 @@ type Theme struct {
 	Success         compat.CompleteAdaptiveColor
 	Error           compat.CompleteAdaptiveColor
 	Filter          compat.CompleteAdaptiveColor
+	DangerBg        compat.CompleteAdaptiveColor
 
 	// Metrics colors
 	MetricsText compat.CompleteAdaptiveColor
@@ -112,6 +113,10 @@ var DefaultTheme = Theme{
 	Filter: compat.CompleteAdaptiveColor{
 		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#C026D3"), ANSI256: lipgloss.Color("165"), ANSI: lipgloss.Color("13")},
 		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#E879F9"), ANSI256: lipgloss.Color("171"), ANSI: lipgloss.Color("13")},
+	},
+	DangerBg: compat.CompleteAdaptiveColor{
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#FFE3E3"), ANSI256: lipgloss.Color("224"), ANSI: lipgloss.Color("15")},
+		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#C92A2A"), ANSI256: lipgloss.Color("160"), ANSI: lipgloss.Color("1")},
 	},
 
 	// Metrics
@@ -244,11 +249,13 @@ type Styles struct {
 	FilterBlurred lipgloss.Style
 
 	// Context bar
-	ContextBar   lipgloss.Style
-	ContextLabel lipgloss.Style
-	ContextValue lipgloss.Style
-	ContextKey   lipgloss.Style
-	ContextDesc  lipgloss.Style
+	ContextBar        lipgloss.Style
+	ContextLabel      lipgloss.Style
+	ContextValue      lipgloss.Style
+	ContextKey        lipgloss.Style
+	ContextDesc       lipgloss.Style
+	ContextDangerKey  lipgloss.Style
+	ContextDangerDesc lipgloss.Style
 }
 
 // NewStyles creates a Styles instance from the default adaptive theme.
@@ -416,5 +423,13 @@ func NewStyles() Styles {
 
 		ContextDesc: lipgloss.NewStyle().
 			Foreground(t.TextMuted),
+
+		ContextDangerKey: lipgloss.NewStyle().
+			Foreground(t.Text).
+			Background(t.DangerBg).
+			Padding(0, 1),
+
+		ContextDangerDesc: lipgloss.NewStyle().
+			Foreground(t.Text),
 	}
 }

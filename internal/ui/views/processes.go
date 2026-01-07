@@ -25,16 +25,17 @@ type processesListDataMsg struct {
 
 // ProcessesList shows all Sidekiq processes in a table.
 type ProcessesList struct {
-	client      sidekiq.API
-	width       int
-	height      int
-	styles      Styles
-	processes   []sidekiq.Process
-	table       table.Model
-	ready       bool
-	filter      string
-	frameStyles frame.Styles
-	filterStyle filterdialog.Styles
+	client                  sidekiq.API
+	width                   int
+	height                  int
+	styles                  Styles
+	processes               []sidekiq.Process
+	table                   table.Model
+	ready                   bool
+	filter                  string
+	dangerousActionsEnabled bool
+	frameStyles             frame.Styles
+	filterStyle             filterdialog.Styles
 }
 
 // NewProcessesList creates a new ProcessesList view.
@@ -98,6 +99,21 @@ func (p *ProcessesList) Update(msg tea.Msg) (View, tea.Cmd) {
 			return p, nil
 		}
 
+		if p.dangerousActionsEnabled {
+			switch msg.String() {
+			case "p":
+				if identity, ok := p.selectedProcessIdentity(); ok {
+					return p, p.pauseProcessCmd(identity)
+				}
+				return p, nil
+			case "s":
+				if identity, ok := p.selectedProcessIdentity(); ok {
+					return p, p.stopProcessCmd(identity)
+				}
+				return p, nil
+			}
+		}
+
 		p.table, _ = p.table.Update(msg)
 		return p, nil
 	}
@@ -140,11 +156,13 @@ func (p *ProcessesList) ContextItems() []ContextItem {
 	processCount := len(p.processes)
 	totalThreads := 0
 	busyThreads := 0
+	var totalRSS int64
 	var oldestStart time.Time
 
 	for _, proc := range p.processes {
 		totalThreads += proc.Concurrency
 		busyThreads += proc.Busy
+		totalRSS += proc.RSS
 		if !proc.StartedAt.IsZero() && (oldestStart.IsZero() || proc.StartedAt.Before(oldestStart)) {
 			oldestStart = proc.StartedAt
 		}
@@ -164,6 +182,7 @@ func (p *ProcessesList) ContextItems() []ContextItem {
 		{Label: "Processes", Value: strconv.Itoa(processCount)},
 		{Label: "Capacity", Value: strconv.Itoa(totalThreads)},
 		{Label: "Busy", Value: strconv.Itoa(busyThreads) + " (" + strconv.Itoa(percentage) + "%)"},
+		{Label: "RSS", Value: format.Bytes(totalRSS)},
 		{Label: "Oldest", Value: oldestAge},
 	}
 }
@@ -176,6 +195,17 @@ func (p *ProcessesList) HintBindings() []key.Binding {
 	}
 }
 
+// MutationBindings implements MutationHintProvider.
+func (p *ProcessesList) MutationBindings() []key.Binding {
+	if !p.dangerousActionsEnabled {
+		return nil
+	}
+	return []key.Binding{
+		helpBinding([]string{"p"}, "p", "pause process"),
+		helpBinding([]string{"s"}, "s", "stop process"),
+	}
+}
+
 // HelpSections implements HelpProvider.
 func (p *ProcessesList) HelpSections() []HelpSection {
 	sections := []HelpSection{{
@@ -185,6 +215,15 @@ func (p *ProcessesList) HelpSections() []HelpSection {
 			helpBinding([]string{"enter"}, "enter", "select process"),
 		},
 	}}
+	if p.dangerousActionsEnabled {
+		sections = append(sections, HelpSection{
+			Title: "Mutations",
+			Bindings: []key.Binding{
+				helpBinding([]string{"p"}, "p", "pause process"),
+				helpBinding([]string{"s"}, "s", "stop process"),
+			},
+		})
+	}
 	return sections
 }
 
@@ -199,6 +238,11 @@ func (p *ProcessesList) SetSize(width, height int) View {
 	p.height = height
 	p.updateTableSize()
 	return p
+}
+
+// SetDangerousActionsEnabled toggles mutational actions for the view.
+func (p *ProcessesList) SetDangerousActionsEnabled(enabled bool) {
+	p.dangerousActionsEnabled = enabled
 }
 
 // Dispose clears cached data when the view is removed from the stack.
@@ -298,6 +342,34 @@ func (p *ProcessesList) reset() {
 	p.table.SetCursor(0)
 }
 
+func (p *ProcessesList) selectedProcessIdentity() (string, bool) {
+	idx := p.table.Cursor()
+	if idx < 0 || idx >= len(p.processes) {
+		return "", false
+	}
+	return p.processes[idx].Identity, true
+}
+
+func (p *ProcessesList) pauseProcessCmd(identity string) tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+		if err := p.client.NewProcess(identity).Pause(ctx); err != nil {
+			return ConnectionErrorMsg{Err: err}
+		}
+		return RefreshMsg{}
+	}
+}
+
+func (p *ProcessesList) stopProcessCmd(identity string) tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+		if err := p.client.NewProcess(identity).Stop(ctx); err != nil {
+			return ConnectionErrorMsg{Err: err}
+		}
+		return RefreshMsg{}
+	}
+}
+
 // Table columns for processes list.
 var processesListColumns = []table.Column{
 	{Title: "Name", Width: 28},
@@ -305,7 +377,7 @@ var processesListColumns = []table.Column{
 	{Title: "RSS", Width: 10, Align: table.AlignRight},
 	{Title: "Capacity", Width: 8, Align: table.AlignRight},
 	{Title: "Busy", Width: 5, Align: table.AlignRight},
-	{Title: "Quiet", Width: 5},
+	{Title: "Status", Width: 9},
 	{Title: "Queues", Width: 30},
 }
 
@@ -328,10 +400,6 @@ func (p *ProcessesList) updateTableRows() {
 		}
 
 		queues := formatProcessCapsules(process, p.styles.QueueText, p.styles.QueueWeight, p.styles.Muted)
-		quiet := "no"
-		if process.Quiet {
-			quiet = "yes"
-		}
 
 		row := table.Row{
 			ID: process.Identity,
@@ -341,7 +409,7 @@ func (p *ProcessesList) updateTableRows() {
 				format.Bytes(process.RSS),
 				strconv.Itoa(process.Concurrency),
 				strconv.Itoa(process.Busy),
-				quiet,
+				process.Status,
 				queues,
 			},
 		}

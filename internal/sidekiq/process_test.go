@@ -365,6 +365,53 @@ func TestGetBusyData(t *testing.T) {
 	}
 }
 
+func TestGetBusyData_StatusFromSignals(t *testing.T) {
+	mr, client := setupTestRedis(t)
+	ctx := testContext(t)
+
+	_, _ = mr.SetAdd("processes", "host1:100:abc", "host2:200:def", "host3:300:ghi", "host4:400:jkl")
+
+	info := map[string]any{
+		"hostname":    "host",
+		"pid":         1,
+		"concurrency": 5,
+		"queues":      []any{"default"},
+	}
+
+	mr.HSet("host1:100:abc", "info", string(mustMarshalJSON(t, info)))
+	mr.HSet("host2:200:def", "info", string(mustMarshalJSON(t, info)))
+	mr.HSet("host3:300:ghi", "info", string(mustMarshalJSON(t, info)))
+	mr.HSet("host4:400:jkl", "info", string(mustMarshalJSON(t, info)))
+
+	_, _ = mr.Lpush("host1:100:abc-signals", "TSTP")
+	mr.HSet("host2:200:def", "quiet", "true")
+	_, _ = mr.Lpush("host3:300:ghi-signals", "TERM")
+	mr.HSet("host3:300:ghi", "quiet", "true")
+
+	data, err := client.GetBusyData(ctx, "")
+	if err != nil {
+		t.Fatalf("GetBusyData failed: %v", err)
+	}
+
+	statusByID := map[string]string{}
+	for _, proc := range data.Processes {
+		statusByID[proc.Identity] = proc.Status
+	}
+
+	if statusByID["host1:100:abc"] != ProcessStatusPausing {
+		t.Fatalf("host1 status = %q, want %q", statusByID["host1:100:abc"], ProcessStatusPausing)
+	}
+	if statusByID["host2:200:def"] != ProcessStatusQuiet {
+		t.Fatalf("host2 status = %q, want %q", statusByID["host2:200:def"], ProcessStatusQuiet)
+	}
+	if statusByID["host3:300:ghi"] != ProcessStatusStopping {
+		t.Fatalf("host3 status = %q, want %q", statusByID["host3:300:ghi"], ProcessStatusStopping)
+	}
+	if statusByID["host4:400:jkl"] != ProcessStatusRunning {
+		t.Fatalf("host4 status = %q, want %q", statusByID["host4:400:jkl"], ProcessStatusRunning)
+	}
+}
+
 func TestGetBusyData_Filter(t *testing.T) {
 	mr, client := setupTestRedis(t)
 	ctx := testContext(t)

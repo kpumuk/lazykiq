@@ -13,6 +13,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/fang"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui"
@@ -39,6 +40,7 @@ func buildVersion(version, commit, date, builtBy string) string {
 
 // Execute initializes and runs the lazykiq terminal application.
 func Execute(version, commit, date, builtBy string) error {
+	var enableDangerousActions bool
 	rootCmd := &cobra.Command{
 		Use:   "lazykiq",
 		Short: "A terminal UI for Sidekiq.",
@@ -67,6 +69,19 @@ func Execute(version, commit, date, builtBy string) error {
 		"redis://localhost:6379/0",
 		"redis URL",
 	)
+	rootCmd.Flags().BoolVar(
+		&enableDangerousActions,
+		"danger",
+		false,
+		"enable dangerous operations",
+	)
+	rootCmd.Flags().SetNormalizeFunc(func(_ *pflag.FlagSet, name string) pflag.NormalizedName {
+		switch name {
+		case "yolo":
+			name = "danger"
+		}
+		return pflag.NormalizedName(name)
+	})
 
 	rootCmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		cpuprofile, err := cmd.Flags().GetString("cpuprofile")
@@ -104,7 +119,7 @@ func Execute(version, commit, date, builtBy string) error {
 			}()
 		}
 
-		app := ui.New(client, version)
+		app := ui.New(client, version, enableDangerousActions)
 		p := tea.NewProgram(app)
 		if _, err := p.Run(); err != nil {
 			return fmt.Errorf("run lazykiq: %w", err)
