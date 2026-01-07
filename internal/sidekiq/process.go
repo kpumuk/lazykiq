@@ -24,6 +24,7 @@ type Process struct {
 	Hostname    string             // Parsed from identity (e.g., "be4860dbdb68")
 	PID         int                // Parsed from identity (e.g., 14)
 	Tag         string             // From info.tag (e.g., "myapp")
+	Version     string             // From info.version (e.g., "7.2.1")
 	Concurrency int                // From info.concurrency
 	Busy        int                // From busy field (converted to int)
 	Beat        time.Time          // From beat field (heartbeat timestamp)
@@ -178,6 +179,11 @@ func (c *Client) GetBusyData(ctx context.Context, filter string) (BusyData, erro
 			if err != nil && !errors.Is(err, redis.Nil) {
 				continue
 			}
+			// If a process is stopped between when we query Redis for `processes` and
+			// when querying for process info, we will get a nil value.
+			if fieldAt(fields, 0) == nil {
+				continue
+			}
 			process.refreshFromFields(fields)
 		}
 		if cmd, ok := signalResults[i].(*redis.StringSliceCmd); ok {
@@ -271,6 +277,7 @@ func (p *Process) refreshFromFields(fields []any) {
 	p.Hostname = ""
 	p.PID = 0
 	p.Tag = ""
+	p.Version = ""
 	p.Concurrency = 0
 	p.Capsules = nil
 	p.StartedAt = time.Time{}
@@ -394,6 +401,7 @@ func parseProcessInfo(field any, process *Process) {
 		}
 	}
 	process.Tag = info.Tag
+	process.Version = info.Version
 	process.StartedAt = timeFromSeconds(info.StartedAt)
 }
 

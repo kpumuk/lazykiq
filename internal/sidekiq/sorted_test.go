@@ -478,3 +478,81 @@ func TestSortedEntry_ActiveJob(t *testing.T) {
 		t.Errorf("DisplayClass() = %q, want MyActiveJob (unwrapped)", entry.DisplayClass())
 	}
 }
+
+func TestDeleteRetryJob_RemovesOnly(t *testing.T) {
+	mr, client := setupTestRedis(t)
+	ctx := context.Background()
+
+	jobJSON := `{"jid":"retry_delete","class":"MyJob","queue":"default"}`
+	_, _ = mr.ZAdd("retry", 1000.0, jobJSON)
+
+	entry := NewSortedEntry(jobJSON, 1000.0)
+	if err := client.DeleteRetryJob(ctx, entry); err != nil {
+		t.Fatalf("DeleteRetryJob failed: %v", err)
+	}
+
+	if size, _ := client.redis.ZCard(ctx, "retry").Result(); size != 0 {
+		t.Fatalf("retry size = %d, want 0", size)
+	}
+	if size, _ := client.redis.LLen(ctx, "queue:default").Result(); size != 0 {
+		t.Fatalf("queue length = %d, want 0", size)
+	}
+}
+
+func TestKillRetryJob_MovesToDead(t *testing.T) {
+	mr, client := setupTestRedis(t)
+	ctx := context.Background()
+
+	jobJSON := `{"jid":"retry_kill","class":"MyJob","queue":"default"}`
+	_, _ = mr.ZAdd("retry", 1000.0, jobJSON)
+
+	entry := NewSortedEntry(jobJSON, 1000.0)
+	if err := client.KillRetryJob(ctx, entry); err != nil {
+		t.Fatalf("KillRetryJob failed: %v", err)
+	}
+
+	if size, _ := client.redis.ZCard(ctx, "retry").Result(); size != 0 {
+		t.Fatalf("retry size = %d, want 0", size)
+	}
+	values, err := client.redis.ZRange(ctx, "dead", 0, -1).Result()
+	if err != nil {
+		t.Fatalf("dead zrange failed: %v", err)
+	}
+	if len(values) != 1 || values[0] != jobJSON {
+		t.Fatalf("dead entries = %v, want %q", values, jobJSON)
+	}
+}
+
+func TestDeleteScheduledJob_RemovesOnly(t *testing.T) {
+	mr, client := setupTestRedis(t)
+	ctx := context.Background()
+
+	jobJSON := `{"jid":"sched_delete","class":"MyJob","queue":"default"}`
+	_, _ = mr.ZAdd("schedule", 1000.0, jobJSON)
+
+	entry := NewSortedEntry(jobJSON, 1000.0)
+	if err := client.DeleteScheduledJob(ctx, entry); err != nil {
+		t.Fatalf("DeleteScheduledJob failed: %v", err)
+	}
+
+	if size, _ := client.redis.ZCard(ctx, "schedule").Result(); size != 0 {
+		t.Fatalf("schedule size = %d, want 0", size)
+	}
+}
+
+func TestDeleteDeadJob_RemovesOnly(t *testing.T) {
+	mr, client := setupTestRedis(t)
+	ctx := context.Background()
+
+	jobJSON := `{"jid":"dead_delete","class":"MyJob","queue":"default"}`
+	_, _ = mr.ZAdd("dead", 1000.0, jobJSON)
+
+	entry := NewSortedEntry(jobJSON, 1000.0)
+	if err := client.DeleteDeadJob(ctx, entry); err != nil {
+		t.Fatalf("DeleteDeadJob failed: %v", err)
+	}
+
+	if size, _ := client.redis.ZCard(ctx, "dead").Result(); size != 0 {
+		t.Fatalf("dead size = %d, want 0", size)
+	}
+}

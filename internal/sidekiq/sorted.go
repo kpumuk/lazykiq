@@ -6,11 +6,20 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 )
 
 const sortedSetScanCount int64 = 100
+
+const (
+	retrySetKey    = "retry"
+	scheduleSetKey = "schedule"
+	deadSetKey     = "dead"
+	queueSetKey    = "queues"
+	queuePrefixKey = "queue:"
+)
 
 // SortedEntry represents a job stored in a Sidekiq sorted set (dead, retry, schedule).
 // It embeds a JobRecord for the job data and adds the sorted set score (timestamp).
@@ -137,45 +146,97 @@ func (c *Client) getSortedSetBounds(ctx context.Context, key string) (*SortedEnt
 
 // GetDeadJobs fetches dead jobs with pagination (newest first).
 func (c *Client) GetDeadJobs(ctx context.Context, start, count int) ([]*SortedEntry, int64, error) {
-	return c.getSortedSetJobs(ctx, "dead", start, count, true)
+	return c.getSortedSetJobs(ctx, deadSetKey, start, count, true)
 }
 
 // ScanDeadJobs scans dead jobs using a match pattern (no paging).
 func (c *Client) ScanDeadJobs(ctx context.Context, match string) ([]*SortedEntry, error) {
-	return c.scanSortedSetJobs(ctx, "dead", match, true)
+	return c.scanSortedSetJobs(ctx, deadSetKey, match, true)
 }
 
 // GetDeadBounds fetches the oldest and newest dead jobs.
 func (c *Client) GetDeadBounds(ctx context.Context) (*SortedEntry, *SortedEntry, error) {
-	return c.getSortedSetBounds(ctx, "dead")
+	return c.getSortedSetBounds(ctx, deadSetKey)
 }
 
 // GetRetryJobs fetches retry jobs with pagination (earliest retry first).
 func (c *Client) GetRetryJobs(ctx context.Context, start, count int) ([]*SortedEntry, int64, error) {
-	return c.getSortedSetJobs(ctx, "retry", start, count, false)
+	return c.getSortedSetJobs(ctx, retrySetKey, start, count, false)
 }
 
 // ScanRetryJobs scans retry jobs using a match pattern (no paging).
 func (c *Client) ScanRetryJobs(ctx context.Context, match string) ([]*SortedEntry, error) {
-	return c.scanSortedSetJobs(ctx, "retry", match, false)
+	return c.scanSortedSetJobs(ctx, retrySetKey, match, false)
 }
 
 // GetRetryBounds fetches the earliest and latest retry jobs.
 func (c *Client) GetRetryBounds(ctx context.Context) (*SortedEntry, *SortedEntry, error) {
-	return c.getSortedSetBounds(ctx, "retry")
+	return c.getSortedSetBounds(ctx, retrySetKey)
 }
 
 // GetScheduledJobs fetches scheduled jobs with pagination (earliest execution time first).
 func (c *Client) GetScheduledJobs(ctx context.Context, start, count int) ([]*SortedEntry, int64, error) {
-	return c.getSortedSetJobs(ctx, "schedule", start, count, false)
+	return c.getSortedSetJobs(ctx, scheduleSetKey, start, count, false)
 }
 
 // ScanScheduledJobs scans scheduled jobs using a match pattern (no paging).
 func (c *Client) ScanScheduledJobs(ctx context.Context, match string) ([]*SortedEntry, error) {
-	return c.scanSortedSetJobs(ctx, "schedule", match, false)
+	return c.scanSortedSetJobs(ctx, scheduleSetKey, match, false)
 }
 
 // GetScheduledBounds fetches the earliest and latest scheduled jobs.
 func (c *Client) GetScheduledBounds(ctx context.Context) (*SortedEntry, *SortedEntry, error) {
-	return c.getSortedSetBounds(ctx, "schedule")
+	return c.getSortedSetBounds(ctx, scheduleSetKey)
+}
+
+// DeleteRetryJob removes a job from the retry set.
+func (c *Client) DeleteRetryJob(ctx context.Context, entry *SortedEntry) error {
+	return c.deleteSortedEntry(ctx, retrySetKey, entry)
+}
+
+// KillRetryJob moves a retry job into the dead set.
+func (c *Client) KillRetryJob(ctx context.Context, entry *SortedEntry) error {
+	if entry == nil || entry.JobRecord == nil {
+		return errors.New("sorted entry is nil")
+	}
+	value := entry.Value()
+	if value == "" {
+		return errors.New("sorted entry payload is empty")
+	}
+
+	_, err := c.redis.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+		pipe.ZRem(ctx, retrySetKey, value)
+		pipe.ZAdd(ctx, deadSetKey, redis.Z{
+			Score:  float64(time.Now().Unix()),
+			Member: value,
+		})
+		return nil
+	})
+	return err
+}
+
+// DeleteScheduledJob removes a job from the scheduled set.
+func (c *Client) DeleteScheduledJob(ctx context.Context, entry *SortedEntry) error {
+	return c.deleteSortedEntry(ctx, scheduleSetKey, entry)
+}
+
+// DeleteDeadJob removes a job from the dead set.
+func (c *Client) DeleteDeadJob(ctx context.Context, entry *SortedEntry) error {
+	return c.deleteSortedEntry(ctx, deadSetKey, entry)
+}
+
+func (c *Client) deleteSortedEntry(ctx context.Context, key string, entry *SortedEntry) error {
+	if entry == nil || entry.JobRecord == nil {
+		return errors.New("sorted entry is nil")
+	}
+	value := entry.Value()
+	if value == "" {
+		return errors.New("sorted entry payload is empty")
+	}
+
+	_, err := c.redis.ZRem(ctx, key, value).Result()
+	if err != nil && !errors.Is(err, redis.Nil) {
+		return err
+	}
+	return nil
 }

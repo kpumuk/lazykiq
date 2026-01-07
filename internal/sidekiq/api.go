@@ -74,6 +74,18 @@ type API interface {
 
 	// GetScheduledBounds fetches the earliest and latest scheduled jobs.
 	GetScheduledBounds(ctx context.Context) (*SortedEntry, *SortedEntry, error)
+
+	// DeleteRetryJob removes a retry job from the retry set.
+	DeleteRetryJob(ctx context.Context, entry *SortedEntry) error
+
+	// KillRetryJob moves a retry job to the dead set.
+	KillRetryJob(ctx context.Context, entry *SortedEntry) error
+
+	// DeleteScheduledJob removes a scheduled job from the scheduled set.
+	DeleteScheduledJob(ctx context.Context, entry *SortedEntry) error
+
+	// DeleteDeadJob removes a dead job from the dead set.
+	DeleteDeadJob(ctx context.Context, entry *SortedEntry) error
 }
 
 // Ensure Client implements API at compile time.

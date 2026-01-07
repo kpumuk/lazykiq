@@ -14,6 +14,7 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
+	confirmdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/confirm"
 	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
 	"github.com/kpumuk/lazykiq/internal/ui/format"
 )
@@ -30,23 +31,35 @@ type retriesDataMsg struct {
 
 const retriesPageSize = 25
 
+type retriesJobAction int
+
+const (
+	retriesJobActionNone retriesJobAction = iota
+	retriesJobActionDelete
+	retriesJobActionKill
+)
+
 // Retries shows failed jobs pending retry.
 type Retries struct {
-	client      sidekiq.API
-	width       int
-	height      int
-	styles      Styles
-	jobs        []*sidekiq.SortedEntry
-	firstEntry  *sidekiq.SortedEntry
-	lastEntry   *sidekiq.SortedEntry
-	table       table.Model
-	ready       bool
-	currentPage int
-	totalPages  int
-	totalSize   int64
-	filter      string
-	frameStyles frame.Styles
-	filterStyle filterdialog.Styles
+	client                  sidekiq.API
+	width                   int
+	height                  int
+	styles                  Styles
+	jobs                    []*sidekiq.SortedEntry
+	firstEntry              *sidekiq.SortedEntry
+	lastEntry               *sidekiq.SortedEntry
+	table                   table.Model
+	ready                   bool
+	currentPage             int
+	totalPages              int
+	totalSize               int64
+	filter                  string
+	dangerousActionsEnabled bool
+	frameStyles             frame.Styles
+	filterStyle             filterdialog.Styles
+	pendingJobAction        retriesJobAction
+	pendingJobEntry         *sidekiq.SortedEntry
+	pendingJobTarget        string
 }
 
 // NewRetries creates a new Retries view.
@@ -97,6 +110,33 @@ func (r *Retries) Update(msg tea.Msg) (View, tea.Cmd) {
 		r.table.SetCursor(0)
 		return r, r.fetchDataCmd()
 
+	case confirmdialog.ActionMsg:
+		if !r.dangerousActionsEnabled {
+			return r, nil
+		}
+		if r.pendingJobEntry == nil {
+			return r, nil
+		}
+		if r.pendingJobTarget != "" && msg.Target != r.pendingJobTarget {
+			return r, nil
+		}
+		action := r.pendingJobAction
+		entry := r.pendingJobEntry
+		r.pendingJobAction = retriesJobActionNone
+		r.pendingJobEntry = nil
+		r.pendingJobTarget = ""
+		if !msg.Confirmed {
+			return r, nil
+		}
+		switch action {
+		case retriesJobActionNone:
+			return r, nil
+		case retriesJobActionDelete:
+			return r, r.deleteJobCmd(entry)
+		case retriesJobActionKill:
+			return r, r.killJobCmd(entry)
+		}
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "/":
@@ -138,6 +178,27 @@ func (r *Retries) Update(msg tea.Msg) (View, tea.Cmd) {
 				}
 			}
 			return r, nil
+		}
+
+		if r.dangerousActionsEnabled {
+			switch msg.String() {
+			case "D":
+				if entry, ok := r.selectedEntry(); ok {
+					r.pendingJobAction = retriesJobActionDelete
+					r.pendingJobEntry = entry
+					r.pendingJobTarget = entry.JID()
+					return r, r.openDeleteConfirm(entry)
+				}
+				return r, nil
+			case "K":
+				if entry, ok := r.selectedEntry(); ok {
+					r.pendingJobAction = retriesJobActionKill
+					r.pendingJobEntry = entry
+					r.pendingJobTarget = entry.JID()
+					return r, r.openKillConfirm(entry)
+				}
+				return r, nil
+			}
 		}
 
 		// Pass other keys to table for navigation
@@ -201,9 +262,20 @@ func (r *Retries) HintBindings() []key.Binding {
 	}
 }
 
+// MutationBindings implements MutationHintProvider.
+func (r *Retries) MutationBindings() []key.Binding {
+	if !r.dangerousActionsEnabled {
+		return nil
+	}
+	return []key.Binding{
+		helpBinding([]string{"D"}, "shift+d", "delete job"),
+		helpBinding([]string{"K"}, "shift+k", "kill job"),
+	}
+}
+
 // HelpSections implements HelpProvider.
 func (r *Retries) HelpSections() []HelpSection {
-	return []HelpSection{
+	sections := []HelpSection{
 		{
 			Title: "Retries",
 			Bindings: []key.Binding{
@@ -215,6 +287,16 @@ func (r *Retries) HelpSections() []HelpSection {
 			},
 		},
 	}
+	if r.dangerousActionsEnabled {
+		sections = append(sections, HelpSection{
+			Title: "Dangerous Actions",
+			Bindings: []key.Binding{
+				helpBinding([]string{"D"}, "shift+d", "delete job"),
+				helpBinding([]string{"K"}, "shift+k", "kill job"),
+			},
+		})
+	}
+	return sections
 }
 
 // TableHelp implements TableHelpProvider.
@@ -228,6 +310,11 @@ func (r *Retries) SetSize(width, height int) View {
 	r.height = height
 	r.updateTableSize()
 	return r
+}
+
+// SetDangerousActionsEnabled toggles mutational actions for the view.
+func (r *Retries) SetDangerousActionsEnabled(enabled bool) {
+	r.dangerousActionsEnabled = enabled
 }
 
 // Dispose clears cached data when the view is removed from the stack.
@@ -354,6 +441,14 @@ func (r *Retries) reset() {
 	r.table.SetCursor(0)
 }
 
+func (r *Retries) selectedEntry() (*sidekiq.SortedEntry, bool) {
+	idx := r.table.Cursor()
+	if idx < 0 || idx >= len(r.jobs) {
+		return nil, false
+	}
+	return r.jobs[idx], true
+}
+
 // Table columns for retry job list.
 var retryJobColumns = []table.Column{
 	{Title: "Next Retry", Width: 12},
@@ -425,6 +520,82 @@ func (r *Retries) openFilterDialog() tea.Cmd {
 				filterdialog.WithQuery(r.filter),
 			),
 		}
+	}
+}
+
+func (r *Retries) openDeleteConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
+	jobName := entry.DisplayClass()
+	if jobName == "" {
+		jobName = "selected"
+	}
+	return func() tea.Msg {
+		return dialogs.OpenDialogMsg{
+			Model: confirmdialog.New(
+				confirmdialog.WithStyles(confirmdialog.Styles{
+					Title:           r.styles.Title,
+					Border:          r.styles.FocusBorder,
+					Text:            r.styles.Text,
+					Muted:           r.styles.Muted,
+					Button:          r.styles.Muted.Padding(0, 1),
+					ButtonYesActive: r.styles.DangerAction,
+					ButtonNoActive:  r.styles.NeutralAction,
+				}),
+				confirmdialog.WithTitle("Delete job"),
+				confirmdialog.WithMessage(fmt.Sprintf(
+					"Are you sure you want to delete the %s job?\n\nThis action is not recoverable.",
+					r.styles.Text.Bold(true).Render(jobName),
+				)),
+				confirmdialog.WithTarget(entry.JID()),
+			),
+		}
+	}
+}
+
+func (r *Retries) openKillConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
+	jobName := entry.DisplayClass()
+	if jobName == "" {
+		jobName = "selected"
+	}
+	return func() tea.Msg {
+		return dialogs.OpenDialogMsg{
+			Model: confirmdialog.New(
+				confirmdialog.WithStyles(confirmdialog.Styles{
+					Title:           r.styles.Title,
+					Border:          r.styles.FocusBorder,
+					Text:            r.styles.Text,
+					Muted:           r.styles.Muted,
+					Button:          r.styles.Muted.Padding(0, 1),
+					ButtonYesActive: r.styles.DangerAction,
+					ButtonNoActive:  r.styles.NeutralAction,
+				}),
+				confirmdialog.WithTitle("Kill job"),
+				confirmdialog.WithMessage(fmt.Sprintf(
+					"Are you sure you want to kill the %s job?\n\nThis will move the job to the dead queue.",
+					r.styles.Text.Bold(true).Render(jobName),
+				)),
+				confirmdialog.WithTarget(entry.JID()),
+			),
+		}
+	}
+}
+
+func (r *Retries) deleteJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+		if err := r.client.DeleteRetryJob(ctx, entry); err != nil {
+			return ConnectionErrorMsg{Err: err}
+		}
+		return RefreshMsg{}
+	}
+}
+
+func (r *Retries) killJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+		if err := r.client.KillRetryJob(ctx, entry); err != nil {
+			return ConnectionErrorMsg{Err: err}
+		}
+		return RefreshMsg{}
 	}
 }
 

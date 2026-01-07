@@ -13,6 +13,7 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
+	confirmdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/confirm"
 	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
 	"github.com/kpumuk/lazykiq/internal/ui/format"
 )
@@ -31,21 +32,24 @@ type scheduledDataMsg struct {
 
 // Scheduled shows jobs scheduled for future execution.
 type Scheduled struct {
-	client      sidekiq.API
-	width       int
-	height      int
-	styles      Styles
-	jobs        []*sidekiq.SortedEntry
-	firstEntry  *sidekiq.SortedEntry
-	lastEntry   *sidekiq.SortedEntry
-	table       table.Model
-	ready       bool
-	currentPage int
-	totalPages  int
-	totalSize   int64
-	filter      string
-	frameStyles frame.Styles
-	filterStyle filterdialog.Styles
+	client                  sidekiq.API
+	width                   int
+	height                  int
+	styles                  Styles
+	jobs                    []*sidekiq.SortedEntry
+	firstEntry              *sidekiq.SortedEntry
+	lastEntry               *sidekiq.SortedEntry
+	table                   table.Model
+	ready                   bool
+	currentPage             int
+	totalPages              int
+	totalSize               int64
+	filter                  string
+	dangerousActionsEnabled bool
+	frameStyles             frame.Styles
+	filterStyle             filterdialog.Styles
+	pendingJobEntry         *sidekiq.SortedEntry
+	pendingJobTarget        string
 }
 
 // NewScheduled creates a new Scheduled view.
@@ -96,6 +100,24 @@ func (s *Scheduled) Update(msg tea.Msg) (View, tea.Cmd) {
 		s.table.SetCursor(0)
 		return s, s.fetchDataCmd()
 
+	case confirmdialog.ActionMsg:
+		if !s.dangerousActionsEnabled {
+			return s, nil
+		}
+		if s.pendingJobEntry == nil {
+			return s, nil
+		}
+		if s.pendingJobTarget != "" && msg.Target != s.pendingJobTarget {
+			return s, nil
+		}
+		entry := s.pendingJobEntry
+		s.pendingJobEntry = nil
+		s.pendingJobTarget = ""
+		if !msg.Confirmed {
+			return s, nil
+		}
+		return s, s.deleteJobCmd(entry)
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "/":
@@ -137,6 +159,18 @@ func (s *Scheduled) Update(msg tea.Msg) (View, tea.Cmd) {
 				}
 			}
 			return s, nil
+		}
+
+		if s.dangerousActionsEnabled {
+			switch msg.String() {
+			case "D":
+				if entry, ok := s.selectedEntry(); ok {
+					s.pendingJobEntry = entry
+					s.pendingJobTarget = entry.JID()
+					return s, s.openDeleteConfirm(entry)
+				}
+				return s, nil
+			}
 		}
 
 		s.table, _ = s.table.Update(msg)
@@ -199,9 +233,19 @@ func (s *Scheduled) HintBindings() []key.Binding {
 	}
 }
 
+// MutationBindings implements MutationHintProvider.
+func (s *Scheduled) MutationBindings() []key.Binding {
+	if !s.dangerousActionsEnabled {
+		return nil
+	}
+	return []key.Binding{
+		helpBinding([]string{"D"}, "shift+d", "delete job"),
+	}
+}
+
 // HelpSections implements HelpProvider.
 func (s *Scheduled) HelpSections() []HelpSection {
-	return []HelpSection{
+	sections := []HelpSection{
 		{
 			Title: "Scheduled",
 			Bindings: []key.Binding{
@@ -213,6 +257,15 @@ func (s *Scheduled) HelpSections() []HelpSection {
 			},
 		},
 	}
+	if s.dangerousActionsEnabled {
+		sections = append(sections, HelpSection{
+			Title: "Dangerous Actions",
+			Bindings: []key.Binding{
+				helpBinding([]string{"D"}, "shift+d", "delete job"),
+			},
+		})
+	}
+	return sections
 }
 
 // TableHelp implements TableHelpProvider.
@@ -226,6 +279,11 @@ func (s *Scheduled) SetSize(width, height int) View {
 	s.height = height
 	s.updateTableSize()
 	return s
+}
+
+// SetDangerousActionsEnabled toggles mutational actions for the view.
+func (s *Scheduled) SetDangerousActionsEnabled(enabled bool) {
+	s.dangerousActionsEnabled = enabled
 }
 
 // Dispose clears cached data when the view is removed from the stack.
@@ -352,6 +410,14 @@ func (s *Scheduled) reset() {
 	s.table.SetCursor(0)
 }
 
+func (s *Scheduled) selectedEntry() (*sidekiq.SortedEntry, bool) {
+	idx := s.table.Cursor()
+	if idx < 0 || idx >= len(s.jobs) {
+		return nil, false
+	}
+	return s.jobs[idx], true
+}
+
 // Table columns for scheduled job list.
 var scheduledJobColumns = []table.Column{
 	{Title: "When", Width: 12},
@@ -406,6 +472,44 @@ func (s *Scheduled) openFilterDialog() tea.Cmd {
 				filterdialog.WithQuery(s.filter),
 			),
 		}
+	}
+}
+
+func (s *Scheduled) openDeleteConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
+	jobName := entry.DisplayClass()
+	if jobName == "" {
+		jobName = "selected"
+	}
+	return func() tea.Msg {
+		return dialogs.OpenDialogMsg{
+			Model: confirmdialog.New(
+				confirmdialog.WithStyles(confirmdialog.Styles{
+					Title:           s.styles.Title,
+					Border:          s.styles.FocusBorder,
+					Text:            s.styles.Text,
+					Muted:           s.styles.Muted,
+					Button:          s.styles.Muted.Padding(0, 1),
+					ButtonYesActive: s.styles.DangerAction,
+					ButtonNoActive:  s.styles.NeutralAction,
+				}),
+				confirmdialog.WithTitle("Delete job"),
+				confirmdialog.WithMessage(fmt.Sprintf(
+					"Are you sure you want to delete the %s job?\n\nThis action is not recoverable.",
+					s.styles.Text.Bold(true).Render(jobName),
+				)),
+				confirmdialog.WithTarget(entry.JID()),
+			),
+		}
+	}
+}
+
+func (s *Scheduled) deleteJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+		if err := s.client.DeleteScheduledJob(ctx, entry); err != nil {
+			return ConnectionErrorMsg{Err: err}
+		}
+		return RefreshMsg{}
 	}
 }
 

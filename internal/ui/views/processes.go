@@ -379,6 +379,7 @@ var processesListColumns = []table.Column{
 	{Title: "Busy", Width: 5, Align: table.AlignRight},
 	{Title: "Status", Width: 9},
 	{Title: "Queues", Width: 30},
+	{Title: "Version", Width: 10},
 }
 
 // updateTableSize updates the table dimensions based on current view size.
@@ -400,6 +401,10 @@ func (p *ProcessesList) updateTableRows() {
 		}
 
 		queues := formatProcessCapsules(process, p.styles.QueueText, p.styles.QueueWeight, p.styles.Muted)
+		version := process.Version
+		if version == "" {
+			version = "-"
+		}
 
 		row := table.Row{
 			ID: process.Identity,
@@ -411,6 +416,7 @@ func (p *ProcessesList) updateTableRows() {
 				strconv.Itoa(process.Busy),
 				process.Status,
 				queues,
+				version,
 			},
 		}
 		rows = append(rows, row)

@@ -13,6 +13,7 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
+	confirmdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/confirm"
 	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
 	"github.com/kpumuk/lazykiq/internal/ui/format"
 )
@@ -31,21 +32,24 @@ type deadDataMsg struct {
 
 // Dead shows dead/morgue jobs.
 type Dead struct {
-	client      sidekiq.API
-	width       int
-	height      int
-	styles      Styles
-	jobs        []*sidekiq.SortedEntry
-	firstEntry  *sidekiq.SortedEntry
-	lastEntry   *sidekiq.SortedEntry
-	table       table.Model
-	ready       bool
-	currentPage int
-	totalPages  int
-	totalSize   int64
-	filter      string
-	frameStyles frame.Styles
-	filterStyle filterdialog.Styles
+	client                  sidekiq.API
+	width                   int
+	height                  int
+	styles                  Styles
+	jobs                    []*sidekiq.SortedEntry
+	firstEntry              *sidekiq.SortedEntry
+	lastEntry               *sidekiq.SortedEntry
+	table                   table.Model
+	ready                   bool
+	currentPage             int
+	totalPages              int
+	totalSize               int64
+	filter                  string
+	dangerousActionsEnabled bool
+	frameStyles             frame.Styles
+	filterStyle             filterdialog.Styles
+	pendingJobEntry         *sidekiq.SortedEntry
+	pendingJobTarget        string
 }
 
 // NewDead creates a new Dead view.
@@ -96,6 +100,24 @@ func (d *Dead) Update(msg tea.Msg) (View, tea.Cmd) {
 		d.table.SetCursor(0)
 		return d, d.fetchDataCmd()
 
+	case confirmdialog.ActionMsg:
+		if !d.dangerousActionsEnabled {
+			return d, nil
+		}
+		if d.pendingJobEntry == nil {
+			return d, nil
+		}
+		if d.pendingJobTarget != "" && msg.Target != d.pendingJobTarget {
+			return d, nil
+		}
+		entry := d.pendingJobEntry
+		d.pendingJobEntry = nil
+		d.pendingJobTarget = ""
+		if !msg.Confirmed {
+			return d, nil
+		}
+		return d, d.deleteJobCmd(entry)
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "/":
@@ -137,6 +159,18 @@ func (d *Dead) Update(msg tea.Msg) (View, tea.Cmd) {
 				}
 			}
 			return d, nil
+		}
+
+		if d.dangerousActionsEnabled {
+			switch msg.String() {
+			case "D":
+				if entry, ok := d.selectedEntry(); ok {
+					d.pendingJobEntry = entry
+					d.pendingJobTarget = entry.JID()
+					return d, d.openDeleteConfirm(entry)
+				}
+				return d, nil
+			}
 		}
 
 		d.table, _ = d.table.Update(msg)
@@ -199,9 +233,19 @@ func (d *Dead) HintBindings() []key.Binding {
 	}
 }
 
+// MutationBindings implements MutationHintProvider.
+func (d *Dead) MutationBindings() []key.Binding {
+	if !d.dangerousActionsEnabled {
+		return nil
+	}
+	return []key.Binding{
+		helpBinding([]string{"D"}, "shift+d", "delete job"),
+	}
+}
+
 // HelpSections implements HelpProvider.
 func (d *Dead) HelpSections() []HelpSection {
-	return []HelpSection{
+	sections := []HelpSection{
 		{
 			Title: "Dead",
 			Bindings: []key.Binding{
@@ -213,6 +257,15 @@ func (d *Dead) HelpSections() []HelpSection {
 			},
 		},
 	}
+	if d.dangerousActionsEnabled {
+		sections = append(sections, HelpSection{
+			Title: "Dangerous Actions",
+			Bindings: []key.Binding{
+				helpBinding([]string{"D"}, "shift+d", "delete job"),
+			},
+		})
+	}
+	return sections
 }
 
 // TableHelp implements TableHelpProvider.
@@ -226,6 +279,11 @@ func (d *Dead) SetSize(width, height int) View {
 	d.height = height
 	d.updateTableSize()
 	return d
+}
+
+// SetDangerousActionsEnabled toggles mutational actions for the view.
+func (d *Dead) SetDangerousActionsEnabled(enabled bool) {
+	d.dangerousActionsEnabled = enabled
 }
 
 // Dispose clears cached data when the view is removed from the stack.
@@ -352,6 +410,14 @@ func (d *Dead) reset() {
 	d.table.SetCursor(0)
 }
 
+func (d *Dead) selectedEntry() (*sidekiq.SortedEntry, bool) {
+	idx := d.table.Cursor()
+	if idx < 0 || idx >= len(d.jobs) {
+		return nil, false
+	}
+	return d.jobs[idx], true
+}
+
 // Table columns for dead job list.
 var deadJobColumns = []table.Column{
 	{Title: "Last Retry", Width: 12},
@@ -418,6 +484,44 @@ func (d *Dead) openFilterDialog() tea.Cmd {
 				filterdialog.WithQuery(d.filter),
 			),
 		}
+	}
+}
+
+func (d *Dead) openDeleteConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
+	jobName := entry.DisplayClass()
+	if jobName == "" {
+		jobName = "selected"
+	}
+	return func() tea.Msg {
+		return dialogs.OpenDialogMsg{
+			Model: confirmdialog.New(
+				confirmdialog.WithStyles(confirmdialog.Styles{
+					Title:           d.styles.Title,
+					Border:          d.styles.FocusBorder,
+					Text:            d.styles.Text,
+					Muted:           d.styles.Muted,
+					Button:          d.styles.Muted.Padding(0, 1),
+					ButtonYesActive: d.styles.DangerAction,
+					ButtonNoActive:  d.styles.NeutralAction,
+				}),
+				confirmdialog.WithTitle("Delete job"),
+				confirmdialog.WithMessage(fmt.Sprintf(
+					"Are you sure you want to delete the %s job?\n\nThis action is not recoverable.",
+					d.styles.Text.Bold(true).Render(jobName),
+				)),
+				confirmdialog.WithTarget(entry.JID()),
+			),
+		}
+	}
+}
+
+func (d *Dead) deleteJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+		if err := d.client.DeleteDeadJob(ctx, entry); err != nil {
+			return ConnectionErrorMsg{Err: err}
+		}
+		return RefreshMsg{}
 	}
 }
 
