@@ -382,16 +382,12 @@ func (m Model) View() string {
 
 // MoveUp moves the selection up by n rows.
 func (m *Model) MoveUp(n int) {
-	m.cursor = mathutil.Clamp(m.cursor-n, 0, len(m.rows)-1)
-	m.ensureSelectedVisible()
-	m.updateViewport()
+	m.moveCursor(-n)
 }
 
 // MoveDown moves the selection down by n rows.
 func (m *Model) MoveDown(n int) {
-	m.cursor = mathutil.Clamp(m.cursor+n, 0, len(m.rows)-1)
-	m.ensureSelectedVisible()
-	m.updateViewport()
+	m.moveCursor(n)
 }
 
 // GotoTop moves the selection to the first row.
@@ -413,21 +409,12 @@ func (m *Model) GotoBottom() {
 
 // ScrollLeft scrolls content left.
 func (m *Model) ScrollLeft() {
-	m.xOffset -= 4
-	if m.xOffset < 0 {
-		m.xOffset = 0
-	}
-	m.updateViewport()
+	m.scrollX(-4)
 }
 
 // ScrollRight scrolls content right.
 func (m *Model) ScrollRight() {
-	maxScroll := m.maxScrollOffset()
-	m.xOffset += 4
-	if m.xOffset > maxScroll {
-		m.xOffset = maxScroll
-	}
-	m.updateViewport()
+	m.scrollX(4)
 }
 
 // ScrollToStart scrolls to the beginning horizontally.
@@ -454,20 +441,10 @@ func (m *Model) maxScrollOffset() int {
 // clampScroll ensures scroll offsets are within valid bounds.
 func (m *Model) clampScroll() {
 	maxX := m.maxScrollOffset()
-	if m.xOffset > maxX {
-		m.xOffset = maxX
-	}
-	if m.xOffset < 0 {
-		m.xOffset = 0
-	}
+	m.xOffset = mathutil.Clamp(m.xOffset, 0, maxX)
 
 	maxY := max(len(m.rows)-m.viewportHeight, 0)
-	if m.yOffset > maxY {
-		m.yOffset = maxY
-	}
-	if m.yOffset < 0 {
-		m.yOffset = 0
-	}
+	m.yOffset = mathutil.Clamp(m.yOffset, 0, maxY)
 }
 
 // ensureSelectedVisible scrolls to keep selected row visible.
@@ -483,6 +460,17 @@ func (m *Model) ensureSelectedVisible() {
 func (m *Model) gotoBottomOffset() {
 	maxOffset := max(len(m.rows)-m.viewportHeight, 0)
 	m.yOffset = maxOffset
+}
+
+func (m *Model) moveCursor(delta int) {
+	m.cursor = mathutil.Clamp(m.cursor+delta, 0, len(m.rows)-1)
+	m.ensureSelectedVisible()
+	m.updateViewport()
+}
+
+func (m *Model) scrollX(delta int) {
+	m.xOffset = mathutil.Clamp(m.xOffset+delta, 0, m.maxScrollOffset())
+	m.updateViewport()
 }
 
 // updateViewport rebuilds the pre-rendered body content.

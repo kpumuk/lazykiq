@@ -1,6 +1,7 @@
 package table
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -8,6 +9,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/ansi/parser"
+	"github.com/charmbracelet/x/exp/golden"
 )
 
 func blankStyles() Styles {
@@ -597,7 +599,10 @@ func TestSetColumns_ClampsHorizontalScroll(t *testing.T) {
 	}
 }
 
-func TestView_BasicSnapshot(t *testing.T) {
+// Golden File Tests - These catch visual regressions (misalignment, spacing, etc.)
+// Run with GOLDEN_UPDATE=1 to regenerate golden files after intentional changes.
+
+func TestGoldenBasic(t *testing.T) {
 	table := New(
 		WithColumns([]Column{
 			{Title: "A", Width: 3},
@@ -612,21 +617,11 @@ func TestView_BasicSnapshot(t *testing.T) {
 		WithHeight(4),
 	)
 
-	separator := strings.Repeat("\u2500", 10)
-	want := strings.Join([]string{
-		"A     B   ",
-		separator,
-		"one   two ",
-		"three four",
-	}, "\n")
-
-	got := table.View()
-	if got != want {
-		t.Fatalf("want %q, got %q", want, got)
-	}
+	output := ansi.Strip(table.View())
+	golden.RequireEqual(t, []byte(output))
 }
 
-func TestView_HorizontalScrollSnapshot(t *testing.T) {
+func TestGoldenHorizontalScroll(t *testing.T) {
 	table := New(
 		WithColumns([]Column{
 			{Title: "A", Width: 3},
@@ -643,21 +638,11 @@ func TestView_HorizontalScrollSnapshot(t *testing.T) {
 
 	table.ScrollRight()
 
-	separator := strings.Repeat("\u2500", 5)
-	want := strings.Join([]string{
-		"  B  ",
-		separator,
-		"  two",
-		"e fou",
-	}, "\n")
-
-	got := table.View()
-	if got != want {
-		t.Fatalf("want %q, got %q", want, got)
-	}
+	output := ansi.Strip(table.View())
+	golden.RequireEqual(t, []byte(output))
 }
 
-func TestView_VerticalScrollSnapshot(t *testing.T) {
+func TestGoldenVerticalScroll(t *testing.T) {
 	table := New(
 		WithColumns([]Column{
 			{Title: "A", Width: 3},
@@ -675,21 +660,11 @@ func TestView_VerticalScrollSnapshot(t *testing.T) {
 
 	table.MoveDown(2)
 
-	separator := strings.Repeat("\u2500", 10)
-	want := strings.Join([]string{
-		"A     B   ",
-		separator,
-		"three four",
-		"five  six ",
-	}, "\n")
-
-	got := table.View()
-	if got != want {
-		t.Fatalf("want %q, got %q", want, got)
-	}
+	output := ansi.Strip(table.View())
+	golden.RequireEqual(t, []byte(output))
 }
 
-func TestView_LastColumnVariableWidthSnapshot(t *testing.T) {
+func TestGoldenLastColumnVariableWidth(t *testing.T) {
 	table := New(
 		WithColumns([]Column{
 			{Title: "A", Width: 3},
@@ -703,20 +678,11 @@ func TestView_LastColumnVariableWidthSnapshot(t *testing.T) {
 		WithHeight(3),
 	)
 
-	separator := strings.Repeat("\u2500", 20)
-	want := strings.Join([]string{
-		"A   B               ",
-		separator,
-		"one this-is-long    ",
-	}, "\n")
-
-	got := table.View()
-	if got != want {
-		t.Fatalf("want %q, got %q", want, got)
-	}
+	output := ansi.Strip(table.View())
+	golden.RequireEqual(t, []byte(output))
 }
 
-func TestView_SetSizeSnapshot(t *testing.T) {
+func TestGoldenSetSize(t *testing.T) {
 	table := New(
 		WithColumns([]Column{
 			{Title: "A", Width: 3},
@@ -733,21 +699,11 @@ func TestView_SetSizeSnapshot(t *testing.T) {
 
 	table.SetSize(6, 4)
 
-	separator := strings.Repeat("\u2500", 6)
-	want := strings.Join([]string{
-		"A     ",
-		separator,
-		"one   ",
-		"three ",
-	}, "\n")
-
-	got := table.View()
-	if got != want {
-		t.Fatalf("want %q, got %q", want, got)
-	}
+	output := ansi.Strip(table.View())
+	golden.RequireEqual(t, []byte(output))
 }
 
-func TestView_SetColumnsSnapshot(t *testing.T) {
+func TestGoldenSetColumns(t *testing.T) {
 	table := New(
 		WithColumns([]Column{{Title: "A", Width: 2}}),
 		WithRows([]Row{row("row-1", "x")}),
@@ -762,15 +718,53 @@ func TestView_SetColumnsSnapshot(t *testing.T) {
 	})
 	table.SetRows([]Row{row("row-1", "1", "Bob")})
 
-	separator := strings.Repeat("\u2500", 8)
-	want := strings.Join([]string{
-		"ID Name ",
-		separator,
-		"1  Bob  ",
-	}, "\n")
+	output := ansi.Strip(table.View())
+	golden.RequireEqual(t, []byte(output))
+}
 
-	got := table.View()
-	if got != want {
-		t.Fatalf("want %q, got %q", want, got)
+func TestGoldenWidths(t *testing.T) {
+	for _, width := range []int{6, 10, 20} {
+		t.Run(fmt.Sprintf("width %d", width), func(t *testing.T) {
+			table := New(
+				WithColumns([]Column{
+					{Title: "A", Width: 3},
+					{Title: "B", Width: 3},
+				}),
+				WithRows([]Row{
+					row("row-1", "one", "two"),
+					row("row-2", "three", "four"),
+				}),
+				WithStyles(blankStyles()),
+				WithWidth(width),
+				WithHeight(4),
+			)
+
+			output := ansi.Strip(table.View())
+			golden.RequireEqual(t, []byte(output))
+		})
+	}
+}
+
+func TestGoldenHeights(t *testing.T) {
+	for _, height := range []int{3, 4, 6} {
+		t.Run(fmt.Sprintf("height %d", height), func(t *testing.T) {
+			table := New(
+				WithColumns([]Column{
+					{Title: "A", Width: 3},
+					{Title: "B", Width: 3},
+				}),
+				WithRows([]Row{
+					row("row-1", "one", "two"),
+					row("row-2", "three", "four"),
+					row("row-3", "five", "six"),
+				}),
+				WithStyles(blankStyles()),
+				WithWidth(10),
+				WithHeight(height),
+			)
+
+			output := ansi.Strip(table.View())
+			golden.RequireEqual(t, []byte(output))
+		})
 	}
 }
