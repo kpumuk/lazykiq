@@ -69,6 +69,24 @@ internal/
 - Views with transient state should implement `views.Disposable` for cleanup when popped
 - App keeps a view registry + stack; `viewOrder` drives navbar ordering and view hotkeys
 
+## Testing
+
+Use **hybrid approach**: property tests (behavior) + golden tests (visual regression).
+
+### Property Tests
+- Test behaviors using table-driven tests: `map[string]struct{ ... }`
+- Check: dimensions respected, content present, edge cases (zero dimensions, disabled items, truncation)
+- Use `strings.Contains()` for presence checks, avoid brittle position assertions
+
+### Golden Tests
+- Prefix with `TestGolden*` 
+- Capture exact visual output to catch misalignment/spacing changes
+- Strip ANSI before comparison: `output := ansi.Strip(m.View()); golden.RequireEqual(t, []byte(output))`
+- Update after intentional visual changes: `go test ./path -update`
+- Cover: empty state, single column, combined layout, different widths, real-world examples
+
+**Rule:** Property tests alone miss visual regressions (misalignment, spacing). Always add golden tests for UI components with layout requirements.
+
 ## Component Pattern (bubbles-style)
 
 Follow the charmbracelet/bubbles pattern for reusable components:

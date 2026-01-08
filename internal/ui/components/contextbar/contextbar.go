@@ -7,6 +7,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"charm.land/lipgloss/v2/table"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -32,9 +33,8 @@ type Hint struct {
 }
 
 type hintItem struct {
-	displayKey string
-	keyWidth   int
-	desc       string
+	key  string
+	desc string
 }
 
 // KeyValueItem renders a label/value pair.
@@ -195,64 +195,89 @@ func (m Model) View() string {
 		return strings.TrimRight(strings.Repeat(barStyle.Render("")+"\n", m.height), "\n")
 	}
 
+	layout := m.calculateLayout(innerWidth)
+	return m.renderLines(layout, innerWidth, barStyle)
+}
+
+type layoutResult struct {
+	leftLines  []string
+	rightLines []string
+	leftWidth  int
+	rightWidth int
+	gap        int
+}
+
+func (m Model) calculateLayout(innerWidth int) layoutResult {
 	labelWidth := maxLabelWidth(m.items)
-	leftLines, maxLeftWidth := m.buildItemLines(innerWidth, labelWidth)
-	leftWidth := min(maxLeftWidth, innerWidth)
-	if leftWidth > 0 {
-		leftWidth = min(leftWidth, max(innerWidth-2, 0))
-	}
+	leftLinesNatural := m.buildItemLines(innerWidth, labelWidth)
+	leftWidthNatural := maxLineWidth(leftLinesNatural)
 
-	availableForRight := max(innerWidth-leftWidth-2, 0)
-	rightLines := m.buildHintLines(availableForRight)
-	maxRightWidth := 0
-	for _, line := range rightLines {
-		maxRightWidth = max(maxRightWidth, ansi.StringWidth(line))
-	}
-	rightWidth := min(maxRightWidth, availableForRight)
-	if maxRightWidth > availableForRight {
-		rightLines = m.buildHintLines(availableForRight)
-		maxRightWidth = 0
-		for _, line := range rightLines {
-			maxRightWidth = max(maxRightWidth, ansi.StringWidth(line))
+	rightLines := m.buildHintLines(innerWidth)
+	rightWidthNatural := maxLineWidth(rightLines)
+
+	minGap := max(m.gap, 1)
+	totalNatural := leftWidthNatural + rightWidthNatural
+
+	switch {
+	case totalNatural+1 <= innerWidth:
+		// Both fit: calculate gap (at least 1, maximize if possible)
+		gap := innerWidth - totalNatural
+		if gap < minGap && totalNatural+minGap <= innerWidth {
+			gap = minGap
 		}
-		rightWidth = min(maxRightWidth, availableForRight)
+		return layoutResult{leftLinesNatural, rightLines, leftWidthNatural, rightWidthNatural, gap}
+	case leftWidthNatural+1 < innerWidth:
+		// Truncate shortcuts, keep context full
+		rightWidth := innerWidth - leftWidthNatural - 1
+		if rightWidth > 0 {
+			rightLines = m.buildHintLines(rightWidth)
+			return layoutResult{leftLinesNatural, rightLines, leftWidthNatural, rightWidth, 1}
+		}
+		return layoutResult{leftLinesNatural, nil, leftWidthNatural, 0, 0}
+	default:
+		// Truncate context, no shortcuts
+		leftLines := m.buildItemLines(innerWidth, labelWidth)
+		return layoutResult{leftLines, nil, innerWidth, 0, 0}
 	}
+}
 
+func (m Model) renderLines(layout layoutResult, innerWidth int, barStyle lipgloss.Style) string {
 	lines := make([]string, 0, m.height)
 	for i := range m.height {
-		left := ""
-		if i < len(leftLines) {
-			left = leftLines[i]
-		}
-		right := ""
-		if i < len(rightLines) {
-			right = rightLines[i]
-		}
-
 		var line string
-		switch {
-		case leftWidth > 0 && rightWidth > 0:
-			left = padRight(left, leftWidth)
-			right = padLeft(right, rightWidth)
-			spaceWidth := max(innerWidth-leftWidth-rightWidth, 2)
-			line = left + strings.Repeat(" ", spaceWidth) + right
-		case leftWidth > 0:
-			line = padRight(left, leftWidth)
-		case rightWidth > 0:
-			line = padLeft(right, rightWidth)
-		default:
-			line = ""
+		if layout.rightWidth > 0 {
+			left := getLine(layout.leftLines, i)
+			right := strings.TrimLeft(getLine(layout.rightLines, i), " ")
+			line = padRight(left, layout.leftWidth) + strings.Repeat(" ", layout.gap) + right
+			if w := layout.leftWidth + layout.gap + ansi.StringWidth(right); w < innerWidth {
+				line = padRight(line, innerWidth)
+			}
+		} else if layout.leftWidth > 0 {
+			line = padRight(getLine(layout.leftLines, i), innerWidth)
 		}
-
 		lines = append(lines, barStyle.Render(line))
 	}
-
 	return strings.Join(lines, "\n")
 }
 
-func (m Model) buildItemLines(width int, labelWidth int) ([]string, int) {
+func getLine(lines []string, index int) string {
+	if index < len(lines) {
+		return lines[index]
+	}
+	return ""
+}
+
+func maxLineWidth(lines []string) int {
+	width := 0
+	for _, line := range lines {
+		width = max(width, ansi.StringWidth(line))
+	}
+	return width
+}
+
+func (m Model) buildItemLines(width, labelWidth int) []string {
 	if width <= 0 || len(m.items) == 0 {
-		return nil, 0
+		return nil
 	}
 
 	styles := m.styles
@@ -261,36 +286,24 @@ func (m Model) buildItemLines(width int, labelWidth int) ([]string, int) {
 	}
 
 	lines := make([]string, 0, min(len(m.items), m.height))
-	maxLineWidth := 0
 	for i := 0; i < len(m.items) && len(lines) < m.height; i++ {
-		line := m.items[i].Render(styles)
-		line = ansi.Truncate(line, width, "")
-		maxLineWidth = max(maxLineWidth, ansi.StringWidth(line))
-		lines = append(lines, line)
+		lines = append(lines, ansi.Truncate(m.items[i].Render(styles), width, ""))
 	}
-	return lines, maxLineWidth
+	return lines
 }
 
 func maxLabelWidth(items []Item) int {
 	labelWidth := 0
 	for _, item := range items {
-		label := ""
+		var label string
 		switch v := item.(type) {
 		case KeyValueItem:
-			label = v.Label
+			label = strings.TrimSpace(v.Label)
 		case *KeyValueItem:
-			label = v.Label
+			label = strings.TrimSpace(v.Label)
 		}
-		if label == "" {
-			continue
-		}
-		label = strings.TrimSpace(label)
-		if label == "" {
-			continue
-		}
-		w := ansi.StringWidth(label + ":")
-		if w > labelWidth {
-			labelWidth = w
+		if label != "" {
+			labelWidth = max(labelWidth, ansi.StringWidth(label+":"))
 		}
 	}
 	return labelWidth
@@ -300,123 +313,101 @@ func (m Model) buildHintLines(width int) []string {
 	if width <= 0 || len(m.hints) == 0 {
 		return nil
 	}
-	normalItems := make([]hintItem, 0, len(m.hints))
-	dangerItems := make([]hintItem, 0, len(m.hints))
+
+	normalItems, dangerItems := m.separateHints()
+	if len(normalItems)+len(dangerItems) == 0 {
+		return nil
+	}
+
+	tbl := table.New().
+		BorderTop(false).BorderBottom(false).BorderLeft(false).BorderRight(false).
+		BorderHeader(false).BorderColumn(false).BorderRow(false)
+
+	if len(normalItems) > 0 && len(dangerItems) > 0 {
+		m.buildTwoColumnTable(tbl, normalItems, dangerItems, max(len(normalItems), len(dangerItems)))
+	} else {
+		m.buildSingleColumnTable(tbl, normalItems, dangerItems)
+	}
+
+	lines := strings.Split(tbl.String(), "\n")
+	for i, line := range lines {
+		if ansi.StringWidth(line) > width {
+			lines[i] = ansi.Truncate(line, width, "")
+		}
+	}
+	return lines
+}
+
+func (m Model) separateHints() (normal, danger []hintItem) {
+	rows := max(m.height, 1)
 	for _, hint := range m.hints {
 		if !hint.Binding.Enabled() {
 			continue
 		}
 		help := hint.Binding.Help()
-		keyText := strings.TrimSpace(help.Key)
-		descText := strings.TrimSpace(help.Desc)
-		if keyText == "" {
-			continue
-		}
-		displayKey := keyText
-		item := hintItem{displayKey: displayKey, keyWidth: ansi.StringWidth(displayKey), desc: descText}
-		if hint.Kind == HintDanger {
-			dangerItems = append(dangerItems, item)
-		} else {
-			normalItems = append(normalItems, item)
-		}
-	}
-	if len(normalItems) == 0 && len(dangerItems) == 0 {
-		return nil
-	}
-
-	if len(dangerItems) == 0 {
-		lines, _ := m.buildHintColumn(normalItems, width, m.styles.Key, m.styles.Desc)
-		return lines
-	}
-	if len(normalItems) == 0 {
-		lines, _ := m.buildHintColumn(dangerItems, width, m.styles.DangerKey, m.styles.DangerDesc)
-		return lines
-	}
-
-	gap := max(m.gap, 1)
-	normalLines, normalWidth := m.buildHintColumn(normalItems, width, m.styles.Key, m.styles.Desc)
-	dangerLines, dangerWidth := m.buildHintColumn(dangerItems, width, m.styles.DangerKey, m.styles.DangerDesc)
-	if normalWidth+gap+dangerWidth > width {
-		normalWidth = min(normalWidth, max(width-gap, 0))
-		dangerWidth = min(dangerWidth, max(width-normalWidth-gap, 0))
-		normalLines, _ = m.buildHintColumn(normalItems, normalWidth, m.styles.Key, m.styles.Desc)
-		dangerLines, _ = m.buildHintColumn(dangerItems, dangerWidth, m.styles.DangerKey, m.styles.DangerDesc)
-	}
-
-	rows := max(m.height, 1)
-	rows = min(rows, max(len(normalLines), len(dangerLines)))
-	lines := make([]string, 0, rows)
-	maxLineWidth := 0
-	for i := range rows {
-		left := ""
-		right := ""
-		if i < len(normalLines) {
-			left = padRight(normalLines[i], normalWidth)
-		}
-		if i < len(dangerLines) {
-			right = padRight(dangerLines[i], dangerWidth)
-		}
-		line := strings.TrimRight(left, " ")
-		if line != "" {
-			line = padRight(line, normalWidth)
-		}
-		if right != "" {
-			if line != "" {
-				line += strings.Repeat(" ", gap) + right
-			} else {
-				line = right
+		if key := strings.TrimSpace(help.Key); key != "" {
+			item := hintItem{key: key, desc: strings.TrimSpace(help.Desc)}
+			if hint.Kind == HintDanger {
+				if len(danger) < rows {
+					danger = append(danger, item)
+				}
+			} else if len(normal) < rows {
+				normal = append(normal, item)
 			}
 		}
-		lines = append(lines, line)
-		maxLineWidth = max(maxLineWidth, ansi.StringWidth(line))
 	}
-	if maxLineWidth > width {
-		maxLineWidth = width
-	}
-	for i := range lines {
-		line := lines[i]
-		if ansi.StringWidth(line) > maxLineWidth {
-			line = ansi.Truncate(line, maxLineWidth, "")
-		}
-		lines[i] = padRight(line, maxLineWidth)
-	}
-	return lines
+	return
 }
 
-func (m Model) buildHintColumn(items []hintItem, width int, keyStyle, descStyle lipgloss.Style) ([]string, int) {
-	if width <= 0 || len(items) == 0 {
-		return nil, 0
-	}
-	maxKeyWidth := 0
-	for _, item := range items {
-		maxKeyWidth = max(maxKeyWidth, item.keyWidth)
-	}
+func (m Model) buildTwoColumnTable(tbl *table.Table, normalItems, dangerItems []hintItem, maxRows int) {
+	normalKeyWidth := maxWidth(normalItems, func(h hintItem) int { return ansi.StringWidth(h.key) })
+	dangerKeyWidth := maxWidth(dangerItems, func(h hintItem) int { return ansi.StringWidth(h.key) })
 
-	rows := max(m.height, 1)
-	rows = min(rows, len(items))
-	lines := make([]string, 0, rows)
-	maxLineWidth := 0
-	for i := range rows {
-		item := items[i]
-		keyCell := keyStyle.Render(item.displayKey) + strings.Repeat(" ", maxKeyWidth-item.keyWidth)
-		line := keyCell
-		if item.desc != "" {
-			line += " " + descStyle.Render(item.desc)
+	for i := range maxRows {
+		normalCell := m.formatCell(normalItems, i, normalKeyWidth, m.styles.Key, m.styles.Desc)
+		dangerCell := m.formatCell(dangerItems, i, dangerKeyWidth, m.styles.DangerKey, m.styles.DangerDesc)
+		tbl.Row(normalCell, dangerCell)
+	}
+	tbl.StyleFunc(func(_, col int) lipgloss.Style {
+		if col == 0 {
+			return lipgloss.NewStyle().PaddingRight(m.gap)
 		}
-		lines = append(lines, line)
-		maxLineWidth = max(maxLineWidth, ansi.StringWidth(line))
+		return lipgloss.NewStyle()
+	})
+}
+
+func (m Model) buildSingleColumnTable(tbl *table.Table, normalItems, dangerItems []hintItem) {
+	items, keyStyle, descStyle := normalItems, m.styles.Key, m.styles.Desc
+	if len(normalItems) == 0 {
+		items, keyStyle, descStyle = dangerItems, m.styles.DangerKey, m.styles.DangerDesc
 	}
-	if maxLineWidth > width {
-		maxLineWidth = width
+	keyWidth := maxWidth(items, func(h hintItem) int { return ansi.StringWidth(h.key) })
+	for _, item := range items {
+		tbl.Row(m.formatHintItem(item, keyWidth, keyStyle, descStyle))
 	}
-	for i := range lines {
-		line := lines[i]
-		if ansi.StringWidth(line) > maxLineWidth {
-			line = ansi.Truncate(line, maxLineWidth, "")
-		}
-		lines[i] = padRight(line, maxLineWidth)
+}
+
+func (m Model) formatCell(items []hintItem, index, keyWidth int, keyStyle, descStyle lipgloss.Style) string {
+	if index < len(items) {
+		return m.formatHintItem(items[index], keyWidth, keyStyle, descStyle)
 	}
-	return lines, maxLineWidth
+	return ""
+}
+
+func (m Model) formatHintItem(item hintItem, keyWidth int, keyStyle, descStyle lipgloss.Style) string {
+	key := keyStyle.Render(item.key)
+	if item.desc == "" {
+		return key
+	}
+	return key + strings.Repeat(" ", max(0, keyWidth-ansi.StringWidth(item.key))) + " " + descStyle.Render(item.desc)
+}
+
+func maxWidth[T any](items []T, widthFunc func(T) int) int {
+	width := 0
+	for _, item := range items {
+		width = max(width, widthFunc(item))
+	}
+	return width
 }
 
 func padRight(value string, width int) string {
@@ -424,19 +415,8 @@ func padRight(value string, width int) string {
 		return ""
 	}
 	truncated := ansi.Truncate(value, width, "")
-	if ansi.StringWidth(truncated) >= width {
-		return truncated
+	if w := ansi.StringWidth(truncated); w < width {
+		return truncated + strings.Repeat(" ", width-w)
 	}
-	return truncated + strings.Repeat(" ", width-ansi.StringWidth(truncated))
-}
-
-func padLeft(value string, width int) string {
-	if width <= 0 {
-		return ""
-	}
-	truncated := ansi.Truncate(value, width, "")
-	if ansi.StringWidth(truncated) >= width {
-		return truncated
-	}
-	return strings.Repeat(" ", width-ansi.StringWidth(truncated)) + truncated
+	return truncated
 }
