@@ -1,6 +1,7 @@
 package views
 
 import (
+	"context"
 	"slices"
 	"strings"
 
@@ -34,12 +35,10 @@ type JobMetrics struct {
 	periods []string
 	period  string
 
-	periodIdx  int
-	result     sidekiq.MetricsJobDetailResult
-	processed  *charts.ProcessedMetrics
-	focused    int
-	devTracker *devtools.Tracker
-	devKey     string
+	periodIdx int
+	result    sidekiq.MetricsJobDetailResult
+	processed *charts.ProcessedMetrics
+	focused   int
 }
 
 // NewJobMetrics creates a new job metrics view.
@@ -287,12 +286,6 @@ func (j *JobMetrics) SetStyles(styles Styles) View {
 	return j
 }
 
-// SetDevelopment configures development tracking.
-func (j *JobMetrics) SetDevelopment(tracker *devtools.Tracker, key string) {
-	j.devTracker = tracker
-	j.devKey = key
-}
-
 // SetJobMetrics sets the job name and period to display.
 func (j *JobMetrics) SetJobMetrics(jobName, period string) {
 	j.jobName = jobName
@@ -324,8 +317,7 @@ func (j *JobMetrics) fetchCmd() tea.Cmd {
 	client := j.client
 	periods := j.periods
 	return func() tea.Msg {
-		ctx, finish := devContext(j.devTracker, j.devKey, "job_metrics.fetchCmd")
-		defer finish()
+		ctx := devtools.WithTracker(context.Background(), "job_metrics.fetchCmd")
 		params, ok := sidekiq.MetricsPeriods[period]
 		if !ok {
 			params = sidekiq.MetricsPeriods[periods[0]]

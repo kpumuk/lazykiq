@@ -1,6 +1,7 @@
 package views
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -51,8 +52,6 @@ type QueueDetails struct {
 	selectedQueue    int
 	selectedQueueKey string // Queue name to select after loading
 	displayOrder     []int  // Maps ctrl+1-5 to queue indices
-	devTracker       *devtools.Tracker
-	devKey           string
 }
 
 // NewQueueDetails creates a new QueueDetails view.
@@ -260,12 +259,6 @@ func (q *QueueDetails) SetStyles(styles Styles) View {
 	return q
 }
 
-// SetDevelopment configures development tracking.
-func (q *QueueDetails) SetDevelopment(tracker *devtools.Tracker, key string) {
-	q.devTracker = tracker
-	q.devKey = key
-}
-
 // SetQueue allows setting the selected queue by name.
 func (q *QueueDetails) SetQueue(queueName string) {
 	q.selectedQueueKey = queueName
@@ -282,8 +275,7 @@ func (q *QueueDetails) SetQueue(queueName string) {
 // fetchDataCmd fetches queues data from Redis.
 func (q *QueueDetails) fetchDataCmd() tea.Cmd {
 	return func() tea.Msg {
-		ctx, finish := devContext(q.devTracker, q.devKey, "queue_details.fetchDataCmd")
-		defer finish()
+		ctx := devtools.WithTracker(context.Background(), "queue_details.fetchDataCmd")
 
 		queues, err := q.client.GetQueues(ctx)
 		if err != nil {

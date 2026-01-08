@@ -1,6 +1,7 @@
 package views
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -50,8 +51,6 @@ type Dead struct {
 	filterStyle             filterdialog.Styles
 	pendingJobEntry         *sidekiq.SortedEntry
 	pendingJobTarget        string
-	devTracker              *devtools.Tracker
-	devKey                  string
 }
 
 // NewDead creates a new Dead view.
@@ -336,17 +335,10 @@ func (d *Dead) SetStyles(styles Styles) View {
 	return d
 }
 
-// SetDevelopment configures development tracking.
-func (d *Dead) SetDevelopment(tracker *devtools.Tracker, key string) {
-	d.devTracker = tracker
-	d.devKey = key
-}
-
 // fetchDataCmd fetches dead jobs data from Redis.
 func (d *Dead) fetchDataCmd() tea.Cmd {
 	return func() tea.Msg {
-		ctx, finish := devContext(d.devTracker, d.devKey, "dead.fetchDataCmd")
-		defer finish()
+		ctx := devtools.WithTracker(context.Background(), "dead.fetchDataCmd")
 
 		if d.filter != "" {
 			jobs, err := d.client.ScanDeadJobs(ctx, d.filter)
@@ -532,7 +524,7 @@ func (d *Dead) openDeleteConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
 
 func (d *Dead) deleteJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
 	return func() tea.Msg {
-		ctx := devOriginContext(d.devTracker, "dead.deleteJobCmd")
+		ctx := devtools.WithTracker(context.Background(), "dead.deleteJobCmd")
 		if err := d.client.DeleteDeadJob(ctx, entry); err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}

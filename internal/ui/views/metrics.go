@@ -1,6 +1,7 @@
 package views
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -51,8 +52,6 @@ type Metrics struct {
 	frameStyles frame.Styles
 	filterStyle filterdialog.Styles
 	table       table.Model
-	devTracker  *devtools.Tracker
-	devKey      string
 }
 
 // NewMetrics creates a new Metrics view.
@@ -286,12 +285,6 @@ func (m *Metrics) SetStyles(styles Styles) View {
 	return m
 }
 
-// SetDevelopment configures development tracking.
-func (m *Metrics) SetDevelopment(tracker *devtools.Tracker, key string) {
-	m.devTracker = tracker
-	m.devKey = key
-}
-
 var metricsColumns = []table.Column{
 	{Title: "Job", Width: 36},
 	{Title: "Success", Width: 12, Align: table.AlignRight},
@@ -305,8 +298,7 @@ func (m *Metrics) fetchListCmd() tea.Cmd {
 	period := m.period
 	filter := m.filter
 	return func() tea.Msg {
-		ctx, finish := devContext(m.devTracker, m.devKey, "metrics.fetchListCmd")
-		defer finish()
+		ctx := devtools.WithTracker(context.Background(), "metrics.fetchListCmd")
 
 		// Update periods based on detected Sidekiq version
 		m.periods = m.client.MetricsPeriodOrder(ctx)

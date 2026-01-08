@@ -3,7 +3,6 @@ package ui
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"charm.land/bubbles/v2/key"
@@ -71,11 +70,7 @@ type App struct {
 	sidekiq                 sidekiq.API
 	connectionError         error
 	dangerousActionsEnabled bool
-	brand                   string
-	devMode                 bool
 	devTracker              *devtools.Tracker
-	devViewKeys             map[viewID]string
-	devViewLabels           map[viewID]string
 }
 
 // New creates a new App instance.
@@ -112,35 +107,6 @@ func New(client sidekiq.API, version string, dangerousActionsEnabled bool, devTr
 		viewJobDetail:     views.NewJobDetail(),
 		viewMetrics:       views.NewMetrics(client),
 		viewJobMetrics:    views.NewJobMetrics(client),
-	}
-
-	devViewKeys := map[viewID]string{
-		viewDashboard:     "dashboard",
-		viewBusy:          "busy",
-		viewQueueDetails:  "queue_details",
-		viewQueuesList:    "queues_list",
-		viewProcessesList: "processes",
-		viewRetries:       "retries",
-		viewScheduled:     "scheduled",
-		viewDead:          "dead",
-		viewErrorsSummary: "errors",
-		viewErrorsDetails: "errors_details",
-		viewMetrics:       "metrics",
-		viewJobMetrics:    "job_metrics",
-	}
-	devViewLabels := map[viewID]string{
-		viewDashboard:     "Dashboard",
-		viewBusy:          "Busy",
-		viewQueueDetails:  "Queues",
-		viewQueuesList:    "Queue list",
-		viewProcessesList: "Processes",
-		viewRetries:       "Retries",
-		viewScheduled:     "Scheduled",
-		viewDead:          "Dead",
-		viewErrorsSummary: "Errors",
-		viewErrorsDetails: "Error details",
-		viewMetrics:       "Metrics",
-		viewJobMetrics:    "Job metrics",
 	}
 
 	// Apply styles to views
@@ -187,16 +153,6 @@ func New(client sidekiq.API, version string, dangerousActionsEnabled bool, devTr
 	for _, view := range viewRegistry {
 		if toggle, ok := view.(views.DangerousActionsToggle); ok {
 			toggle.SetDangerousActionsEnabled(dangerousActionsEnabled)
-		}
-	}
-
-	if devTracker != nil {
-		for id, key := range devViewKeys {
-			if view, ok := viewRegistry[id]; ok {
-				if setter, ok := view.(views.DevelopmentSetter); ok {
-					setter.SetDevelopment(devTracker, key)
-				}
-			}
 		}
 	}
 
@@ -262,11 +218,7 @@ func New(client sidekiq.API, version string, dangerousActionsEnabled bool, devTr
 		styles:                  styles,
 		sidekiq:                 client,
 		dangerousActionsEnabled: dangerousActionsEnabled,
-		brand:                   brand,
-		devMode:                 devTracker != nil,
 		devTracker:              devTracker,
-		devViewKeys:             devViewKeys,
-		devViewLabels:           devViewLabels,
 	}
 }
 
@@ -385,7 +337,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, tea.Quit
 		case key.Matches(msg, a.keys.Help):
 			return a, a.toggleHelpDialog()
-		case a.devMode && key.Matches(msg, a.keys.DevTools):
+		case a.devTracker != nil && key.Matches(msg, a.keys.DevTools):
 			return a, a.toggleDevToolsDialog()
 
 		case key.Matches(msg, a.keys.View1):
@@ -478,7 +430,6 @@ func (a App) View() tea.View {
 	}
 	a.contextbar.SetItems(items)
 	a.contextbar.SetHints(a.contextHints())
-	a.navbar.SetBrand(a.brandLine())
 	base := lipgloss.JoinVertical(
 		lipgloss.Left,
 		a.metrics.View(),
@@ -632,33 +583,6 @@ func (a App) contextHints() []contextbar.Hint {
 	return result
 }
 
-func (a App) brandLine() string {
-	if a.brand == "" {
-		return ""
-	}
-	if !a.devMode || a.devTracker == nil {
-		return a.brand
-	}
-
-	activeID := a.activeViewID()
-	key := a.devViewKeys[activeID]
-	if key == "" {
-		return a.brand
-	}
-
-	sample, ok := a.devTracker.Sample(key)
-	if !ok {
-		return a.brand
-	}
-
-	callLabel := "calls"
-	if sample.Count == 1 {
-		callLabel = "call"
-	}
-
-	return fmt.Sprintf("%s | %d %s %s", a.brand, sample.Count, callLabel, devtools.FormatDuration(sample.Duration))
-}
-
 func (a App) globalHeaderHints() []key.Binding {
 	if len(a.viewStack) > 1 {
 		return []key.Binding{
@@ -695,7 +619,7 @@ func (a App) toggleHelpDialog() tea.Cmd {
 }
 
 func (a App) toggleDevToolsDialog() tea.Cmd {
-	if !a.devMode || a.devTracker == nil {
+	if a.devTracker == nil {
 		return nil
 	}
 	if a.dialogs.ActiveDialogID() == devtoolsdialog.DialogID {
@@ -781,7 +705,7 @@ func (a App) globalHelpBindings() []key.Binding {
 		a.keys.View7,
 		a.keys.View8,
 	}
-	if a.devMode {
+	if a.devTracker != nil {
 		bindings = append(bindings, a.keys.DevTools)
 	}
 	bindings = append(bindings, a.keys.Help, a.keys.Quit)
@@ -830,9 +754,6 @@ func filterMiniHelpBindings(bindings []key.Binding) []key.Binding {
 // fetchStatsCmd fetches Sidekiq stats and returns a metrics.UpdateMsg or connectionErrorMsg.
 func (a App) fetchStatsCmd() tea.Msg {
 	ctx := context.Background()
-	if a.devTracker != nil {
-		ctx = devtools.WithOrigin(ctx, "app.fetchStatsCmd")
-	}
 	stats, err := a.sidekiq.GetStats(ctx)
 	if err != nil {
 		// Return connection error message

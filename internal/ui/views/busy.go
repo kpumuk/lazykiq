@@ -1,6 +1,7 @@
 package views
 
 import (
+	"context"
 	"fmt"
 	"maps"
 	"slices"
@@ -41,8 +42,6 @@ type Busy struct {
 	treeMode        bool
 	filter          string
 	filterStyle     filterdialog.Styles
-	devTracker      *devtools.Tracker
-	devKey          string
 }
 
 const processGlyph = "⚙"
@@ -251,12 +250,6 @@ func (b *Busy) SetStyles(styles Styles) View {
 	return b
 }
 
-// SetDevelopment configures development tracking.
-func (b *Busy) SetDevelopment(tracker *devtools.Tracker, key string) {
-	b.devTracker = tracker
-	b.devKey = key
-}
-
 // SetProcessIdentity updates the selected process by identity.
 func (b *Busy) SetProcessIdentity(identity string) {
 	if identity == "" {
@@ -282,8 +275,7 @@ func (b *Busy) SetProcessIdentity(identity string) {
 // fetchDataCmd fetches busy data from Redis.
 func (b *Busy) fetchDataCmd() tea.Cmd {
 	return func() tea.Msg {
-		ctx, finish := devContext(b.devTracker, b.devKey, "busy.fetchDataCmd")
-		defer finish()
+		ctx := devtools.WithTracker(context.Background(), "busy.fetchDataCmd")
 		data, err := b.client.GetBusyData(ctx, b.filter)
 		if err != nil {
 			return ConnectionErrorMsg{Err: err}

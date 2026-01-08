@@ -1,6 +1,7 @@
 package views
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -50,8 +51,6 @@ type Scheduled struct {
 	filterStyle             filterdialog.Styles
 	pendingJobEntry         *sidekiq.SortedEntry
 	pendingJobTarget        string
-	devTracker              *devtools.Tracker
-	devKey                  string
 }
 
 // NewScheduled creates a new Scheduled view.
@@ -336,17 +335,10 @@ func (s *Scheduled) SetStyles(styles Styles) View {
 	return s
 }
 
-// SetDevelopment configures development tracking.
-func (s *Scheduled) SetDevelopment(tracker *devtools.Tracker, key string) {
-	s.devTracker = tracker
-	s.devKey = key
-}
-
 // fetchDataCmd fetches scheduled jobs data from Redis.
 func (s *Scheduled) fetchDataCmd() tea.Cmd {
 	return func() tea.Msg {
-		ctx, finish := devContext(s.devTracker, s.devKey, "scheduled.fetchDataCmd")
-		defer finish()
+		ctx := devtools.WithTracker(context.Background(), "scheduled.fetchDataCmd")
 
 		if s.filter != "" {
 			jobs, err := s.client.ScanScheduledJobs(ctx, s.filter)
@@ -520,7 +512,7 @@ func (s *Scheduled) openDeleteConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
 
 func (s *Scheduled) deleteJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
 	return func() tea.Msg {
-		ctx := devOriginContext(s.devTracker, "scheduled.deleteJobCmd")
+		ctx := devtools.WithTracker(context.Background(), "scheduled.deleteJobCmd")
 		if err := s.client.DeleteScheduledJob(ctx, entry); err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}
