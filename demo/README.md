@@ -22,7 +22,7 @@ Web UI: http://localhost:9292
 | WebhookDeliveryJob | default | 10% | 2 |
 | EmailDeliveryJob | mailers | 0% | 3 |
 | ReportGenerationJob | batch | 0% | 1 |
-| DataSyncJob | batch | 8% | 1 |
+| DataSyncJob (iterable) | batch | 8% | 1 |
 | AnalyticsJob | low | 0% | 1 |
 | CacheWarmupJob | low | 0% | 1 |
 | CleanupJob | low | 0% | 0 |
@@ -35,6 +35,11 @@ Web UI: http://localhost:9292
 - ActiveJob-wrapped jobs with GlobalID-serialized arguments
 - ActionMailer-wrapped jobs with arguments (including GlobalID)
 - Tagged jobs sharing the same 5 tags (intersection)
+- **DataSyncJob** uses `Sidekiq::IterableJob` to process entity IDs one at a time:
+  - Iterates over 1-10 entity IDs per job
+  - Random sleep duration per iteration (0.2-5s)
+  - 8% failure rate per iteration for realistic retry behavior
+  - Demonstrates job interruption and resumption on worker restart
 
 ## Files
 
