@@ -324,7 +324,7 @@ func (j *JobMetrics) fetchCmd() tea.Cmd {
 	client := j.client
 	periods := j.periods
 	return func() tea.Msg {
-		ctx, finish := devContext(j.devTracker, j.devKey)
+		ctx, finish := devContext(j.devTracker, j.devKey, "job_metrics.fetchCmd")
 		defer finish()
 		params, ok := sidekiq.MetricsPeriods[period]
 		if !ok {

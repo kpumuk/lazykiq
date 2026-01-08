@@ -74,8 +74,6 @@ type App struct {
 	brand                   string
 	devMode                 bool
 	devTracker              *devtools.Tracker
-	devToolsOpen            bool
-	devToolsPanel           *devtoolsdialog.Model
 	devViewKeys             map[viewID]string
 	devViewLabels           map[viewID]string
 }
@@ -143,23 +141,6 @@ func New(client sidekiq.API, version string, dangerousActionsEnabled bool, devTr
 		viewErrorsDetails: "Error details",
 		viewMetrics:       "Metrics",
 		viewJobMetrics:    "Job metrics",
-	}
-
-	var devToolsPanel *devtoolsdialog.Model
-	if devTracker != nil {
-		devToolsPanel = devtoolsdialog.New(
-			devtoolsdialog.WithStyles(devtoolsdialog.Styles{
-				Title:          styles.ViewTitle,
-				Border:         styles.FocusBorder,
-				Text:           styles.ViewText,
-				Muted:          styles.ViewMuted,
-				TableHeader:    styles.TableHeader,
-				TableSelected:  styles.TableSelected,
-				TableSeparator: styles.TableSeparator,
-			}),
-			devtoolsdialog.WithTitle("Dev Commands"),
-			devtoolsdialog.WithTracker(devTracker),
-		)
 	}
 
 	// Apply styles to views
@@ -284,7 +265,6 @@ func New(client sidekiq.API, version string, dangerousActionsEnabled bool, devTr
 		brand:                   brand,
 		devMode:                 devTracker != nil,
 		devTracker:              devTracker,
-		devToolsPanel:           devToolsPanel,
 		devViewKeys:             devViewKeys,
 		devViewLabels:           devViewLabels,
 	}
@@ -394,58 +374,6 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		activeID := a.activeViewID()
 
-		if a.devToolsOpen {
-			if key.Matches(msg, a.keys.Quit) {
-				return a, tea.Quit
-			}
-			if key.Matches(msg, a.keys.Help) {
-				cmd := a.toggleHelpDialog()
-				a.syncContextbar()
-				a.syncDevToolsPanel()
-				return a, cmd
-			}
-			if key.Matches(msg, a.keys.DevTools) || msg.String() == "esc" {
-				a.toggleDevToolsPanel()
-				a.syncContextbar()
-				a.syncDevToolsPanel()
-				return a, nil
-			}
-
-			switch {
-			case key.Matches(msg, a.keys.View1):
-				cmds = append(cmds, a.setActiveView(viewDashboard))
-			case key.Matches(msg, a.keys.View2):
-				cmds = append(cmds, a.setActiveView(viewBusy))
-			case key.Matches(msg, a.keys.View3):
-				cmds = append(cmds, a.setActiveView(viewQueueDetails))
-			case key.Matches(msg, a.keys.View4):
-				cmds = append(cmds, a.setActiveView(viewRetries))
-			case key.Matches(msg, a.keys.View5):
-				cmds = append(cmds, a.setActiveView(viewScheduled))
-			case key.Matches(msg, a.keys.View6):
-				cmds = append(cmds, a.setActiveView(viewDead))
-			case key.Matches(msg, a.keys.View7):
-				cmds = append(cmds, a.setActiveView(viewErrorsSummary))
-			case key.Matches(msg, a.keys.View8):
-				cmds = append(cmds, a.setActiveView(viewMetrics))
-			default:
-				if a.devToolsPanel != nil {
-					updated, cmd := a.devToolsPanel.Update(msg)
-					a.devToolsPanel = updated
-					a.syncContextbar()
-					a.syncDevToolsPanel()
-					return a, cmd
-				}
-				a.syncContextbar()
-				a.syncDevToolsPanel()
-				return a, nil
-			}
-
-			a.syncContextbar()
-			a.syncDevToolsPanel()
-			return a, tea.Batch(cmds...)
-		}
-
 		if msg.String() == "esc" && len(a.viewStack) > 1 {
 			a.popView()
 			return a, tea.Batch(cmds...)
@@ -458,8 +386,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, a.keys.Help):
 			return a, a.toggleHelpDialog()
 		case a.devMode && key.Matches(msg, a.keys.DevTools):
-			a.toggleDevToolsPanel()
-			return a, nil
+			return a, a.toggleDevToolsDialog()
 
 		case key.Matches(msg, a.keys.View1):
 			cmds = append(cmds, a.setActiveView(viewDashboard))
@@ -531,7 +458,6 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	a.syncContextbar()
-	a.syncDevToolsPanel()
 	return a, tea.Batch(cmds...)
 }
 
@@ -553,16 +479,14 @@ func (a App) View() tea.View {
 	a.contextbar.SetItems(items)
 	a.contextbar.SetHints(a.contextHints())
 	a.navbar.SetBrand(a.brandLine())
-	sections := []string{
+	base := lipgloss.JoinVertical(
+		lipgloss.Left,
 		a.metrics.View(),
 		a.contextbar.View(),
 		content,
-	}
-	if a.devToolsOpen && a.devToolsPanel != nil {
-		sections = append(sections, a.devToolsPanel.View())
-	}
-	sections = append(sections, a.stackbar.View(), a.navbar.View())
-	base := lipgloss.JoinVertical(lipgloss.Left, sections...)
+		a.stackbar.View(),
+		a.navbar.View(),
+	)
 
 	// If there's a connection error, overlay the error popup
 	if a.connectionError != nil || a.dialogs.HasDialogs() {
@@ -576,8 +500,7 @@ func (a App) View() tea.View {
 			if errorPanel != "" {
 				panelWidth := lipgloss.Width(errorPanel)
 				panelHeight := lipgloss.Height(errorPanel)
-				availableHeight := a.height - a.metrics.Height() - a.contextbar.Height() - a.stackbar.Height() - a.navbar.Height()
-				contentHeight := max(availableHeight-a.devToolsPanelHeight(availableHeight), 0)
+				contentHeight := a.height - a.metrics.Height() - a.contextbar.Height() - a.stackbar.Height() - a.navbar.Height()
 				panelX := max((a.width-panelWidth)/2, 0)
 				panelY := a.metrics.Height() + a.contextbar.Height() + max((contentHeight-panelHeight)/2, 0)
 				layers = append(layers, lipgloss.NewLayer(errorPanel).X(panelX).Y(panelY).Z(1))
@@ -619,47 +542,13 @@ func (a *App) syncContextbar() {
 	a.resizeViews()
 }
 
-func (a *App) syncDevToolsPanel() {
-	if !a.devToolsOpen || a.devToolsPanel == nil {
-		return
-	}
-	activeID := a.activeViewID()
-	key := a.devViewKeys[activeID]
-	label := a.devViewLabels[activeID]
-	if label == "" {
-		label = a.viewRegistry[activeID].Name()
-	}
-	a.devToolsPanel.SetKey(key)
-	a.devToolsPanel.SetMeta(label)
-}
-
 func (a *App) resizeViews() {
-	availableHeight := a.height - a.metrics.Height() - a.contextbar.Height() - a.stackbar.Height() - a.navbar.Height()
-	panelHeight := a.devToolsPanelHeight(availableHeight)
-	contentHeight := max(availableHeight-panelHeight, 0)
+	contentHeight := a.height - a.metrics.Height() - a.contextbar.Height() - a.stackbar.Height() - a.navbar.Height()
 	contentWidth := a.width
 	for id, view := range a.viewRegistry {
 		a.viewRegistry[id] = view.SetSize(contentWidth, contentHeight)
 	}
 	a.errorPopup.SetSize(contentWidth, contentHeight)
-	if a.devToolsOpen && a.devToolsPanel != nil && panelHeight > 0 {
-		a.devToolsPanel.SetSize(contentWidth, panelHeight)
-	}
-}
-
-func (a *App) devToolsPanelHeight(available int) int {
-	if !a.devToolsOpen || a.devToolsPanel == nil {
-		return 0
-	}
-	if available <= 0 {
-		return 0
-	}
-	desired := max(available/3, 10)
-	maxPanel := max(available-4, 0)
-	if maxPanel == 0 {
-		return 0
-	}
-	return min(desired, maxPanel)
 }
 
 func (a App) contextItems() []contextbar.Item {
@@ -805,13 +694,35 @@ func (a App) toggleHelpDialog() tea.Cmd {
 	}
 }
 
-func (a *App) toggleDevToolsPanel() {
-	if !a.devMode || a.devToolsPanel == nil {
-		return
+func (a App) toggleDevToolsDialog() tea.Cmd {
+	if !a.devMode || a.devTracker == nil {
+		return nil
 	}
-	a.devToolsOpen = !a.devToolsOpen
-	a.resizeViews()
-	a.syncDevToolsPanel()
+	if a.dialogs.ActiveDialogID() == devtoolsdialog.DialogID {
+		return func() tea.Msg { return dialogs.CloseDialogMsg{} }
+	}
+
+	return func() tea.Msg {
+		return dialogs.OpenDialogMsg{
+			Model: devtoolsdialog.New(
+				devtoolsdialog.WithStyles(devtoolsdialog.Styles{
+					Title:          a.styles.ViewTitle,
+					Border:         a.styles.FocusBorder,
+					Text:           a.styles.ViewText,
+					Muted:          a.styles.ViewMuted,
+					Prompt:         a.styles.MetricLabel,
+					Placeholder:    a.styles.ViewMuted,
+					Cursor:         a.styles.ViewText,
+					TableHeader:    a.styles.TableHeader,
+					TableSelected:  a.styles.TableSelected,
+					TableSeparator: a.styles.TableSeparator,
+				}),
+				devtoolsdialog.WithTitle("Dev Console"),
+				devtoolsdialog.WithTracker(a.devTracker),
+				devtoolsdialog.WithClient(a.sidekiq),
+			),
+		}
+	}
 }
 
 func (a App) helpSections(active views.View) []helpdialog.Section {
@@ -919,6 +830,9 @@ func filterMiniHelpBindings(bindings []key.Binding) []key.Binding {
 // fetchStatsCmd fetches Sidekiq stats and returns a metrics.UpdateMsg or connectionErrorMsg.
 func (a App) fetchStatsCmd() tea.Msg {
 	ctx := context.Background()
+	if a.devTracker != nil {
+		ctx = devtools.WithOrigin(ctx, "app.fetchStatsCmd")
+	}
 	stats, err := a.sidekiq.GetStats(ctx)
 	if err != nil {
 		// Return connection error message

@@ -86,6 +86,9 @@ type API interface {
 
 	// DeleteDeadJob removes a dead job from the dead set.
 	DeleteDeadJob(ctx context.Context, entry *SortedEntry) error
+
+	// Do executes a raw Redis command.
+	Do(ctx context.Context, args ...any) (any, error)
 }
 
 // Ensure Client implements API at compile time.

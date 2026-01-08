@@ -305,7 +305,7 @@ func (m *Metrics) fetchListCmd() tea.Cmd {
 	period := m.period
 	filter := m.filter
 	return func() tea.Msg {
-		ctx, finish := devContext(m.devTracker, m.devKey)
+		ctx, finish := devContext(m.devTracker, m.devKey, "metrics.fetchListCmd")
 		defer finish()
 
 		// Update periods based on detected Sidekiq version

@@ -71,8 +71,8 @@ func DefaultKeyMap() KeyMap {
 			key.WithHelp("?", "help"),
 		),
 		DevTools: key.NewBinding(
-			key.WithKeys("f12"),
-			key.WithHelp("f12", "dev tools"),
+			key.WithKeys("f12", "~"),
+			key.WithHelp("f12/~", "dev tools"),
 		),
 	}
 }

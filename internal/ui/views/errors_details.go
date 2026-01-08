@@ -348,7 +348,7 @@ func (e *ErrorsDetails) openFilterDialog() tea.Cmd {
 
 func (e *ErrorsDetails) fetchDataCmd() tea.Cmd {
 	return func() tea.Msg {
-		ctx, finish := devContext(e.devTracker, e.devKey)
+		ctx, finish := devContext(e.devTracker, e.devKey, "errors_details.fetchDataCmd")
 		defer finish()
 		deadJobs, retryJobs, err := fetchErrorJobs(ctx, e.client, e.filter)
 		if err != nil {

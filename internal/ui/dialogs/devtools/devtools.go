@@ -1,24 +1,37 @@
-// Package devtools provides a development diagnostics panel.
+// Package devtools provides a quake-style development console.
 package devtools
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strconv"
+	"strings"
+	"time"
 
+	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
 	"github.com/kpumuk/lazykiq/internal/devtools"
+	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
+	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 )
 
-// Styles holds the styles used by the dev tools panel.
+// DialogID identifies the dev tools dialog.
+const DialogID dialogs.DialogID = "devtools"
+
+// Styles holds the styles used by the dev tools console.
 type Styles struct {
 	Title          lipgloss.Style
 	Border         lipgloss.Style
 	Text           lipgloss.Style
 	Muted          lipgloss.Style
+	Prompt         lipgloss.Style
+	Placeholder    lipgloss.Style
+	Cursor         lipgloss.Style
 	TableHeader    lipgloss.Style
 	TableSelected  lipgloss.Style
 	TableSeparator lipgloss.Style
@@ -29,47 +42,65 @@ func DefaultStyles() Styles {
 	return Styles{}
 }
 
-var devtoolsColumns = []table.Column{
-	{Title: "#", Width: 4, Align: table.AlignRight},
+var logColumns = []table.Column{
+	{Title: "#", Width: 6, Align: table.AlignRight},
+	{Title: "Time", Width: 12},
+	{Title: "Origin", Width: 28},
 	{Title: "Type", Width: 10},
+	{Title: "Dur", Width: 8, Align: table.AlignRight},
 	{Title: "Command", Width: 0},
 }
 
-// Model defines state for the dev tools panel.
-type Model struct {
-	styles  Styles
-	title   string
-	meta    string
-	tracker *devtools.Tracker
-	key     string
-	width   int
-	height  int
-	padding int
-	table   table.Model
-	entries []devtools.Entry
+type commandResultMsg struct {
+	output string
+	err    error
 }
 
-// Option configures the dev tools panel.
+// Model defines state for the dev tools console.
+type Model struct {
+	styles       Styles
+	title        string
+	client       sidekiq.API
+	tracker      *devtools.Tracker
+	table        table.Model
+	input        textinput.Model
+	inputFocused bool
+	width        int
+	height       int
+	windowWidth  int
+	windowHeight int
+	row          int
+	col          int
+	padding      int
+	minHeight    int
+}
+
+// Option configures the dev tools console.
 type Option func(*Model)
 
-// New creates a new dev tools panel model.
+// New creates a new dev tools console model.
 func New(opts ...Option) *Model {
 	m := &Model{
-		styles:  DefaultStyles(),
-		title:   "Dev Commands",
-		padding: 1,
+		styles:    DefaultStyles(),
+		title:     "Dev Console",
+		padding:   1,
+		minHeight: 10,
 		table: table.New(
-			table.WithColumns(devtoolsColumns),
+			table.WithColumns(logColumns),
 			table.WithEmptyMessage("No commands recorded."),
 		),
+		input: textinput.New(),
 	}
+
+	m.input.Prompt = "redis> "
+	m.input.Placeholder = "enter redis command"
 
 	for _, opt := range opts {
 		opt(m)
 	}
 
 	m.applyStyles()
-	m.updateTableSize()
+	m.applySize()
 	return m
 }
 
@@ -78,14 +109,9 @@ func WithStyles(s Styles) Option {
 	return func(m *Model) { m.styles = s }
 }
 
-// WithTitle sets the panel title.
+// WithTitle sets the dialog title.
 func WithTitle(title string) Option {
 	return func(m *Model) { m.title = title }
-}
-
-// WithMeta sets the panel meta string.
-func WithMeta(meta string) Option {
-	return func(m *Model) { m.meta = meta }
 }
 
 // WithTracker sets the dev tracker used for live updates.
@@ -93,43 +119,57 @@ func WithTracker(tracker *devtools.Tracker) Option {
 	return func(m *Model) { m.tracker = tracker }
 }
 
-// WithKey sets the view key for live updates.
-func WithKey(key string) Option {
-	return func(m *Model) { m.key = key }
+// WithClient sets the Sidekiq client used to execute Redis commands.
+func WithClient(client sidekiq.API) Option {
+	return func(m *Model) { m.client = client }
 }
 
-// SetStyles sets the styles.
-func (m *Model) SetStyles(s Styles) {
-	m.styles = s
-	m.applyStyles()
+// Init focuses the input.
+func (m *Model) Init() tea.Cmd {
+	m.inputFocused = true
+	return m.input.Focus()
 }
 
-// SetSize sets the panel dimensions.
-func (m *Model) SetSize(width, height int) {
-	m.width = width
-	m.height = height
-	m.updateTableSize()
-}
-
-// SetMeta sets the panel meta string.
-func (m *Model) SetMeta(meta string) {
-	m.meta = meta
-}
-
-// SetTracker sets the tracker.
-func (m *Model) SetTracker(tracker *devtools.Tracker) {
-	m.tracker = tracker
-}
-
-// SetKey sets the tracker view key.
-func (m *Model) SetKey(key string) {
-	m.key = key
-}
-
-// Update handles input for the panel.
-func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
+// Update handles input and console lifecycle.
+func (m *Model) Update(msg tea.Msg) (dialogs.DialogModel, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.windowWidth = msg.Width
+		m.windowHeight = msg.Height
+		m.applySize()
+		return m, nil
+	case commandResultMsg:
+		m.appendResult(msg.output, msg.err)
+		return m, nil
 	case tea.KeyMsg:
+		switch msg.String() {
+		case "f12", "~", "esc":
+			return m, func() tea.Msg { return dialogs.CloseDialogMsg{} }
+		case "tab", "shift+tab":
+			return m, m.toggleFocus()
+		case "enter":
+			if m.inputFocused {
+				return m, m.executeInput()
+			}
+		case "ctrl+u":
+			if m.inputFocused {
+				m.input.SetValue("")
+				m.input.CursorEnd()
+				return m, nil
+			}
+		}
+
+		if m.inputFocused {
+			switch msg.String() {
+			case "up", "k", "down", "j", "pgup", "pgdown":
+				updated, cmd := m.table.Update(msg)
+				m.table = updated
+				return m, cmd
+			}
+			var cmd tea.Cmd
+			m.input, cmd = m.input.Update(msg)
+			return m, cmd
+		}
 		updated, cmd := m.table.Update(msg)
 		m.table = updated
 		return m, cmd
@@ -138,14 +178,39 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 	return m, nil
 }
 
-// View renders the panel.
+// View renders the console.
 func (m *Model) View() string {
 	if m.width <= 0 || m.height <= 0 {
 		return ""
 	}
 
 	m.syncEntries()
-	meta := m.renderMeta()
+
+	contentWidth := m.contentWidth()
+	contentHeight := m.contentHeight()
+	tableHeight := max(contentHeight-2, 1)
+	m.table.SetSize(contentWidth, tableHeight)
+	m.syncInputWidth(contentWidth)
+
+	divider := strings.Repeat("─", contentWidth)
+	if divider != "" {
+		divider = m.styles.Muted.Render(divider)
+	}
+
+	tableView := m.table.View()
+	if pad := tableHeight - lipgloss.Height(tableView); pad > 0 {
+		tableView += strings.Repeat("\n", pad)
+	}
+
+	inputView := m.input.View()
+	inputView = lipgloss.NewStyle().Width(contentWidth).MaxWidth(contentWidth).Render(inputView)
+
+	content := lipgloss.JoinVertical(
+		lipgloss.Left,
+		tableView,
+		divider,
+		inputView,
+	)
 
 	box := frame.New(
 		frame.WithStyles(frame.Styles{
@@ -164,14 +229,33 @@ func (m *Model) View() string {
 		}),
 		frame.WithTitle(m.title),
 		frame.WithTitlePadding(0),
-		frame.WithMeta(meta),
-		frame.WithContent(m.table.View()),
+		frame.WithContent(content),
 		frame.WithPadding(m.padding),
 		frame.WithSize(m.width, m.height),
 		frame.WithMinHeight(5),
 		frame.WithFocused(true),
 	)
 	return box.View()
+}
+
+// Position returns the dialog position.
+func (m *Model) Position() (int, int) {
+	return m.row, m.col
+}
+
+// ID returns the dialog ID.
+func (m *Model) ID() dialogs.DialogID {
+	return DialogID
+}
+
+func (m *Model) toggleFocus() tea.Cmd {
+	if m.inputFocused {
+		m.inputFocused = false
+		m.input.Blur()
+		return nil
+	}
+	m.inputFocused = true
+	return m.input.Focus()
 }
 
 func (m *Model) applyStyles() {
@@ -182,34 +266,70 @@ func (m *Model) applyStyles() {
 		Selected:  m.styles.TableSelected,
 		Separator: m.styles.TableSeparator,
 	})
+	inputStyles := m.input.Styles()
+	inputStyles.Focused.Text = m.styles.Text
+	inputStyles.Focused.Placeholder = m.styles.Placeholder
+	inputStyles.Focused.Prompt = m.styles.Prompt
+	inputStyles.Blurred.Text = m.styles.Text
+	inputStyles.Blurred.Placeholder = m.styles.Placeholder
+	inputStyles.Blurred.Prompt = m.styles.Prompt
+	m.input.SetStyles(inputStyles)
 }
 
-func (m *Model) updateTableSize() {
-	contentWidth := max(m.width-2-(m.padding*2), 0)
-	contentHeight := max(m.height-2-(m.padding*2), 0)
-	m.table.SetSize(contentWidth, contentHeight)
+func (m *Model) applySize() {
+	if m.windowWidth == 0 || m.windowHeight == 0 {
+		return
+	}
+	m.width = m.windowWidth
+	height := m.windowHeight / 2
+	height = max(height, m.minHeight)
+	height = min(height, m.windowHeight-1)
+	m.height = max(height, 1)
+	m.row = 0
+	m.col = 0
+}
+
+func (m *Model) contentWidth() int {
+	return max(m.width-2-(m.padding*2), 0)
+}
+
+func (m *Model) contentHeight() int {
+	return max(m.height-2, 0)
+}
+
+func (m *Model) syncInputWidth(contentWidth int) {
+	promptWidth := lipgloss.Width(m.input.Prompt)
+	width := max(contentWidth-promptWidth, 1)
+	m.input.SetWidth(width)
 }
 
 func (m *Model) syncEntries() {
-	if m.tracker == nil || m.key == "" {
-		m.entries = nil
+	if m.tracker == nil {
 		m.table.SetRows(nil)
 		return
 	}
-	m.entries = m.tracker.Entries(m.key)
-	rows := make([]table.Row, 0, len(m.entries))
-	for i, entry := range m.entries {
+	prevRows := m.table.Rows()
+	wasAtEnd := len(prevRows) == 0 || m.table.Cursor() >= len(prevRows)-1
+	entries := m.tracker.LogEntries()
+	rows := make([]table.Row, 0, len(entries))
+	for _, entry := range entries {
 		row := table.Row{
-			ID: strconv.Itoa(i),
+			ID: strconv.FormatUint(entry.Seq, 10),
 			Cells: []string{
-				strconv.Itoa(i + 1),
-				entryTypeLabel(entry.Kind),
-				entryCommandLabel(entry),
+				strconv.FormatUint(entry.Seq, 10),
+				entry.Time.Format("15:04:05.000"),
+				entry.Origin,
+				entryTypeLabel(entry.Entry.Kind),
+				formatDuration(entry.Entry.Duration),
+				entryCommandLabel(entry.Entry),
 			},
 		}
 		rows = append(rows, row)
 	}
 	m.table.SetRows(rows)
+	if wasAtEnd && len(rows) > 0 {
+		m.table.MoveDown(len(rows))
+	}
 }
 
 func entryTypeLabel(kind devtools.EntryKind) string {
@@ -218,6 +338,8 @@ func entryTypeLabel(kind devtools.EntryKind) string {
 		return "command"
 	case devtools.EntryPipelineBegin, devtools.EntryPipelineExec:
 		return "pipeline"
+	case devtools.EntryResult:
+		return "result"
 	}
 	return "command"
 }
@@ -230,38 +352,157 @@ func entryCommandLabel(entry devtools.Entry) string {
 		return "pipeline begin"
 	case devtools.EntryPipelineExec:
 		return "pipeline execute"
+	case devtools.EntryResult:
+		return entry.Command
 	}
 	return entry.Command
 }
 
-func (m *Model) renderMeta() string {
-	meta := m.meta
-	if m.tracker == nil || m.key == "" {
-		return m.styleMeta(meta)
+func (m *Model) executeInput() tea.Cmd {
+	if m.client == nil {
+		m.input.SetValue("")
+		return func() tea.Msg {
+			return commandResultMsg{err: errors.New("redis client not available")}
+		}
 	}
 
-	sample, ok := m.tracker.Sample(m.key)
-	if !ok {
-		return m.styleMeta(meta)
+	raw := strings.TrimSpace(m.input.Value())
+	m.input.SetValue("")
+	m.input.CursorEnd()
+
+	if raw == "" {
+		return nil
 	}
 
-	callLabel := "calls"
-	if sample.Count == 1 {
-		callLabel = "call"
+	return func() tea.Msg {
+		args, err := parseRedisArgs(raw)
+		if err != nil {
+			return commandResultMsg{err: err}
+		}
+		ctx := devtools.WithOrigin(context.Background(), "console")
+		result, err := m.client.Do(ctx, toAnyArgs(args)...)
+		return commandResultMsg{output: formatRedisResult(result), err: err}
 	}
-
-	if meta == "" {
-		meta = fmt.Sprintf("%d %s | %s", sample.Count, callLabel, devtools.FormatDuration(sample.Duration))
-	} else {
-		meta = fmt.Sprintf("%s | %d %s | %s", meta, sample.Count, callLabel, devtools.FormatDuration(sample.Duration))
-	}
-
-	return m.styleMeta(meta)
 }
 
-func (m *Model) styleMeta(meta string) string {
-	if meta == "" {
+func (m *Model) appendResult(output string, err error) {
+	if m.tracker == nil {
+		return
+	}
+	if err != nil {
+		output = "error: " + err.Error()
+	}
+	output = normalizeOneLine(output)
+	m.tracker.AppendLog(devtools.LogEntry{
+		Time:   time.Now(),
+		Origin: "console",
+		Entry: devtools.Entry{
+			Kind:     devtools.EntryResult,
+			Command:  output,
+			Duration: 0,
+		},
+	})
+}
+
+func parseRedisArgs(input string) ([]string, error) {
+	var args []string
+	var buf strings.Builder
+	var quote rune
+	escaped := false
+
+	flush := func() {
+		if buf.Len() == 0 {
+			return
+		}
+		args = append(args, buf.String())
+		buf.Reset()
+	}
+
+	for _, r := range input {
+		if escaped {
+			buf.WriteRune(r)
+			escaped = false
+			continue
+		}
+
+		if r == '\\' {
+			escaped = true
+			continue
+		}
+
+		if quote != 0 {
+			if r == quote {
+				quote = 0
+				continue
+			}
+			buf.WriteRune(r)
+			continue
+		}
+
+		switch r {
+		case '"', '\'':
+			quote = r
+		case ' ', '\t', '\n':
+			flush()
+		default:
+			buf.WriteRune(r)
+		}
+	}
+
+	if escaped || quote != 0 {
+		return nil, errors.New("unterminated quoted string")
+	}
+
+	flush()
+	if len(args) == 0 {
+		return nil, errors.New("empty command")
+	}
+	return args, nil
+}
+
+func toAnyArgs(args []string) []any {
+	result := make([]any, len(args))
+	for i, arg := range args {
+		result[i] = arg
+	}
+	return result
+}
+
+func formatRedisResult(result any) string {
+	if result == nil {
+		return "(nil)"
+	}
+	switch value := result.(type) {
+	case string:
+		return normalizeOneLine(value)
+	case []byte:
+		return normalizeOneLine(string(value))
+	case []string:
+		return normalizeOneLine(strings.Join(value, " "))
+	case []any:
+		parts := make([]string, 0, len(value))
+		for _, item := range value {
+			parts = append(parts, fmt.Sprint(item))
+		}
+		return normalizeOneLine(strings.Join(parts, " "))
+	default:
+		return normalizeOneLine(fmt.Sprint(value))
+	}
+}
+
+func normalizeOneLine(value string) string {
+	replacer := strings.NewReplacer(
+		"\r\n", "\\n",
+		"\n", "\\n",
+		"\r", "\\n",
+		"\t", "\\t",
+	)
+	return replacer.Replace(value)
+}
+
+func formatDuration(d time.Duration) string {
+	if d <= 0 {
 		return ""
 	}
-	return m.styles.Muted.Render(meta)
+	return devtools.FormatDuration(d)
 }

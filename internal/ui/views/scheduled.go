@@ -1,7 +1,6 @@
 package views
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -346,7 +345,7 @@ func (s *Scheduled) SetDevelopment(tracker *devtools.Tracker, key string) {
 // fetchDataCmd fetches scheduled jobs data from Redis.
 func (s *Scheduled) fetchDataCmd() tea.Cmd {
 	return func() tea.Msg {
-		ctx, finish := devContext(s.devTracker, s.devKey)
+		ctx, finish := devContext(s.devTracker, s.devKey, "scheduled.fetchDataCmd")
 		defer finish()
 
 		if s.filter != "" {
@@ -521,7 +520,7 @@ func (s *Scheduled) openDeleteConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
 
 func (s *Scheduled) deleteJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
 	return func() tea.Msg {
-		ctx := context.Background()
+		ctx := devOriginContext(s.devTracker, "scheduled.deleteJobCmd")
 		if err := s.client.DeleteScheduledJob(ctx, entry); err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}

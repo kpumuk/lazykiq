@@ -1,7 +1,6 @@
 package views
 
 import (
-	"context"
 	"fmt"
 	"strconv"
 	"time"
@@ -377,7 +376,7 @@ func (r *Retries) SetDevelopment(tracker *devtools.Tracker, key string) {
 // fetchDataCmd fetches retry jobs data from Redis.
 func (r *Retries) fetchDataCmd() tea.Cmd {
 	return func() tea.Msg {
-		ctx, finish := devContext(r.devTracker, r.devKey)
+		ctx, finish := devContext(r.devTracker, r.devKey, "retries.fetchDataCmd")
 		defer finish()
 
 		if r.filter != "" {
@@ -597,7 +596,7 @@ func (r *Retries) openKillConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
 
 func (r *Retries) deleteJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
 	return func() tea.Msg {
-		ctx := context.Background()
+		ctx := devOriginContext(r.devTracker, "retries.deleteJobCmd")
 		if err := r.client.DeleteRetryJob(ctx, entry); err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}
@@ -607,7 +606,7 @@ func (r *Retries) deleteJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
 
 func (r *Retries) killJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
 	return func() tea.Msg {
-		ctx := context.Background()
+		ctx := devOriginContext(r.devTracker, "retries.killJobCmd")
 		if err := r.client.KillRetryJob(ctx, entry); err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}

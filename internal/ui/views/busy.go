@@ -282,7 +282,7 @@ func (b *Busy) SetProcessIdentity(identity string) {
 // fetchDataCmd fetches busy data from Redis.
 func (b *Busy) fetchDataCmd() tea.Cmd {
 	return func() tea.Msg {
-		ctx, finish := devContext(b.devTracker, b.devKey)
+		ctx, finish := devContext(b.devTracker, b.devKey, "busy.fetchDataCmd")
 		defer finish()
 		data, err := b.client.GetBusyData(ctx, b.filter)
 		if err != nil {

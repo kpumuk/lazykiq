@@ -1,7 +1,6 @@
 package views
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -346,7 +345,7 @@ func (d *Dead) SetDevelopment(tracker *devtools.Tracker, key string) {
 // fetchDataCmd fetches dead jobs data from Redis.
 func (d *Dead) fetchDataCmd() tea.Cmd {
 	return func() tea.Msg {
-		ctx, finish := devContext(d.devTracker, d.devKey)
+		ctx, finish := devContext(d.devTracker, d.devKey, "dead.fetchDataCmd")
 		defer finish()
 
 		if d.filter != "" {
@@ -533,7 +532,7 @@ func (d *Dead) openDeleteConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
 
 func (d *Dead) deleteJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
 	return func() tea.Msg {
-		ctx := context.Background()
+		ctx := devOriginContext(d.devTracker, "dead.deleteJobCmd")
 		if err := d.client.DeleteDeadJob(ctx, entry); err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}
