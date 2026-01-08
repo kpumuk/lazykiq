@@ -2,13 +2,11 @@ module github.com/kpumuk/lazykiq
 
 go 1.25.5
 
-replace github.com/NimbleMarkets/ntcharts/v2 v2.0.0 => github.com/kpumuk/ntcharts/v2 v2.0.0-alpha.3
-
 require (
 	charm.land/bubbles/v2 v2.0.0-rc.1
 	charm.land/bubbletea/v2 v2.0.0-rc.2
 	charm.land/lipgloss/v2 v2.0.0-beta.3.0.20251114164805-d267651963ad
-	github.com/NimbleMarkets/ntcharts/v2 v2.0.0
+	github.com/NimbleMarkets/ntcharts/v2 v2.0.0-beta.5
 	github.com/alecthomas/chroma/v2 v2.21.1
 	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/atotto/clipboard v0.1.4
@@ -48,7 +46,7 @@ require (
 	github.com/yuin/gopher-lua v1.1.1 // indirect
 	golang.org/x/mod v0.30.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
-	golang.org/x/sys v0.39.0 // indirect
+	golang.org/x/sys v0.40.0 // indirect
 	golang.org/x/telemetry v0.0.0-20251111182119-bc8e575c7b54 // indirect
 	golang.org/x/text v0.32.0 // indirect
 	golang.org/x/tools v0.39.0 // indirect
