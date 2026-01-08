@@ -115,7 +115,7 @@ var DefaultTheme = Theme{
 		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#E879F9"), ANSI256: lipgloss.Color("171"), ANSI: lipgloss.Color("13")},
 	},
 	DangerBg: compat.CompleteAdaptiveColor{
-		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#FFE3E3"), ANSI256: lipgloss.Color("224"), ANSI: lipgloss.Color("15")},
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#FFE3E3"), ANSI256: lipgloss.Color("224"), ANSI: lipgloss.Color("9")},
 		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#C92A2A"), ANSI256: lipgloss.Color("160"), ANSI: lipgloss.Color("1")},
 	},
 
