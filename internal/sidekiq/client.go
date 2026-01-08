@@ -96,6 +96,14 @@ func (c *Client) Redis() *redis.Client {
 	return c.redis
 }
 
+// AddHook attaches a Redis hook to the underlying client.
+func (c *Client) AddHook(h redis.Hook) {
+	if c == nil || c.redis == nil || h == nil {
+		return
+	}
+	c.redis.AddHook(h)
+}
+
 // DetectVersion detects which Sidekiq version is being used based on key format.
 // Uses SCAN to efficiently find any existing metrics key.
 // This should be called once at startup and the result is cached.

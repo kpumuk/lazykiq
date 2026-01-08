@@ -11,6 +11,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/kpumuk/lazykiq/internal/devtools"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
 	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
@@ -48,6 +49,8 @@ type QueuesList struct {
 	dangerousActionsEnabled bool
 	frameStyles             frame.Styles
 	filterStyle             filterdialog.Styles
+	devTracker              *devtools.Tracker
+	devKey                  string
 }
 
 // NewQueuesList creates a new QueuesList view.
@@ -313,10 +316,17 @@ func (q *QueuesList) SetStyles(styles Styles) View {
 	return q
 }
 
+// SetDevelopment configures development tracking.
+func (q *QueuesList) SetDevelopment(tracker *devtools.Tracker, key string) {
+	q.devTracker = tracker
+	q.devKey = key
+}
+
 // fetchDataCmd fetches queues data from Redis.
 func (q *QueuesList) fetchDataCmd() tea.Cmd {
 	return func() tea.Msg {
-		ctx := context.Background()
+		ctx, finish := devContext(q.devTracker, q.devKey)
+		defer finish()
 
 		queues, err := q.client.GetQueues(ctx)
 		if err != nil {

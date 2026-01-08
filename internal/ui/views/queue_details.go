@@ -1,7 +1,6 @@
 package views
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -11,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/kpumuk/lazykiq/internal/devtools"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
 	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
@@ -51,6 +51,8 @@ type QueueDetails struct {
 	selectedQueue    int
 	selectedQueueKey string // Queue name to select after loading
 	displayOrder     []int  // Maps ctrl+1-5 to queue indices
+	devTracker       *devtools.Tracker
+	devKey           string
 }
 
 // NewQueueDetails creates a new QueueDetails view.
@@ -258,6 +260,12 @@ func (q *QueueDetails) SetStyles(styles Styles) View {
 	return q
 }
 
+// SetDevelopment configures development tracking.
+func (q *QueueDetails) SetDevelopment(tracker *devtools.Tracker, key string) {
+	q.devTracker = tracker
+	q.devKey = key
+}
+
 // SetQueue allows setting the selected queue by name.
 func (q *QueueDetails) SetQueue(queueName string) {
 	q.selectedQueueKey = queueName
@@ -274,7 +282,8 @@ func (q *QueueDetails) SetQueue(queueName string) {
 // fetchDataCmd fetches queues data from Redis.
 func (q *QueueDetails) fetchDataCmd() tea.Cmd {
 	return func() tea.Msg {
-		ctx := context.Background()
+		ctx, finish := devContext(q.devTracker, q.devKey)
+		defer finish()
 
 		queues, err := q.client.GetQueues(ctx)
 		if err != nil {

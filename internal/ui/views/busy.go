@@ -1,7 +1,6 @@
 package views
 
 import (
-	"context"
 	"fmt"
 	"maps"
 	"slices"
@@ -12,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/kpumuk/lazykiq/internal/devtools"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
 	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
@@ -41,6 +41,8 @@ type Busy struct {
 	treeMode        bool
 	filter          string
 	filterStyle     filterdialog.Styles
+	devTracker      *devtools.Tracker
+	devKey          string
 }
 
 const processGlyph = "⚙"
@@ -249,6 +251,12 @@ func (b *Busy) SetStyles(styles Styles) View {
 	return b
 }
 
+// SetDevelopment configures development tracking.
+func (b *Busy) SetDevelopment(tracker *devtools.Tracker, key string) {
+	b.devTracker = tracker
+	b.devKey = key
+}
+
 // SetProcessIdentity updates the selected process by identity.
 func (b *Busy) SetProcessIdentity(identity string) {
 	if identity == "" {
@@ -274,7 +282,8 @@ func (b *Busy) SetProcessIdentity(identity string) {
 // fetchDataCmd fetches busy data from Redis.
 func (b *Busy) fetchDataCmd() tea.Cmd {
 	return func() tea.Msg {
-		ctx := context.Background()
+		ctx, finish := devContext(b.devTracker, b.devKey)
+		defer finish()
 		data, err := b.client.GetBusyData(ctx, b.filter)
 		if err != nil {
 			return ConnectionErrorMsg{Err: err}

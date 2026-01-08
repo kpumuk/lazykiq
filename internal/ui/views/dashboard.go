@@ -1,7 +1,6 @@
 package views
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -11,6 +10,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/kpumuk/lazykiq/internal/devtools"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
 	"github.com/kpumuk/lazykiq/internal/ui/components/metrics"
@@ -59,7 +59,9 @@ type Dashboard struct {
 	historyProcessed []int64
 	historyFailed    []int64
 
-	redisInfo sidekiq.RedisInfo
+	redisInfo  sidekiq.RedisInfo
+	devTracker *devtools.Tracker
+	devKey     string
 }
 
 // NewDashboard creates a new Dashboard view.
@@ -231,6 +233,12 @@ func (d *Dashboard) SetStyles(styles Styles) View {
 	return d
 }
 
+// SetDevelopment configures development tracking.
+func (d *Dashboard) SetDevelopment(tracker *devtools.Tracker, key string) {
+	d.devTracker = tracker
+	d.devKey = key
+}
+
 func (d *Dashboard) adjustHistoryRange(delta int) (View, tea.Cmd) {
 	next := max(d.historyRangeIdx+delta, 0)
 	if next >= len(d.historyRanges) {
@@ -245,7 +253,8 @@ func (d *Dashboard) adjustHistoryRange(delta int) (View, tea.Cmd) {
 
 func (d *Dashboard) fetchRedisInfoCmd() tea.Cmd {
 	return func() tea.Msg {
-		ctx := context.Background()
+		ctx, finish := devContext(d.devTracker, d.devKey)
+		defer finish()
 		redisInfo, err := d.client.GetRedisInfo(ctx)
 		if err != nil {
 			return ConnectionErrorMsg{Err: err}
@@ -256,7 +265,8 @@ func (d *Dashboard) fetchRedisInfoCmd() tea.Cmd {
 
 func (d *Dashboard) fetchHistoryCmd() tea.Cmd {
 	return func() tea.Msg {
-		ctx := context.Background()
+		ctx, finish := devContext(d.devTracker, d.devKey)
+		defer finish()
 		days := d.historyRanges[d.historyRangeIdx]
 		history, err := d.client.GetStatsHistory(ctx, days)
 		if err != nil {

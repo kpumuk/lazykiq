@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
+	"github.com/kpumuk/lazykiq/internal/devtools"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui"
 )
@@ -41,6 +42,7 @@ func buildVersion(version, commit, date, builtBy string) string {
 // Execute initializes and runs the lazykiq terminal application.
 func Execute(version, commit, date, builtBy string) error {
 	var enableDangerousActions bool
+	var development bool
 	rootCmd := &cobra.Command{
 		Use:   "lazykiq",
 		Short: "A terminal UI for Sidekiq.",
@@ -74,6 +76,12 @@ func Execute(version, commit, date, builtBy string) error {
 		"danger",
 		false,
 		"enable dangerous operations",
+	)
+	rootCmd.Flags().BoolVar(
+		&development,
+		"development",
+		false,
+		"enable development diagnostics",
 	)
 	rootCmd.Flags().SetNormalizeFunc(func(_ *pflag.FlagSet, name string) pflag.NormalizedName {
 		switch name {
@@ -119,7 +127,13 @@ func Execute(version, commit, date, builtBy string) error {
 			}()
 		}
 
-		app := ui.New(client, version, enableDangerousActions)
+		var tracker *devtools.Tracker
+		if development {
+			tracker = devtools.NewTracker()
+			client.AddHook(tracker.Hook())
+		}
+
+		app := ui.New(client, version, enableDangerousActions, tracker)
 		p := tea.NewProgram(app)
 		if _, err := p.Run(); err != nil {
 			return fmt.Errorf("run lazykiq: %w", err)

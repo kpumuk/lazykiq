@@ -1,11 +1,10 @@
 package views
 
 import (
-	"context"
-
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/kpumuk/lazykiq/internal/devtools"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
 	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
@@ -36,6 +35,8 @@ type ErrorsSummary struct {
 	filter      string
 	frameStyles frame.Styles
 	filterStyle filterdialog.Styles
+	devTracker  *devtools.Tracker
+	devKey      string
 }
 
 // NewErrorsSummary creates a new ErrorsSummary view.
@@ -226,10 +227,17 @@ func (e *ErrorsSummary) SetStyles(styles Styles) View {
 	return e
 }
 
+// SetDevelopment configures development tracking.
+func (e *ErrorsSummary) SetDevelopment(tracker *devtools.Tracker, key string) {
+	e.devTracker = tracker
+	e.devKey = key
+}
+
 // fetchDataCmd fetches dead and retry jobs and builds summary data.
 func (e *ErrorsSummary) fetchDataCmd() tea.Cmd {
 	return func() tea.Msg {
-		ctx := context.Background()
+		ctx, finish := devContext(e.devTracker, e.devKey)
+		defer finish()
 		deadJobs, retryJobs, err := fetchErrorJobs(ctx, e.client, e.filter)
 		if err != nil {
 			return ConnectionErrorMsg{Err: err}

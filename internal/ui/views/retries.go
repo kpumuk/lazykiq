@@ -9,6 +9,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/kpumuk/lazykiq/internal/devtools"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
 	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
@@ -60,6 +61,8 @@ type Retries struct {
 	pendingJobAction        retriesJobAction
 	pendingJobEntry         *sidekiq.SortedEntry
 	pendingJobTarget        string
+	devTracker              *devtools.Tracker
+	devKey                  string
 }
 
 // NewRetries creates a new Retries view.
@@ -365,10 +368,17 @@ func (r *Retries) SetStyles(styles Styles) View {
 	return r
 }
 
+// SetDevelopment configures development tracking.
+func (r *Retries) SetDevelopment(tracker *devtools.Tracker, key string) {
+	r.devTracker = tracker
+	r.devKey = key
+}
+
 // fetchDataCmd fetches retry jobs data from Redis.
 func (r *Retries) fetchDataCmd() tea.Cmd {
 	return func() tea.Msg {
-		ctx := context.Background()
+		ctx, finish := devContext(r.devTracker, r.devKey)
+		defer finish()
 
 		if r.filter != "" {
 			jobs, err := r.client.ScanRetryJobs(ctx, r.filter)

@@ -1,7 +1,6 @@
 package views
 
 import (
-	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -10,6 +9,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/kpumuk/lazykiq/internal/devtools"
 	"github.com/kpumuk/lazykiq/internal/mathutil"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
@@ -51,6 +51,8 @@ type Metrics struct {
 	frameStyles frame.Styles
 	filterStyle filterdialog.Styles
 	table       table.Model
+	devTracker  *devtools.Tracker
+	devKey      string
 }
 
 // NewMetrics creates a new Metrics view.
@@ -284,6 +286,12 @@ func (m *Metrics) SetStyles(styles Styles) View {
 	return m
 }
 
+// SetDevelopment configures development tracking.
+func (m *Metrics) SetDevelopment(tracker *devtools.Tracker, key string) {
+	m.devTracker = tracker
+	m.devKey = key
+}
+
 var metricsColumns = []table.Column{
 	{Title: "Job", Width: 36},
 	{Title: "Success", Width: 12, Align: table.AlignRight},
@@ -297,7 +305,8 @@ func (m *Metrics) fetchListCmd() tea.Cmd {
 	period := m.period
 	filter := m.filter
 	return func() tea.Msg {
-		ctx := context.Background()
+		ctx, finish := devContext(m.devTracker, m.devKey)
+		defer finish()
 
 		// Update periods based on detected Sidekiq version
 		m.periods = m.client.MetricsPeriodOrder(ctx)

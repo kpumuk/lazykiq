@@ -8,6 +8,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/kpumuk/lazykiq/internal/devtools"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
 	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
@@ -50,6 +51,8 @@ type Dead struct {
 	filterStyle             filterdialog.Styles
 	pendingJobEntry         *sidekiq.SortedEntry
 	pendingJobTarget        string
+	devTracker              *devtools.Tracker
+	devKey                  string
 }
 
 // NewDead creates a new Dead view.
@@ -334,10 +337,17 @@ func (d *Dead) SetStyles(styles Styles) View {
 	return d
 }
 
+// SetDevelopment configures development tracking.
+func (d *Dead) SetDevelopment(tracker *devtools.Tracker, key string) {
+	d.devTracker = tracker
+	d.devKey = key
+}
+
 // fetchDataCmd fetches dead jobs data from Redis.
 func (d *Dead) fetchDataCmd() tea.Cmd {
 	return func() tea.Msg {
-		ctx := context.Background()
+		ctx, finish := devContext(d.devTracker, d.devKey)
+		defer finish()
 
 		if d.filter != "" {
 			jobs, err := d.client.ScanDeadJobs(ctx, d.filter)
