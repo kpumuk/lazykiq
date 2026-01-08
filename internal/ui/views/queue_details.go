@@ -98,6 +98,13 @@ func (q *QueueDetails) Update(msg tea.Msg) (View, tea.Cmd) {
 			return q, func() tea.Msg {
 				return ShowQueuesListMsg{}
 			}
+		case "c":
+			if idx := q.table.Cursor(); idx >= 0 && idx < len(q.jobs) {
+				if q.jobs[idx] != nil {
+					return q, copyTextCmd(q.jobs[idx].JID())
+				}
+			}
+			return q, nil
 		case "ctrl+1", "ctrl+2", "ctrl+3", "ctrl+4", "ctrl+5":
 			displayIdx := int(msg.String()[5] - '1')
 			if displayIdx >= 0 && displayIdx < len(q.displayOrder) {
@@ -212,6 +219,7 @@ func (q *QueueDetails) HelpSections() []HelpSection {
 			helpBinding([]string{"ctrl+1"}, "ctrl+1-5", "select queue"),
 			helpBinding([]string{"["}, "[", "previous page"),
 			helpBinding([]string{"]"}, "]", "next page"),
+			helpBinding([]string{"c"}, "c", "copy jid"),
 			helpBinding([]string{"enter"}, "enter", "job detail"),
 		},
 	}}

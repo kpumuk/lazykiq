@@ -99,6 +99,14 @@ func (e *ErrorsDetails) Update(msg tea.Msg) (View, tea.Cmd) {
 				return e, e.fetchDataCmd()
 			}
 			return e, nil
+		case "c":
+			if idx := e.table.Cursor(); idx >= 0 && idx < len(e.groupJobs) {
+				job := e.groupJobs[idx]
+				if job.entry != nil {
+					return e, copyTextCmd(job.entry.JID())
+				}
+			}
+			return e, nil
 		}
 
 		switch msg.String() {
@@ -182,6 +190,7 @@ func (e *ErrorsDetails) HelpSections() []HelpSection {
 			Bindings: []key.Binding{
 				helpBinding([]string{"/"}, "/", "filter"),
 				helpBinding([]string{"ctrl+u"}, "ctrl+u", "clear filter"),
+				helpBinding([]string{"c"}, "c", "copy jid"),
 				helpBinding([]string{"enter"}, "enter", "job detail"),
 			},
 		},

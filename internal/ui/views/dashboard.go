@@ -9,6 +9,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
@@ -421,7 +422,7 @@ func (d *Dashboard) renderRealtimeLegend(width int) string {
 	failed := d.styles.MetricLabel.Render("Failed: ") + d.styles.MetricValue.Render(format.ShortNumber(d.lastDeltaF))
 	timestamp := d.styles.Muted.Render(d.lastPollAt.Format("15:04:05"))
 	line := processed + sep + failed + sep + timestamp
-	return lipgloss.NewStyle().MaxWidth(width).Render(line)
+	return ansi.Cut(line, 0, width)
 }
 
 func (d *Dashboard) renderHistoryLegend(width int) string {
@@ -430,7 +431,7 @@ func (d *Dashboard) renderHistoryLegend(width int) string {
 	failed := d.styles.MetricLabel.Render("Failed: ") + d.styles.MetricValue.Render(format.ShortNumber(sumSeries(d.historyFailed)))
 	rangeLabel := d.styles.Muted.Render(d.historyDateRangeLabel())
 	line := processed + sep + failed + sep + rangeLabel
-	return lipgloss.NewStyle().MaxWidth(width).Render(line)
+	return ansi.Cut(line, 0, width)
 }
 
 func (d *Dashboard) historyRangeLabel() string {

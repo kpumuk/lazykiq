@@ -11,6 +11,7 @@ require (
 	github.com/NimbleMarkets/ntcharts/v2 v2.0.0
 	github.com/alecthomas/chroma/v2 v2.21.1
 	github.com/alicebob/miniredis/v2 v2.35.0
+	github.com/atotto/clipboard v0.1.4
 	github.com/charmbracelet/fang v0.4.4
 	github.com/charmbracelet/x/ansi v0.11.3
 	github.com/redis/go-redis/v9 v9.17.2
@@ -18,7 +19,6 @@ require (
 )
 
 require (
-	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/charmbracelet/colorprofile v0.4.1 // indirect
 	github.com/charmbracelet/ultraviolet v0.0.0-20251217160852-6b0c0e26fad9 // indirect

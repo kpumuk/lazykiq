@@ -8,6 +8,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // ViewInfo holds information about a view for display in the navbar.
@@ -174,12 +175,12 @@ func (m Model) View() string {
 
 	leftWidth := lipgloss.Width(left)
 	if right == "" || leftWidth >= innerWidth-1 {
-		line := lipgloss.NewStyle().MaxWidth(innerWidth).Render(left)
+		line := ansi.Cut(left, 0, innerWidth)
 		return barStyle.Render(line)
 	}
 
 	spaceForRight := innerWidth - leftWidth - 1
-	right = lipgloss.NewStyle().MaxWidth(spaceForRight).Render(right)
+	right = ansi.Cut(right, 0, spaceForRight)
 	right = lipgloss.PlaceHorizontal(spaceForRight, lipgloss.Right, right)
 	line := left + " " + right
 	return barStyle.Render(line)

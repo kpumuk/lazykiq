@@ -89,6 +89,11 @@ func (p *ProcessesList) Update(msg tea.Msg) (View, tea.Cmd) {
 					),
 				}
 			}
+		case "c":
+			if identity, ok := p.selectedProcessIdentity(); ok {
+				return p, copyTextCmd(identity)
+			}
+			return p, nil
 		case "enter":
 			if idx := p.table.Cursor(); idx >= 0 && idx < len(p.processes) {
 				identity := p.processes[idx].Identity
@@ -212,6 +217,7 @@ func (p *ProcessesList) HelpSections() []HelpSection {
 		Title: "Process Actions",
 		Bindings: []key.Binding{
 			helpBinding([]string{"/"}, "/", "filter processes"),
+			helpBinding([]string{"c"}, "c", "copy identity"),
 			helpBinding([]string{"enter"}, "enter", "select process"),
 		},
 	}}

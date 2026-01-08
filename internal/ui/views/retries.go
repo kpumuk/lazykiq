@@ -149,6 +149,11 @@ func (r *Retries) Update(msg tea.Msg) (View, tea.Cmd) {
 				return r, r.fetchDataCmd()
 			}
 			return r, nil
+		case "c":
+			if entry, ok := r.selectedEntry(); ok {
+				return r, copyTextCmd(entry.JID())
+			}
+			return r, nil
 		}
 
 		switch msg.String() {
@@ -283,6 +288,7 @@ func (r *Retries) HelpSections() []HelpSection {
 				helpBinding([]string{"ctrl+u"}, "ctrl+u", "clear filter"),
 				helpBinding([]string{"["}, "[", "previous page"),
 				helpBinding([]string{"]"}, "]", "next page"),
+				helpBinding([]string{"c"}, "c", "copy jid"),
 				helpBinding([]string{"enter"}, "enter", "job detail"),
 			},
 		},

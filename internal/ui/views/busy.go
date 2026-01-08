@@ -119,6 +119,14 @@ func (b *Busy) Update(msg tea.Msg) (View, tea.Cmd) {
 				}
 			}
 			return b, nil
+		case "c":
+			if idx := b.table.Cursor(); idx >= 0 && idx < len(b.rowJobIndex) {
+				jobIdx := b.rowJobIndex[idx]
+				if jobIdx >= 0 && jobIdx < len(b.filteredJobs) {
+					return b, copyTextCmd(b.filteredJobs[jobIdx].JID())
+				}
+			}
+			return b, nil
 		case "t":
 			b.treeMode = !b.treeMode
 			b.updateTableRows()
@@ -193,6 +201,7 @@ func (b *Busy) HelpSections() []HelpSection {
 			helpBinding([]string{"ctrl+u"}, "ctrl+u", "clear filter"),
 			helpBinding([]string{"s"}, "s", "select process"),
 			helpBinding([]string{"t"}, "t", "toggle tree"),
+			helpBinding([]string{"c"}, "c", "copy jid"),
 			helpBinding([]string{"enter"}, "enter", "job detail"),
 			helpBinding([]string{"ctrl+1"}, "ctrl+1-9", "select process"),
 			helpBinding([]string{"ctrl+0"}, "ctrl+0", "all processes"),

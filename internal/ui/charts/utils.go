@@ -7,6 +7,8 @@ import (
 
 	"charm.land/lipgloss/v2"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/kpumuk/lazykiq/internal/ui/format"
 )
 
@@ -200,13 +202,12 @@ func RenderCentered(width, height int, value string) string {
 	contentHeight := len(contentLines)
 	startLine := max((height-contentHeight)/2, 0)
 
-	maxWidthStyle := lipgloss.NewStyle()
 	for i, contentLine := range contentLines {
 		lineIdx := startLine + i
 		if lineIdx >= height {
 			break
 		}
-		trimmed := maxWidthStyle.MaxWidth(width).Render(contentLine)
+		trimmed := ansi.Cut(contentLine, 0, width)
 		pad := max((width-lipgloss.Width(trimmed))/2, 0)
 		lines[lineIdx] = strings.Repeat(" ", pad) + trimmed
 	}

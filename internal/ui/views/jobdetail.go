@@ -1,6 +1,7 @@
 package views
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"strconv"
@@ -23,6 +24,7 @@ import (
 // KeyMap defines keybindings for the job detail view.
 type KeyMap struct {
 	SwitchPanel key.Binding
+	CopyJSON    key.Binding
 	LineUp      key.Binding
 	LineDown    key.Binding
 	ScrollLeft  key.Binding
@@ -39,6 +41,10 @@ func DefaultKeyMap() KeyMap {
 		SwitchPanel: key.NewBinding(
 			key.WithKeys("tab"),
 			key.WithHelp("tab", "switch panel"),
+		),
+		CopyJSON: key.NewBinding(
+			key.WithKeys("c"),
+			key.WithHelp("c", "copy json"),
 		),
 		LineUp: key.NewBinding(
 			key.WithKeys("up", "k"),
@@ -152,6 +158,9 @@ func (j *JobDetail) Update(msg tea.Msg) (View, tea.Cmd) {
 		switch {
 		case key.Matches(msg, j.KeyMap.SwitchPanel):
 			j.focusRight = !j.focusRight
+
+		case key.Matches(msg, j.KeyMap.CopyJSON):
+			return j, copyTextCmd(j.jobJSON())
 
 		case key.Matches(msg, j.KeyMap.LineUp):
 			if j.focusRight {
@@ -270,6 +279,7 @@ func (j *JobDetail) ContextItems() []ContextItem {
 func (j *JobDetail) HintBindings() []key.Binding {
 	return []key.Binding{
 		helpBinding([]string{"tab"}, "tab", "switch panel"),
+		helpBinding([]string{"c"}, "c", "copy json"),
 		helpBinding([]string{"j"}, "j/k", "scroll"),
 		helpBinding([]string{"h"}, "h/l", "scroll left/right"),
 	}
@@ -282,6 +292,7 @@ func (j *JobDetail) HelpSections() []HelpSection {
 			Title: "Job Detail",
 			Bindings: []key.Binding{
 				j.KeyMap.SwitchPanel,
+				j.KeyMap.CopyJSON,
 				j.KeyMap.LineUp,
 				j.KeyMap.LineDown,
 				j.KeyMap.ScrollLeft,
@@ -524,6 +535,17 @@ func (j *JobDetail) formatJSON() {
 		return
 	}
 	j.jsonView.SetValue(j.job.Item())
+}
+
+func (j *JobDetail) jobJSON() string {
+	if j.job == nil {
+		return ""
+	}
+	formatted, err := json.MarshalIndent(j.job.Item(), "", "  ")
+	if err != nil {
+		return j.job.Value()
+	}
+	return string(formatted)
 }
 
 // renderLeftPanel renders the properties panel.

@@ -130,6 +130,11 @@ func (s *Scheduled) Update(msg tea.Msg) (View, tea.Cmd) {
 				return s, s.fetchDataCmd()
 			}
 			return s, nil
+		case "c":
+			if entry, ok := s.selectedEntry(); ok {
+				return s, copyTextCmd(entry.JID())
+			}
+			return s, nil
 		}
 
 		switch msg.String() {
@@ -253,6 +258,7 @@ func (s *Scheduled) HelpSections() []HelpSection {
 				helpBinding([]string{"ctrl+u"}, "ctrl+u", "clear filter"),
 				helpBinding([]string{"["}, "[", "previous page"),
 				helpBinding([]string{"]"}, "]", "next page"),
+				helpBinding([]string{"c"}, "c", "copy jid"),
 				helpBinding([]string{"enter"}, "enter", "job detail"),
 			},
 		},
