@@ -8,6 +8,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/kpumuk/lazykiq/internal/devtools"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
 	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
@@ -50,6 +51,8 @@ type Scheduled struct {
 	filterStyle             filterdialog.Styles
 	pendingJobEntry         *sidekiq.SortedEntry
 	pendingJobTarget        string
+	devTracker              *devtools.Tracker
+	devKey                  string
 }
 
 // NewScheduled creates a new Scheduled view.
@@ -334,10 +337,17 @@ func (s *Scheduled) SetStyles(styles Styles) View {
 	return s
 }
 
+// SetDevelopment configures development tracking.
+func (s *Scheduled) SetDevelopment(tracker *devtools.Tracker, key string) {
+	s.devTracker = tracker
+	s.devKey = key
+}
+
 // fetchDataCmd fetches scheduled jobs data from Redis.
 func (s *Scheduled) fetchDataCmd() tea.Cmd {
 	return func() tea.Msg {
-		ctx := context.Background()
+		ctx, finish := devContext(s.devTracker, s.devKey)
+		defer finish()
 
 		if s.filter != "" {
 			jobs, err := s.client.ScanScheduledJobs(ctx, s.filter)

@@ -1,7 +1,6 @@
 package views
 
 import (
-	"context"
 	"slices"
 	"strings"
 
@@ -9,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/kpumuk/lazykiq/internal/devtools"
 	"github.com/kpumuk/lazykiq/internal/mathutil"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/charts"
@@ -34,10 +34,12 @@ type JobMetrics struct {
 	periods []string
 	period  string
 
-	periodIdx int
-	result    sidekiq.MetricsJobDetailResult
-	processed *charts.ProcessedMetrics
-	focused   int
+	periodIdx  int
+	result     sidekiq.MetricsJobDetailResult
+	processed  *charts.ProcessedMetrics
+	focused    int
+	devTracker *devtools.Tracker
+	devKey     string
 }
 
 // NewJobMetrics creates a new job metrics view.
@@ -285,6 +287,12 @@ func (j *JobMetrics) SetStyles(styles Styles) View {
 	return j
 }
 
+// SetDevelopment configures development tracking.
+func (j *JobMetrics) SetDevelopment(tracker *devtools.Tracker, key string) {
+	j.devTracker = tracker
+	j.devKey = key
+}
+
 // SetJobMetrics sets the job name and period to display.
 func (j *JobMetrics) SetJobMetrics(jobName, period string) {
 	j.jobName = jobName
@@ -316,7 +324,8 @@ func (j *JobMetrics) fetchCmd() tea.Cmd {
 	client := j.client
 	periods := j.periods
 	return func() tea.Msg {
-		ctx := context.Background()
+		ctx, finish := devContext(j.devTracker, j.devKey)
+		defer finish()
 		params, ok := sidekiq.MetricsPeriods[period]
 		if !ok {
 			params = sidekiq.MetricsPeriods[periods[0]]

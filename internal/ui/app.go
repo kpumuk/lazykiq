@@ -3,12 +3,14 @@ package ui
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/kpumuk/lazykiq/internal/devtools"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/contextbar"
 	"github.com/kpumuk/lazykiq/internal/ui/components/errorpopup"
@@ -16,6 +18,7 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/components/navbar"
 	"github.com/kpumuk/lazykiq/internal/ui/components/stackbar"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
+	devtoolsdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/devtools"
 	helpdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/help"
 	"github.com/kpumuk/lazykiq/internal/ui/theme"
 	"github.com/kpumuk/lazykiq/internal/ui/views"
@@ -68,12 +71,20 @@ type App struct {
 	sidekiq                 sidekiq.API
 	connectionError         error
 	dangerousActionsEnabled bool
+	brand                   string
+	devMode                 bool
+	devTracker              *devtools.Tracker
+	devToolsOpen            bool
+	devToolsPanel           *devtoolsdialog.Model
+	devViewKeys             map[viewID]string
+	devViewLabels           map[viewID]string
 }
 
 // New creates a new App instance.
-func New(client sidekiq.API, version string, dangerousActionsEnabled bool) App {
+func New(client sidekiq.API, version string, dangerousActionsEnabled bool, devTracker *devtools.Tracker) App {
 	styles := theme.NewStyles()
 	keys := DefaultKeyMap()
+	keys.DevTools.SetEnabled(devTracker != nil)
 	brand := "Lazykiq"
 	if version != "" {
 		brand = "Lazykiq v" + version
@@ -103,6 +114,52 @@ func New(client sidekiq.API, version string, dangerousActionsEnabled bool) App {
 		viewJobDetail:     views.NewJobDetail(),
 		viewMetrics:       views.NewMetrics(client),
 		viewJobMetrics:    views.NewJobMetrics(client),
+	}
+
+	devViewKeys := map[viewID]string{
+		viewDashboard:     "dashboard",
+		viewBusy:          "busy",
+		viewQueueDetails:  "queue_details",
+		viewQueuesList:    "queues_list",
+		viewProcessesList: "processes",
+		viewRetries:       "retries",
+		viewScheduled:     "scheduled",
+		viewDead:          "dead",
+		viewErrorsSummary: "errors",
+		viewErrorsDetails: "errors_details",
+		viewMetrics:       "metrics",
+		viewJobMetrics:    "job_metrics",
+	}
+	devViewLabels := map[viewID]string{
+		viewDashboard:     "Dashboard",
+		viewBusy:          "Busy",
+		viewQueueDetails:  "Queues",
+		viewQueuesList:    "Queue list",
+		viewProcessesList: "Processes",
+		viewRetries:       "Retries",
+		viewScheduled:     "Scheduled",
+		viewDead:          "Dead",
+		viewErrorsSummary: "Errors",
+		viewErrorsDetails: "Error details",
+		viewMetrics:       "Metrics",
+		viewJobMetrics:    "Job metrics",
+	}
+
+	var devToolsPanel *devtoolsdialog.Model
+	if devTracker != nil {
+		devToolsPanel = devtoolsdialog.New(
+			devtoolsdialog.WithStyles(devtoolsdialog.Styles{
+				Title:          styles.ViewTitle,
+				Border:         styles.FocusBorder,
+				Text:           styles.ViewText,
+				Muted:          styles.ViewMuted,
+				TableHeader:    styles.TableHeader,
+				TableSelected:  styles.TableSelected,
+				TableSeparator: styles.TableSeparator,
+			}),
+			devtoolsdialog.WithTitle("Dev Commands"),
+			devtoolsdialog.WithTracker(devTracker),
+		)
 	}
 
 	// Apply styles to views
@@ -149,6 +206,16 @@ func New(client sidekiq.API, version string, dangerousActionsEnabled bool) App {
 	for _, view := range viewRegistry {
 		if toggle, ok := view.(views.DangerousActionsToggle); ok {
 			toggle.SetDangerousActionsEnabled(dangerousActionsEnabled)
+		}
+	}
+
+	if devTracker != nil {
+		for id, key := range devViewKeys {
+			if view, ok := viewRegistry[id]; ok {
+				if setter, ok := view.(views.DevelopmentSetter); ok {
+					setter.SetDevelopment(devTracker, key)
+				}
+			}
 		}
 	}
 
@@ -214,6 +281,12 @@ func New(client sidekiq.API, version string, dangerousActionsEnabled bool) App {
 		styles:                  styles,
 		sidekiq:                 client,
 		dangerousActionsEnabled: dangerousActionsEnabled,
+		brand:                   brand,
+		devMode:                 devTracker != nil,
+		devTracker:              devTracker,
+		devToolsPanel:           devToolsPanel,
+		devViewKeys:             devViewKeys,
+		devViewLabels:           devViewLabels,
 	}
 }
 
@@ -321,6 +394,58 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		activeID := a.activeViewID()
 
+		if a.devToolsOpen {
+			if key.Matches(msg, a.keys.Quit) {
+				return a, tea.Quit
+			}
+			if key.Matches(msg, a.keys.Help) {
+				cmd := a.toggleHelpDialog()
+				a.syncContextbar()
+				a.syncDevToolsPanel()
+				return a, cmd
+			}
+			if key.Matches(msg, a.keys.DevTools) || msg.String() == "esc" {
+				a.toggleDevToolsPanel()
+				a.syncContextbar()
+				a.syncDevToolsPanel()
+				return a, nil
+			}
+
+			switch {
+			case key.Matches(msg, a.keys.View1):
+				cmds = append(cmds, a.setActiveView(viewDashboard))
+			case key.Matches(msg, a.keys.View2):
+				cmds = append(cmds, a.setActiveView(viewBusy))
+			case key.Matches(msg, a.keys.View3):
+				cmds = append(cmds, a.setActiveView(viewQueueDetails))
+			case key.Matches(msg, a.keys.View4):
+				cmds = append(cmds, a.setActiveView(viewRetries))
+			case key.Matches(msg, a.keys.View5):
+				cmds = append(cmds, a.setActiveView(viewScheduled))
+			case key.Matches(msg, a.keys.View6):
+				cmds = append(cmds, a.setActiveView(viewDead))
+			case key.Matches(msg, a.keys.View7):
+				cmds = append(cmds, a.setActiveView(viewErrorsSummary))
+			case key.Matches(msg, a.keys.View8):
+				cmds = append(cmds, a.setActiveView(viewMetrics))
+			default:
+				if a.devToolsPanel != nil {
+					updated, cmd := a.devToolsPanel.Update(msg)
+					a.devToolsPanel = updated
+					a.syncContextbar()
+					a.syncDevToolsPanel()
+					return a, cmd
+				}
+				a.syncContextbar()
+				a.syncDevToolsPanel()
+				return a, nil
+			}
+
+			a.syncContextbar()
+			a.syncDevToolsPanel()
+			return a, tea.Batch(cmds...)
+		}
+
 		if msg.String() == "esc" && len(a.viewStack) > 1 {
 			a.popView()
 			return a, tea.Batch(cmds...)
@@ -332,6 +457,9 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, tea.Quit
 		case key.Matches(msg, a.keys.Help):
 			return a, a.toggleHelpDialog()
+		case a.devMode && key.Matches(msg, a.keys.DevTools):
+			a.toggleDevToolsPanel()
+			return a, nil
 
 		case key.Matches(msg, a.keys.View1):
 			cmds = append(cmds, a.setActiveView(viewDashboard))
@@ -403,6 +531,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	a.syncContextbar()
+	a.syncDevToolsPanel()
 	return a, tea.Batch(cmds...)
 }
 
@@ -423,14 +552,17 @@ func (a App) View() tea.View {
 	}
 	a.contextbar.SetItems(items)
 	a.contextbar.SetHints(a.contextHints())
-	base := lipgloss.JoinVertical(
-		lipgloss.Left,
+	a.navbar.SetBrand(a.brandLine())
+	sections := []string{
 		a.metrics.View(),
 		a.contextbar.View(),
 		content,
-		a.stackbar.View(),
-		a.navbar.View(),
-	)
+	}
+	if a.devToolsOpen && a.devToolsPanel != nil {
+		sections = append(sections, a.devToolsPanel.View())
+	}
+	sections = append(sections, a.stackbar.View(), a.navbar.View())
+	base := lipgloss.JoinVertical(lipgloss.Left, sections...)
 
 	// If there's a connection error, overlay the error popup
 	if a.connectionError != nil || a.dialogs.HasDialogs() {
@@ -444,7 +576,8 @@ func (a App) View() tea.View {
 			if errorPanel != "" {
 				panelWidth := lipgloss.Width(errorPanel)
 				panelHeight := lipgloss.Height(errorPanel)
-				contentHeight := a.height - a.metrics.Height() - a.contextbar.Height() - a.stackbar.Height() - a.navbar.Height()
+				availableHeight := a.height - a.metrics.Height() - a.contextbar.Height() - a.stackbar.Height() - a.navbar.Height()
+				contentHeight := max(availableHeight-a.devToolsPanelHeight(availableHeight), 0)
 				panelX := max((a.width-panelWidth)/2, 0)
 				panelY := a.metrics.Height() + a.contextbar.Height() + max((contentHeight-panelHeight)/2, 0)
 				layers = append(layers, lipgloss.NewLayer(errorPanel).X(panelX).Y(panelY).Z(1))
@@ -486,13 +619,47 @@ func (a *App) syncContextbar() {
 	a.resizeViews()
 }
 
+func (a *App) syncDevToolsPanel() {
+	if !a.devToolsOpen || a.devToolsPanel == nil {
+		return
+	}
+	activeID := a.activeViewID()
+	key := a.devViewKeys[activeID]
+	label := a.devViewLabels[activeID]
+	if label == "" {
+		label = a.viewRegistry[activeID].Name()
+	}
+	a.devToolsPanel.SetKey(key)
+	a.devToolsPanel.SetMeta(label)
+}
+
 func (a *App) resizeViews() {
-	contentHeight := a.height - a.metrics.Height() - a.contextbar.Height() - a.stackbar.Height() - a.navbar.Height()
+	availableHeight := a.height - a.metrics.Height() - a.contextbar.Height() - a.stackbar.Height() - a.navbar.Height()
+	panelHeight := a.devToolsPanelHeight(availableHeight)
+	contentHeight := max(availableHeight-panelHeight, 0)
 	contentWidth := a.width
 	for id, view := range a.viewRegistry {
 		a.viewRegistry[id] = view.SetSize(contentWidth, contentHeight)
 	}
 	a.errorPopup.SetSize(contentWidth, contentHeight)
+	if a.devToolsOpen && a.devToolsPanel != nil && panelHeight > 0 {
+		a.devToolsPanel.SetSize(contentWidth, panelHeight)
+	}
+}
+
+func (a *App) devToolsPanelHeight(available int) int {
+	if !a.devToolsOpen || a.devToolsPanel == nil {
+		return 0
+	}
+	if available <= 0 {
+		return 0
+	}
+	desired := max(available/3, 10)
+	maxPanel := max(available-4, 0)
+	if maxPanel == 0 {
+		return 0
+	}
+	return min(desired, maxPanel)
 }
 
 func (a App) contextItems() []contextbar.Item {
@@ -576,6 +743,33 @@ func (a App) contextHints() []contextbar.Hint {
 	return result
 }
 
+func (a App) brandLine() string {
+	if a.brand == "" {
+		return ""
+	}
+	if !a.devMode || a.devTracker == nil {
+		return a.brand
+	}
+
+	activeID := a.activeViewID()
+	key := a.devViewKeys[activeID]
+	if key == "" {
+		return a.brand
+	}
+
+	sample, ok := a.devTracker.Sample(key)
+	if !ok {
+		return a.brand
+	}
+
+	callLabel := "calls"
+	if sample.Count == 1 {
+		callLabel = "call"
+	}
+
+	return fmt.Sprintf("%s | %d %s %s", a.brand, sample.Count, callLabel, devtools.FormatDuration(sample.Duration))
+}
+
 func (a App) globalHeaderHints() []key.Binding {
 	if len(a.viewStack) > 1 {
 		return []key.Binding{
@@ -609,6 +803,15 @@ func (a App) toggleHelpDialog() tea.Cmd {
 			),
 		}
 	}
+}
+
+func (a *App) toggleDevToolsPanel() {
+	if !a.devMode || a.devToolsPanel == nil {
+		return
+	}
+	a.devToolsOpen = !a.devToolsOpen
+	a.resizeViews()
+	a.syncDevToolsPanel()
 }
 
 func (a App) helpSections(active views.View) []helpdialog.Section {
@@ -666,9 +869,11 @@ func (a App) globalHelpBindings() []key.Binding {
 		a.keys.View6,
 		a.keys.View7,
 		a.keys.View8,
-		a.keys.Help,
-		a.keys.Quit,
 	}
+	if a.devMode {
+		bindings = append(bindings, a.keys.DevTools)
+	}
+	bindings = append(bindings, a.keys.Help, a.keys.Quit)
 	if len(a.viewStack) > 1 {
 		bindings = append(bindings, key.NewBinding(
 			key.WithKeys("esc"),

@@ -16,6 +16,7 @@ type KeyMap struct {
 	Tab      key.Binding
 	ShiftTab key.Binding
 	Help     key.Binding
+	DevTools key.Binding
 }
 
 // DefaultKeyMap returns the default keybindings.
@@ -69,18 +70,22 @@ func DefaultKeyMap() KeyMap {
 			key.WithKeys("?"),
 			key.WithHelp("?", "help"),
 		),
+		DevTools: key.NewBinding(
+			key.WithKeys("f12"),
+			key.WithHelp("f12", "dev tools"),
+		),
 	}
 }
 
 // ShortHelp returns keybindings to show in the mini help view.
 func (k KeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.View1, k.View2, k.View3, k.View4, k.View5, k.View6, k.View7, k.View8, k.Help, k.Quit}
+	return []key.Binding{k.View1, k.View2, k.View3, k.View4, k.View5, k.View6, k.View7, k.View8, k.Help, k.Quit, k.DevTools}
 }
 
 // FullHelp returns keybindings for the expanded help view.
 func (k KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.View1, k.View2, k.View3, k.View4, k.View5, k.View6, k.View7, k.View8},
-		{k.Tab, k.ShiftTab, k.Help, k.Quit},
+		{k.Tab, k.ShiftTab, k.Help, k.Quit, k.DevTools},
 	}
 }
