@@ -3,7 +3,7 @@ title: "Dead"
 description: "Inspect jobs that have exhausted retries."
 summary: "Inspect jobs that have exhausted retries."
 date: 2025-12-30T00:00:00Z
-lastmod: 2025-12-30T00:00:00Z
+lastmod: 2026-01-08T00:00:00Z
 draft: false
 weight: 90
 toc: true
@@ -15,16 +15,18 @@ Dead jobs have failed permanently and need intervention.
 
 **Key bindings:**
 
-| Key          | Description                           |
-|--------------|---------------------------------------|
-| `6`          | Go to Dead.                           |
-| `Up` / `k`   | Move up one row.                      |
-| `Down` / `j` | Move down one row.                    |
-| `Enter`      | Show job details.                     |
-| `/`          | Filter jobs by case-sensitive string. |
-| `Ctrl+u`     | Reset filter.                         |
-| `[` / `]`    | Go to previos or next page.           |
-| `q`          | Quit.                                 |
+| Key          | Description                                               |
+|--------------|-----------------------------------------------------------|
+| `6`          | Go to Dead.                                               |
+| `Up` / `k`   | Move up one row.                                          |
+| `Down` / `j` | Move down one row.                                        |
+| `Enter`      | Show job details.                                         |
+| `c`          | Copy job JID.                                             |
+| `/`          | Filter jobs by substring.                                 |
+| `Ctrl+u`     | Clear filter.                                             |
+| `[` / `]`    | Previous or next page (also `Alt+Left` / `Alt+Right`).    |
+| `D`          | Delete job (requires `--danger`).                         |
+| `q`          | Quit.                                                     |
 
 ## Job Details
 
@@ -36,10 +38,14 @@ Shows detailed information about a dead job.
 
 | Key          | Description                                    |
 |--------------|------------------------------------------------|
-| `Up` / `k`   | Move up one row.                               |
-| `Down` / `j` | Move down one row.                             |
-| `Left` / `h` | Move up one row.                               |
-| `Down` / `j` | Move down one row.                             |
+| `Up` / `k`   | Scroll up.                                     |
+| `Down` / `j` | Scroll down.                                   |
+| `Left` / `h` | Scroll left.                                   |
+| `Right` / `l` | Scroll right.                                 |
+| `g` / `G`    | Jump to top or bottom.                         |
+| `Home` / `0` | Scroll to the first column.                    |
+| `End` / `$`  | Scroll to the last column.                     |
 | `Tab`        | Switch between job details panel and job data. |
-| `Esc`        | Back to Queue details view.                    |
+| `c`          | Copy job JSON.                                 |
+| `Esc`        | Back to Dead view.                             |
 | `q`          | Quit.                                          |

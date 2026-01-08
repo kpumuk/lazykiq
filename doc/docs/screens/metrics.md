@@ -3,7 +3,7 @@ title: "Metrics"
 description: "At-a-glance counters and job metrics."
 summary: "At-a-glance counters and job metrics."
 date: 2025-12-30T00:00:00Z
-lastmod: 2025-12-30T00:00:00Z
+lastmod: 2026-01-08T00:00:00Z
 draft: false
 weight: 110
 toc: true
@@ -16,17 +16,17 @@ and dead counts in real time, plus per-job metrics.
 
 **Key bindings:**
 
-| Key          | Description                               |
-|--------------|-------------------------------------------|
-| `8`          | Go to Metrics.                            |
-| `Up` / `k`   | Move up one row.                          |
-| `Down` / `j` | Move down one row.                        |
-| `Enter`      | Open job metrics.                         |
-| `/`          | Filter jobs by case-sensitive string.     |
-| `Ctrl+u`     | Reset filter.                             |
-| `[` / `]`    | Go to previos or next page.               |
-| `{` / `}`    | Change time interval or historical range. |
-| `q`          | Quit.                                     |
+| Key          | Description                                               |
+|--------------|-----------------------------------------------------------|
+| `8`          | Go to Metrics.                                            |
+| `Up` / `k`   | Move up one row.                                          |
+| `Down` / `j` | Move down one row.                                        |
+| `Enter`      | Open job metrics.                                         |
+| `/`          | Filter jobs by substring.                                 |
+| `Ctrl+u`     | Clear filter.                                             |
+| `[` / `]`    | Previous or next page (also `Alt+Left` / `Alt+Right`).    |
+| `{` / `}`    | Change metrics period.                                    |
+| `q`          | Quit.                                                     |
 
 ## Job metrics
 
@@ -36,8 +36,10 @@ Job metrics show per-job performance and breakdowns.
 
 **Key bindings:**
 
-| Key       | Description                               |
-|-----------|-------------------------------------------|
-| `Tab`     | Switch pane.                              |
-| `{` / `}` | Change time interval or historical range. |
-| `Esc`     | Close job metrics.                        |
+| Key           | Description                    |
+|---------------|--------------------------------|
+| `Tab`         | Switch panel.                  |
+| `Shift+Tab`   | Switch panel.                  |
+| `{` / `}`     | Change metrics period.         |
+| `Esc`         | Close job metrics.             |
+| `q`           | Quit.                          |
