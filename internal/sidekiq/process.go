@@ -305,7 +305,7 @@ func (p *Process) refreshFromFields(fields []any) {
 	}
 
 	if beat, ok := parseOptionalFloat64(fieldAt(fields, 2)); ok {
-		p.Beat = timeFromSeconds(beat)
+		p.Beat = parseTimestamp(beat)
 	}
 
 	if quiet, ok := parseOptionalBool(fieldAt(fields, 3)); ok {
@@ -355,7 +355,7 @@ func (p *Process) parseJobsFromWork(work map[string]string, filter string) []Job
 		}
 
 		if wd.RunAt > 0 {
-			job.RunAt = timeFromSeconds(wd.RunAt)
+			job.RunAt = parseTimestamp(wd.RunAt)
 		}
 
 		if wd.Payload != "" {
@@ -402,7 +402,7 @@ func parseProcessInfo(field any, process *Process) {
 	}
 	process.Tag = info.Tag
 	process.Version = info.Version
-	process.StartedAt = timeFromSeconds(info.StartedAt)
+	process.StartedAt = parseTimestamp(info.StartedAt)
 }
 
 func parseProcessCapsules(capsules map[string]capsuleInfo) map[string]Capsule {
@@ -569,13 +569,6 @@ func parseQueueWeightsLegacy(weights map[string]int) map[string]int {
 	legacy := make(map[string]int, len(weights))
 	maps.Copy(legacy, weights)
 	return legacy
-}
-
-func timeFromSeconds(seconds float64) time.Time {
-	if seconds <= 0 {
-		return time.Time{}
-	}
-	return time.Unix(0, int64(seconds*float64(time.Second)))
 }
 
 func fieldAt(fields []any, idx int) any {

@@ -71,26 +71,12 @@ func (q *Queue) Latency(ctx context.Context) (float64, error) {
 		return 0.0, err
 	}
 
-	enqueuedAt, ok := jobData["enqueued_at"].(float64)
-	if !ok {
+	enqueuedAt := parseTimestamp(jobData["enqueued_at"])
+	if enqueuedAt.IsZero() {
 		return 0.0, nil
 	}
 
-	// Sidekiq enqueued_at can be:
-	// - Old format: float seconds (e.g., 1703000000.123)
-	// - New format: integer milliseconds (e.g., 1703000000123)
-	// Detect by magnitude: if > 1e12, it's milliseconds
-	var latency float64
-	if enqueuedAt > 1e12 {
-		// New format: milliseconds
-		nowMs := float64(time.Now().UnixMilli())
-		latency = (nowMs - enqueuedAt) / 1000.0
-	} else {
-		// Old format: seconds
-		nowSec := float64(time.Now().Unix())
-		latency = nowSec - enqueuedAt
-	}
-
+	latency := time.Since(enqueuedAt).Seconds()
 	if latency < 0 {
 		latency = 0
 	}

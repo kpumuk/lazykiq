@@ -1,6 +1,9 @@
 package sidekiq
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestParseOptionalInt64(t *testing.T) {
 	tests := []struct {
@@ -98,5 +101,39 @@ func TestParseOptionalBool(t *testing.T) {
 				t.Errorf("parseOptionalBool(%v) ok = %v, want %v", tt.input, ok, tt.wantOk)
 			}
 		})
+	}
+}
+
+func TestParseTimestamp(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    any
+		expected time.Time
+	}{
+		{
+			name:     "float seconds",
+			input:    1234.5,
+			expected: time.Unix(1234, 500*int64(time.Millisecond)),
+		},
+		{
+			name:     "milliseconds int",
+			input:    int64(1568305717946),
+			expected: time.UnixMilli(1568305717946),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseTimestamp(tt.input)
+			if !got.Equal(tt.expected) {
+				t.Fatalf("parseTimestamp(%v) = %v, want %v", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestParseTimestamp_Invalid(t *testing.T) {
+	if got := parseTimestamp("not a timestamp"); !got.IsZero() {
+		t.Fatalf("parseTimestamp(invalid) = %v, want zero", got)
 	}
 }

@@ -1,6 +1,7 @@
 package views
 
 import (
+	"fmt"
 	"math"
 	"strconv"
 	"strings"
@@ -451,13 +452,13 @@ func (j *JobDetail) extractProperties() {
 	j.properties = append(j.properties, PropertyRow{Label: "Class", Value: j.job.DisplayClass()})
 
 	// Timestamps
-	if enqueuedAt := j.job.EnqueuedAt(); enqueuedAt > 0 {
+	if enqueuedAt := j.job.EnqueuedAt(); !enqueuedAt.IsZero() {
 		j.properties = append(j.properties, PropertyRow{
 			Label: "Enqueued At",
 			Value: formatTimestamp(enqueuedAt),
 		})
 	}
-	if createdAt := j.job.CreatedAt(); createdAt > 0 {
+	if createdAt := j.job.CreatedAt(); !createdAt.IsZero() {
 		j.properties = append(j.properties, PropertyRow{
 			Label: "Created At",
 			Value: formatTimestamp(createdAt),
@@ -487,13 +488,13 @@ func (j *JobDetail) extractProperties() {
 			Value: strconv.Itoa(retryCount),
 		})
 	}
-	if failedAt := j.job.FailedAt(); failedAt > 0 {
+	if failedAt := j.job.FailedAt(); !failedAt.IsZero() {
 		j.properties = append(j.properties, PropertyRow{
 			Label: "Failed At",
 			Value: formatTimestamp(failedAt),
 		})
 	}
-	if retriedAt := j.job.RetriedAt(); retriedAt > 0 {
+	if retriedAt := j.job.RetriedAt(); !retriedAt.IsZero() {
 		j.properties = append(j.properties, PropertyRow{
 			Label: "Retried At",
 			Value: formatTimestamp(retriedAt),
@@ -636,16 +637,12 @@ func (j *JobDetail) renderRightPanel() string {
 	).View()
 }
 
-// formatTimestamp formats a Unix timestamp.
-func formatTimestamp(ts float64) string {
-	// Handle both seconds and milliseconds
-	var t time.Time
-	if ts > 1e12 {
-		t = time.UnixMilli(int64(ts))
-	} else {
-		t = time.Unix(int64(ts), 0)
+// formatTimestamp formats a timestamp for display.
+func formatTimestamp(ts time.Time) string {
+	if ts.IsZero() {
+		return "-"
 	}
-	return t.Format("2006-01-02 15:04:05")
+	return fmt.Sprintf("%s (%s ago)", ts.Format("2006-01-02 15:04:05"), format.DurationSince(ts))
 }
 
 // wrapText wraps text to fit within the specified width.

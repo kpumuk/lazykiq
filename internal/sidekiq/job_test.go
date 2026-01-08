@@ -193,11 +193,11 @@ func TestJobRecord_ErrorFields(t *testing.T) {
 	if got := record.RetryCount(); got != 2 {
 		t.Fatalf("RetryCount() = %d, want %d", got, 2)
 	}
-	if got := record.FailedAt(); got != 10.5 {
-		t.Fatalf("FailedAt() = %v, want %v", got, 10.5)
+	if got := record.FailedAt(); !got.Equal(time.Unix(10, 500*int64(time.Millisecond))) {
+		t.Fatalf("FailedAt() = %v, want %v", got, time.Unix(10, 500*int64(time.Millisecond)))
 	}
-	if got := record.RetriedAt(); got != 20.5 {
-		t.Fatalf("RetriedAt() = %v, want %v", got, 20.5)
+	if got := record.RetriedAt(); !got.Equal(time.Unix(20, 500*int64(time.Millisecond))) {
+		t.Fatalf("RetriedAt() = %v, want %v", got, time.Unix(20, 500*int64(time.Millisecond)))
 	}
 }
 
@@ -209,14 +209,32 @@ func TestJobRecord_Metadata(t *testing.T) {
 	if got := record.Bid(); got != "BID-1" {
 		t.Fatalf("Bid() = %q, want %q", got, "BID-1")
 	}
-	if got := record.EnqueuedAt(); got != 1000 {
-		t.Fatalf("EnqueuedAt() = %v, want %v", got, 1000)
+	if got := record.EnqueuedAt(); !got.Equal(time.Unix(1000, 0)) {
+		t.Fatalf("EnqueuedAt() = %v, want %v", got, time.Unix(1000, 0))
 	}
-	if got := record.CreatedAt(); got != 2000 {
-		t.Fatalf("CreatedAt() = %v, want %v", got, 2000)
+	if got := record.CreatedAt(); !got.Equal(time.Unix(2000, 0)) {
+		t.Fatalf("CreatedAt() = %v, want %v", got, time.Unix(2000, 0))
 	}
 	if got := record.Tags(); !reflect.DeepEqual(got, []string{"a", "b"}) {
 		t.Fatalf("Tags() = %#v, want %#v", got, []string{"a", "b"})
+	}
+}
+
+func TestJobRecord_TimestampFormats(t *testing.T) {
+	value := `{"enqueued_at":1568305717000,"created_at":1568305717946,"failed_at":1726763966.609737,"retried_at":1568305717947}`
+	record := NewJobRecord(value, "")
+
+	if got := record.EnqueuedAt(); !got.Equal(time.UnixMilli(1568305717000)) {
+		t.Fatalf("EnqueuedAt() = %v, want %v", got, time.UnixMilli(1568305717000))
+	}
+	if got := record.CreatedAt(); !got.Equal(time.UnixMilli(1568305717946)) {
+		t.Fatalf("CreatedAt() = %v, want %v", got, time.UnixMilli(1568305717946))
+	}
+	if got := record.FailedAt(); !timeWithin(got, time.Unix(1726763966, 609737000), time.Microsecond) {
+		t.Fatalf("FailedAt() = %v, want %v", got, time.Unix(1726763966, 609737000))
+	}
+	if got := record.RetriedAt(); !got.Equal(time.UnixMilli(1568305717947)) {
+		t.Fatalf("RetriedAt() = %v, want %v", got, time.UnixMilli(1568305717947))
 	}
 }
 
@@ -237,6 +255,14 @@ func TestJobRecord_Latency(t *testing.T) {
 	if latencyMs < 4 || latencyMs > 7 {
 		t.Fatalf("Latency() (ms) = %v, want around 5", latencyMs)
 	}
+}
+
+func timeWithin(got, want time.Time, tolerance time.Duration) bool {
+	diff := got.Sub(want)
+	if diff < 0 {
+		diff = -diff
+	}
+	return diff <= tolerance
 }
 
 func TestJobRecord_ErrorBacktrace(t *testing.T) {

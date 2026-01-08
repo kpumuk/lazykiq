@@ -182,20 +182,14 @@ func (jr *JobRecord) RetryCount() int {
 	return 0
 }
 
-// FailedAt returns the timestamp when the job failed (0 if not failed).
-func (jr *JobRecord) FailedAt() float64 {
-	if failedAt, ok := jr.item["failed_at"].(float64); ok {
-		return failedAt
-	}
-	return 0
+// FailedAt returns the timestamp when the job failed (zero if not failed).
+func (jr *JobRecord) FailedAt() time.Time {
+	return parseTimestamp(jr.item["failed_at"])
 }
 
-// RetriedAt returns the timestamp of the last retry (0 if never retried).
-func (jr *JobRecord) RetriedAt() float64 {
-	if retriedAt, ok := jr.item["retried_at"].(float64); ok {
-		return retriedAt
-	}
-	return 0
+// RetriedAt returns the timestamp of the last retry (zero if never retried).
+func (jr *JobRecord) RetriedAt() time.Time {
+	return parseTimestamp(jr.item["retried_at"])
 }
 
 // Bid returns the batch ID.
@@ -206,23 +200,18 @@ func (jr *JobRecord) Bid() string {
 	return ""
 }
 
-// EnqueuedAt returns the enqueued timestamp (0 if missing).
-func (jr *JobRecord) EnqueuedAt() float64 {
-	if enqueuedAt, ok := jr.item["enqueued_at"].(float64); ok {
-		return enqueuedAt
-	}
-	return 0
+// EnqueuedAt returns the enqueued timestamp (zero if missing).
+func (jr *JobRecord) EnqueuedAt() time.Time {
+	return parseTimestamp(jr.item["enqueued_at"])
 }
 
-// CreatedAt returns the created timestamp, falling back to enqueued_at (0 if missing).
-func (jr *JobRecord) CreatedAt() float64 {
-	if createdAt, ok := jr.item["created_at"].(float64); ok {
+// CreatedAt returns the created timestamp, falling back to enqueued_at (zero if missing).
+func (jr *JobRecord) CreatedAt() time.Time {
+	createdAt := parseTimestamp(jr.item["created_at"])
+	if !createdAt.IsZero() {
 		return createdAt
 	}
-	if enqueuedAt, ok := jr.item["enqueued_at"].(float64); ok {
-		return enqueuedAt
-	}
-	return 0
+	return parseTimestamp(jr.item["enqueued_at"])
 }
 
 // Tags returns any tags associated with the job.
@@ -285,20 +274,19 @@ func (jr *JobRecord) ErrorBacktrace() []string {
 
 // Latency returns the time since enqueue/create in seconds.
 func (jr *JobRecord) Latency() float64 {
-	timestamp := jr.EnqueuedAt()
-	if timestamp == 0 {
-		timestamp = jr.CreatedAt()
+	enqueuedAt := jr.EnqueuedAt()
+	if enqueuedAt.IsZero() {
+		enqueuedAt = jr.CreatedAt()
 	}
-	if timestamp == 0 {
+	if enqueuedAt.IsZero() {
 		return 0
 	}
 
-	if timestamp > 1e12 {
-		nowMs := float64(time.Now().UnixMilli())
-		return (nowMs - timestamp) / 1000.0
+	latency := time.Since(enqueuedAt).Seconds()
+	if latency < 0 {
+		return 0
 	}
-	nowSec := float64(time.Now().Unix())
-	return nowSec - timestamp
+	return latency
 }
 
 func (jr *JobRecord) unwrapActiveJobDisplayClass(displayClass string) string {
