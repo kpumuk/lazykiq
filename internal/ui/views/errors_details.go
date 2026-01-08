@@ -300,12 +300,12 @@ func (e *ErrorsDetails) updateTableRows() {
 	e.table.SetColumns(errorDetailsColumns)
 
 	rows := make([]table.Row, 0, len(e.groupJobs))
-	now := time.Now().Unix()
+	now := time.Now()
 	for _, job := range e.groupJobs {
 		if job.entry == nil {
 			continue
 		}
-		when := format.Duration(now - job.entry.At())
+		when := format.Duration(int64(now.Sub(job.entry.At()).Seconds()))
 		queue := job.entry.Queue()
 		if queue == "" {
 			queue = "unknown"

@@ -211,14 +211,14 @@ func (d *Dead) ShortHelp() []key.Binding {
 
 // ContextItems implements ContextProvider.
 func (d *Dead) ContextItems() []ContextItem {
-	now := time.Now().Unix()
+	now := time.Now()
 	lastFailed := "-"
 	oldestFailed := "-"
 	if d.lastEntry != nil {
-		lastFailed = format.Duration(now - d.lastEntry.At())
+		lastFailed = format.Duration(int64(now.Sub(d.lastEntry.At()).Seconds()))
 	}
 	if d.firstEntry != nil {
-		oldestFailed = format.Duration(now - d.firstEntry.At())
+		oldestFailed = format.Duration(int64(now.Sub(d.firstEntry.At()).Seconds()))
 	}
 
 	items := []ContextItem{
@@ -452,10 +452,10 @@ func (d *Dead) updateTableRows() {
 	}
 
 	rows := make([]table.Row, 0, len(d.jobs))
-	now := time.Now().Unix()
+	now := time.Now()
 	for _, job := range d.jobs {
 		// Format "last retry" as relative time
-		lastRetry := format.Duration(now - job.At())
+		lastRetry := format.Duration(int64(now.Sub(job.At()).Seconds()))
 
 		// Format error
 		errorStr := ""

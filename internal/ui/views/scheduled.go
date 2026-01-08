@@ -211,14 +211,14 @@ func (s *Scheduled) ShortHelp() []key.Binding {
 
 // ContextItems implements ContextProvider.
 func (s *Scheduled) ContextItems() []ContextItem {
-	now := time.Now().Unix()
+	now := time.Now()
 	nextScheduled := "-"
 	latestScheduled := "-"
 	if s.firstEntry != nil {
-		nextScheduled = format.Duration(s.firstEntry.At() - now)
+		nextScheduled = format.Duration(int64(s.firstEntry.At().Sub(now).Seconds()))
 	}
 	if s.lastEntry != nil {
-		latestScheduled = format.Duration(s.lastEntry.At() - now)
+		latestScheduled = format.Duration(int64(s.lastEntry.At().Sub(now).Seconds()))
 	}
 
 	items := []ContextItem{
@@ -451,10 +451,10 @@ func (s *Scheduled) updateTableRows() {
 	}
 
 	rows := make([]table.Row, 0, len(s.jobs))
-	now := time.Now().Unix()
+	now := time.Now()
 	for _, job := range s.jobs {
 		// Format "when" as time until job runs (job.At() is in the future)
-		when := format.Duration(job.At() - now)
+		when := format.Duration(int64(job.At().Sub(now).Seconds()))
 
 		row := table.Row{
 			ID: job.JID(),

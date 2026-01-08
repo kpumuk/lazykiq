@@ -240,14 +240,14 @@ func (r *Retries) ShortHelp() []key.Binding {
 
 // ContextItems implements ContextProvider.
 func (r *Retries) ContextItems() []ContextItem {
-	now := time.Now().Unix()
+	now := time.Now()
 	nextRetry := "-"
 	latestRetry := "-"
 	if r.firstEntry != nil {
-		nextRetry = format.Duration(r.firstEntry.At() - now)
+		nextRetry = format.Duration(int64(r.firstEntry.At().Sub(now).Seconds()))
 	}
 	if r.lastEntry != nil {
-		latestRetry = format.Duration(r.lastEntry.At() - now)
+		latestRetry = format.Duration(int64(r.lastEntry.At().Sub(now).Seconds()))
 	}
 
 	items := []ContextItem{
@@ -484,10 +484,10 @@ func (r *Retries) updateTableRows() {
 	}
 
 	rows := make([]table.Row, 0, len(r.jobs))
-	now := time.Now().Unix()
+	now := time.Now()
 	for _, job := range r.jobs {
 		// Format "next retry" as relative time (negative means in the past/due)
-		nextRetry := format.Duration(now - job.At())
+		nextRetry := format.Duration(int64(now.Sub(job.At()).Seconds()))
 
 		// Format retry count
 		retryCount := strconv.Itoa(job.RetryCount())

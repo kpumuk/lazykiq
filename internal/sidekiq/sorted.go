@@ -37,8 +37,8 @@ func NewSortedEntry(value string, score float64) *SortedEntry {
 }
 
 // At returns the timestamp as Unix seconds (same as score for dead/retry/schedule).
-func (se *SortedEntry) At() int64 {
-	return int64(se.Score)
+func (se *SortedEntry) At() time.Time {
+	return time.Unix(0, int64(se.Score*float64(time.Second)))
 }
 
 // getSortedSetJobs fetches jobs from a sorted set with pagination.
@@ -207,7 +207,7 @@ func (c *Client) KillRetryJob(ctx context.Context, entry *SortedEntry) error {
 	_, err := c.redis.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
 		pipe.ZRem(ctx, retrySetKey, value)
 		pipe.ZAdd(ctx, deadSetKey, redis.Z{
-			Score:  float64(time.Now().Unix()),
+			Score:  float64(time.Now().Truncate(time.Microsecond).UnixNano()) / float64(time.Second),
 			Member: value,
 		})
 		return nil
