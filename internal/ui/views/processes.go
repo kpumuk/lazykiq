@@ -1,6 +1,7 @@
 package views
 
 import (
+	"context"
 	"strconv"
 	"strings"
 	"time"
@@ -36,8 +37,6 @@ type ProcessesList struct {
 	dangerousActionsEnabled bool
 	frameStyles             frame.Styles
 	filterStyle             filterdialog.Styles
-	devTracker              *devtools.Tracker
-	devKey                  string
 }
 
 // NewProcessesList creates a new ProcessesList view.
@@ -294,17 +293,10 @@ func (p *ProcessesList) SetStyles(styles Styles) View {
 	return p
 }
 
-// SetDevelopment configures development tracking.
-func (p *ProcessesList) SetDevelopment(tracker *devtools.Tracker, key string) {
-	p.devTracker = tracker
-	p.devKey = key
-}
-
 // fetchDataCmd fetches processes data from Redis.
 func (p *ProcessesList) fetchDataCmd() tea.Cmd {
 	return func() tea.Msg {
-		ctx, finish := devContext(p.devTracker, p.devKey, "processes.fetchDataCmd")
-		defer finish()
+		ctx := devtools.WithTracker(context.Background(), "processes.fetchDataCmd")
 
 		data, err := p.client.GetBusyData(ctx, "")
 		if err != nil {
@@ -367,7 +359,7 @@ func (p *ProcessesList) selectedProcessIdentity() (string, bool) {
 
 func (p *ProcessesList) pauseProcessCmd(identity string) tea.Cmd {
 	return func() tea.Msg {
-		ctx := devOriginContext(p.devTracker, "processes.pauseProcessCmd")
+		ctx := devtools.WithTracker(context.Background(), "processes.pauseProcessCmd")
 		if err := p.client.NewProcess(identity).Pause(ctx); err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}
@@ -377,7 +369,7 @@ func (p *ProcessesList) pauseProcessCmd(identity string) tea.Cmd {
 
 func (p *ProcessesList) stopProcessCmd(identity string) tea.Cmd {
 	return func() tea.Msg {
-		ctx := devOriginContext(p.devTracker, "processes.stopProcessCmd")
+		ctx := devtools.WithTracker(context.Background(), "processes.stopProcessCmd")
 		if err := p.client.NewProcess(identity).Stop(ctx); err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}

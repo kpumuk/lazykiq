@@ -1,6 +1,7 @@
 package views
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"time"
@@ -60,8 +61,6 @@ type Retries struct {
 	pendingJobAction        retriesJobAction
 	pendingJobEntry         *sidekiq.SortedEntry
 	pendingJobTarget        string
-	devTracker              *devtools.Tracker
-	devKey                  string
 }
 
 // NewRetries creates a new Retries view.
@@ -367,17 +366,10 @@ func (r *Retries) SetStyles(styles Styles) View {
 	return r
 }
 
-// SetDevelopment configures development tracking.
-func (r *Retries) SetDevelopment(tracker *devtools.Tracker, key string) {
-	r.devTracker = tracker
-	r.devKey = key
-}
-
 // fetchDataCmd fetches retry jobs data from Redis.
 func (r *Retries) fetchDataCmd() tea.Cmd {
 	return func() tea.Msg {
-		ctx, finish := devContext(r.devTracker, r.devKey, "retries.fetchDataCmd")
-		defer finish()
+		ctx := devtools.WithTracker(context.Background(), "retries.fetchDataCmd")
 
 		if r.filter != "" {
 			jobs, err := r.client.ScanRetryJobs(ctx, r.filter)
@@ -596,7 +588,7 @@ func (r *Retries) openKillConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
 
 func (r *Retries) deleteJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
 	return func() tea.Msg {
-		ctx := devOriginContext(r.devTracker, "retries.deleteJobCmd")
+		ctx := devtools.WithTracker(context.Background(), "retries.deleteJobCmd")
 		if err := r.client.DeleteRetryJob(ctx, entry); err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}
@@ -606,7 +598,7 @@ func (r *Retries) deleteJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
 
 func (r *Retries) killJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
 	return func() tea.Msg {
-		ctx := devOriginContext(r.devTracker, "retries.killJobCmd")
+		ctx := devtools.WithTracker(context.Background(), "retries.killJobCmd")
 		if err := r.client.KillRetryJob(ctx, entry); err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}

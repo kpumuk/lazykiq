@@ -1,6 +1,7 @@
 package views
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strconv"
@@ -48,8 +49,6 @@ type QueuesList struct {
 	dangerousActionsEnabled bool
 	frameStyles             frame.Styles
 	filterStyle             filterdialog.Styles
-	devTracker              *devtools.Tracker
-	devKey                  string
 }
 
 // NewQueuesList creates a new QueuesList view.
@@ -315,17 +314,10 @@ func (q *QueuesList) SetStyles(styles Styles) View {
 	return q
 }
 
-// SetDevelopment configures development tracking.
-func (q *QueuesList) SetDevelopment(tracker *devtools.Tracker, key string) {
-	q.devTracker = tracker
-	q.devKey = key
-}
-
 // fetchDataCmd fetches queues data from Redis.
 func (q *QueuesList) fetchDataCmd() tea.Cmd {
 	return func() tea.Msg {
-		ctx, finish := devContext(q.devTracker, q.devKey, "queues.fetchDataCmd")
-		defer finish()
+		ctx := devtools.WithTracker(context.Background(), "queues.fetchDataCmd")
 
 		queues, err := q.client.GetQueues(ctx)
 		if err != nil {
@@ -426,7 +418,7 @@ func (q *QueuesList) updateTableRows() {
 
 func (q *QueuesList) deleteQueueCmd(queueName string) tea.Cmd {
 	return func() tea.Msg {
-		ctx := devOriginContext(q.devTracker, "queues.deleteQueueCmd")
+		ctx := devtools.WithTracker(context.Background(), "queues.deleteQueueCmd")
 		if err := q.client.NewQueue(queueName).Clear(ctx); err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}

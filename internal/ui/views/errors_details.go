@@ -1,6 +1,7 @@
 package views
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -36,8 +37,6 @@ type ErrorsDetails struct {
 	filter      string
 	frameStyles frame.Styles
 	filterStyle filterdialog.Styles
-	devTracker  *devtools.Tracker
-	devKey      string
 }
 
 // NewErrorsDetails creates a new ErrorsDetails view.
@@ -254,12 +253,6 @@ func (e *ErrorsDetails) SetStyles(styles Styles) View {
 	return e
 }
 
-// SetDevelopment configures development tracking.
-func (e *ErrorsDetails) SetDevelopment(tracker *devtools.Tracker, key string) {
-	e.devTracker = tracker
-	e.devKey = key
-}
-
 func (e *ErrorsDetails) renderMessage(msg string) string {
 	return messagebox.Render(messagebox.Styles{
 		Title:  e.styles.Title,
@@ -348,8 +341,7 @@ func (e *ErrorsDetails) openFilterDialog() tea.Cmd {
 
 func (e *ErrorsDetails) fetchDataCmd() tea.Cmd {
 	return func() tea.Msg {
-		ctx, finish := devContext(e.devTracker, e.devKey, "errors_details.fetchDataCmd")
-		defer finish()
+		ctx := devtools.WithTracker(context.Background(), "errors_details.fetchDataCmd")
 		deadJobs, retryJobs, err := fetchErrorJobs(ctx, e.client, e.filter)
 		if err != nil {
 			return ConnectionErrorMsg{Err: err}

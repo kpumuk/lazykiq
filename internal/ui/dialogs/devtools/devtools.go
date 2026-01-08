@@ -58,21 +58,22 @@ type commandResultMsg struct {
 
 // Model defines state for the dev tools console.
 type Model struct {
-	styles       Styles
-	title        string
-	client       sidekiq.API
-	tracker      *devtools.Tracker
-	table        table.Model
-	input        textinput.Model
-	inputFocused bool
-	width        int
-	height       int
-	windowWidth  int
-	windowHeight int
-	row          int
-	col          int
-	padding      int
-	minHeight    int
+	styles         Styles
+	title          string
+	client         sidekiq.API
+	tracker        *devtools.Tracker
+	table          table.Model
+	input          textinput.Model
+	inputFocused   bool
+	inputContainer lipgloss.Style
+	width          int
+	height         int
+	windowWidth    int
+	windowHeight   int
+	row            int
+	col            int
+	padding        int
+	minHeight      int
 }
 
 // Option configures the dev tools console.
@@ -91,7 +92,6 @@ func New(opts ...Option) *Model {
 		),
 		input: textinput.New(),
 	}
-
 	m.input.Prompt = "redis> "
 	m.input.Placeholder = "enter redis command"
 
@@ -202,8 +202,7 @@ func (m *Model) View() string {
 		tableView += strings.Repeat("\n", pad)
 	}
 
-	inputView := m.input.View()
-	inputView = lipgloss.NewStyle().Width(contentWidth).MaxWidth(contentWidth).Render(inputView)
+	inputView := m.inputContainer.Render(m.input.View())
 
 	content := lipgloss.JoinVertical(
 		lipgloss.Left,
@@ -287,6 +286,8 @@ func (m *Model) applySize() {
 	m.height = max(height, 1)
 	m.row = 0
 	m.col = 0
+	contentWidth := m.contentWidth()
+	m.inputContainer = lipgloss.NewStyle().Width(contentWidth).MaxWidth(contentWidth)
 }
 
 func (m *Model) contentWidth() int {

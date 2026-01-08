@@ -1,6 +1,7 @@
 package views
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -59,9 +60,7 @@ type Dashboard struct {
 	historyProcessed []int64
 	historyFailed    []int64
 
-	redisInfo  sidekiq.RedisInfo
-	devTracker *devtools.Tracker
-	devKey     string
+	redisInfo sidekiq.RedisInfo
 }
 
 // NewDashboard creates a new Dashboard view.
@@ -233,12 +232,6 @@ func (d *Dashboard) SetStyles(styles Styles) View {
 	return d
 }
 
-// SetDevelopment configures development tracking.
-func (d *Dashboard) SetDevelopment(tracker *devtools.Tracker, key string) {
-	d.devTracker = tracker
-	d.devKey = key
-}
-
 func (d *Dashboard) adjustHistoryRange(delta int) (View, tea.Cmd) {
 	next := max(d.historyRangeIdx+delta, 0)
 	if next >= len(d.historyRanges) {
@@ -253,8 +246,7 @@ func (d *Dashboard) adjustHistoryRange(delta int) (View, tea.Cmd) {
 
 func (d *Dashboard) fetchRedisInfoCmd() tea.Cmd {
 	return func() tea.Msg {
-		ctx, finish := devContext(d.devTracker, d.devKey, "dashboard.fetchRedisInfoCmd")
-		defer finish()
+		ctx := devtools.WithTracker(context.Background(), "dashboard.fetchRedisInfoCmd")
 		redisInfo, err := d.client.GetRedisInfo(ctx)
 		if err != nil {
 			return ConnectionErrorMsg{Err: err}
@@ -265,8 +257,7 @@ func (d *Dashboard) fetchRedisInfoCmd() tea.Cmd {
 
 func (d *Dashboard) fetchHistoryCmd() tea.Cmd {
 	return func() tea.Msg {
-		ctx, finish := devContext(d.devTracker, d.devKey, "dashboard.fetchHistoryCmd")
-		defer finish()
+		ctx := devtools.WithTracker(context.Background(), "dashboard.fetchHistoryCmd")
 		days := d.historyRanges[d.historyRangeIdx]
 		history, err := d.client.GetStatsHistory(ctx, days)
 		if err != nil {
