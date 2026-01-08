@@ -1,7 +1,6 @@
 package views
 
 import (
-	"context"
 	"strconv"
 	"strings"
 	"time"
@@ -304,7 +303,7 @@ func (p *ProcessesList) SetDevelopment(tracker *devtools.Tracker, key string) {
 // fetchDataCmd fetches processes data from Redis.
 func (p *ProcessesList) fetchDataCmd() tea.Cmd {
 	return func() tea.Msg {
-		ctx, finish := devContext(p.devTracker, p.devKey)
+		ctx, finish := devContext(p.devTracker, p.devKey, "processes.fetchDataCmd")
 		defer finish()
 
 		data, err := p.client.GetBusyData(ctx, "")
@@ -368,7 +367,7 @@ func (p *ProcessesList) selectedProcessIdentity() (string, bool) {
 
 func (p *ProcessesList) pauseProcessCmd(identity string) tea.Cmd {
 	return func() tea.Msg {
-		ctx := context.Background()
+		ctx := devOriginContext(p.devTracker, "processes.pauseProcessCmd")
 		if err := p.client.NewProcess(identity).Pause(ctx); err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}
@@ -378,7 +377,7 @@ func (p *ProcessesList) pauseProcessCmd(identity string) tea.Cmd {
 
 func (p *ProcessesList) stopProcessCmd(identity string) tea.Cmd {
 	return func() tea.Msg {
-		ctx := context.Background()
+		ctx := devOriginContext(p.devTracker, "processes.stopProcessCmd")
 		if err := p.client.NewProcess(identity).Stop(ctx); err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}

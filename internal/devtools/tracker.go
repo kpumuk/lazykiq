@@ -12,9 +12,15 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-const defaultCommandLimit = 200
+const (
+	defaultCommandLimit = 200
+	defaultLogLimit     = 500
+)
 
-type measurementKey struct{}
+type (
+	measurementKey struct{}
+	originKey      struct{}
+)
 
 // EntryKind describes the type of a tracked entry.
 type EntryKind int
@@ -26,12 +32,23 @@ const (
 	EntryPipelineBegin
 	// EntryPipelineExec marks the execution of a pipeline.
 	EntryPipelineExec
+	// EntryResult represents a result produced by the dev console.
+	EntryResult
 )
 
 // Entry captures a single tracked entry.
 type Entry struct {
-	Kind    EntryKind
-	Command string
+	Kind     EntryKind
+	Command  string
+	Duration time.Duration
+}
+
+// LogEntry captures a single tracked log line.
+type LogEntry struct {
+	Seq    uint64
+	Time   time.Time
+	Origin string
+	Entry  Entry
 }
 
 // Sample captures a completed refresh measurement.
@@ -56,14 +73,21 @@ type Measurement struct {
 // Tracker stores refresh measurements and records Redis commands.
 type Tracker struct {
 	commandLimit int
+	logLimit     int
 	mu           sync.RWMutex
 	samples      map[string]Sample
+	logMu        sync.RWMutex
+	log          []LogEntry
+	logHead      int
+	logFull      bool
+	logSeq       uint64
 }
 
 // NewTracker creates a new development tracker.
 func NewTracker() *Tracker {
 	return &Tracker{
 		commandLimit: defaultCommandLimit,
+		logLimit:     defaultLogLimit,
 		samples:      make(map[string]Sample),
 	}
 }
@@ -88,6 +112,14 @@ func WithMeasurement(ctx context.Context, m *Measurement) context.Context {
 	return context.WithValue(ctx, measurementKey{}, m)
 }
 
+// WithOrigin returns a context carrying the origin label.
+func WithOrigin(ctx context.Context, origin string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, originKey{}, origin)
+}
+
 // MeasurementFromContext extracts the measurement from context.
 func MeasurementFromContext(ctx context.Context) *Measurement {
 	if ctx == nil {
@@ -99,6 +131,19 @@ func MeasurementFromContext(ctx context.Context) *Measurement {
 		}
 	}
 	return nil
+}
+
+// OriginFromContext extracts the origin label from context.
+func OriginFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	if value := ctx.Value(originKey{}); value != nil {
+		if origin, ok := value.(string); ok {
+			return origin
+		}
+	}
+	return ""
 }
 
 // Finish finalizes a measurement and stores it.
@@ -150,6 +195,46 @@ func (t *Tracker) Entries(view string) []Entry {
 	return append([]Entry(nil), sample.Entries...)
 }
 
+// LogEntries returns the most recent Redis log entries in chronological order.
+func (t *Tracker) LogEntries() []LogEntry {
+	t.logMu.RLock()
+	defer t.logMu.RUnlock()
+	if len(t.log) == 0 {
+		return nil
+	}
+	if !t.logFull {
+		return append([]LogEntry(nil), t.log...)
+	}
+	result := make([]LogEntry, 0, len(t.log))
+	result = append(result, t.log[t.logHead:]...)
+	result = append(result, t.log[:t.logHead]...)
+	return result
+}
+
+// AppendLog appends a log entry to the ring buffer.
+func (t *Tracker) AppendLog(entry LogEntry) {
+	if t == nil || t.logLimit == 0 {
+		return
+	}
+
+	t.logMu.Lock()
+	entry.Seq = t.logSeq
+	t.logSeq++
+	if len(t.log) < t.logLimit {
+		t.log = append(t.log, entry)
+		if len(t.log) == t.logLimit {
+			t.logHead = 0
+			t.logFull = true
+		}
+		t.logMu.Unlock()
+		return
+	}
+	t.log[t.logHead] = entry
+	t.logHead = (t.logHead + 1) % t.logLimit
+	t.logFull = true
+	t.logMu.Unlock()
+}
+
 // Hook returns a Redis hook for tracking commands.
 func (t *Tracker) Hook() redis.Hook {
 	return hook{tracker: t}
@@ -181,8 +266,10 @@ func (h hook) DialHook(next redis.DialHook) redis.DialHook {
 
 func (h hook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
 	return func(ctx context.Context, cmd redis.Cmder) error {
-		h.record(ctx, cmd)
-		return next(ctx, cmd)
+		start := time.Now()
+		err := next(ctx, cmd)
+		h.record(ctx, cmd, time.Since(start))
+		return err
 	}
 }
 
@@ -191,52 +278,88 @@ func (h hook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessP
 		if len(cmds) == 0 {
 			return next(ctx, cmds)
 		}
-		h.recordPipelineMarker(ctx, EntryPipelineBegin)
+		h.recordPipelineMarker(ctx, EntryPipelineBegin, 0)
+		start := time.Now()
+		err := next(ctx, cmds)
 		for _, cmd := range cmds {
-			h.record(ctx, cmd)
+			h.record(ctx, cmd, 0)
 		}
-		h.recordPipelineMarker(ctx, EntryPipelineExec)
-		return next(ctx, cmds)
+		h.recordPipelineMarker(ctx, EntryPipelineExec, time.Since(start))
+		return err
 	}
 }
 
-func (h hook) record(ctx context.Context, cmd redis.Cmder) {
+func (h hook) record(ctx context.Context, cmd redis.Cmder, duration time.Duration) {
 	if h.tracker == nil {
 		return
 	}
+
+	commandText := formatCommand(cmd)
+	h.tracker.appendLogEntry(ctx, Entry{
+		Kind:     EntryCommand,
+		Command:  commandText,
+		Duration: duration,
+	})
+
 	measurement := MeasurementFromContext(ctx)
 	if measurement == nil {
 		return
 	}
 
-	commandText := formatCommand(cmd)
-
 	measurement.mu.Lock()
 	measurement.count++
 	if h.tracker.commandLimit <= 0 || measurement.stored < h.tracker.commandLimit {
 		measurement.entries = append(measurement.entries, Entry{
-			Kind:    EntryCommand,
-			Command: commandText,
+			Kind:     EntryCommand,
+			Command:  commandText,
+			Duration: duration,
 		})
 		measurement.stored++
 	}
 	measurement.mu.Unlock()
 }
 
-func (h hook) recordPipelineMarker(ctx context.Context, kind EntryKind) {
+func (h hook) recordPipelineMarker(ctx context.Context, kind EntryKind, duration time.Duration) {
 	if h.tracker == nil {
 		return
 	}
+	h.tracker.appendLogEntry(ctx, Entry{
+		Kind:     kind,
+		Command:  "",
+		Duration: duration,
+	})
+
 	measurement := MeasurementFromContext(ctx)
 	if measurement == nil {
 		return
 	}
 	measurement.mu.Lock()
 	measurement.entries = append(measurement.entries, Entry{
-		Kind:    kind,
-		Command: "",
+		Kind:     kind,
+		Command:  "",
+		Duration: duration,
 	})
 	measurement.mu.Unlock()
+}
+
+func (t *Tracker) appendLogEntry(ctx context.Context, entry Entry) {
+	if t == nil {
+		return
+	}
+	origin := OriginFromContext(ctx)
+	if origin == "" {
+		if measurement := MeasurementFromContext(ctx); measurement != nil {
+			origin = measurement.view
+		}
+	}
+	if origin == "" {
+		origin = "unknown"
+	}
+	t.AppendLog(LogEntry{
+		Time:   time.Now(),
+		Origin: origin,
+		Entry:  entry,
+	})
 }
 
 func formatCommand(cmd redis.Cmder) string {

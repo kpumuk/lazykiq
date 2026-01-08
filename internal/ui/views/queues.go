@@ -1,7 +1,6 @@
 package views
 
 import (
-	"context"
 	"fmt"
 	"sort"
 	"strconv"
@@ -325,7 +324,7 @@ func (q *QueuesList) SetDevelopment(tracker *devtools.Tracker, key string) {
 // fetchDataCmd fetches queues data from Redis.
 func (q *QueuesList) fetchDataCmd() tea.Cmd {
 	return func() tea.Msg {
-		ctx, finish := devContext(q.devTracker, q.devKey)
+		ctx, finish := devContext(q.devTracker, q.devKey, "queues.fetchDataCmd")
 		defer finish()
 
 		queues, err := q.client.GetQueues(ctx)
@@ -427,7 +426,7 @@ func (q *QueuesList) updateTableRows() {
 
 func (q *QueuesList) deleteQueueCmd(queueName string) tea.Cmd {
 	return func() tea.Msg {
-		ctx := context.Background()
+		ctx := devOriginContext(q.devTracker, "queues.deleteQueueCmd")
 		if err := q.client.NewQueue(queueName).Clear(ctx); err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}

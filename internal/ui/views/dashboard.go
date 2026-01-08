@@ -253,7 +253,7 @@ func (d *Dashboard) adjustHistoryRange(delta int) (View, tea.Cmd) {
 
 func (d *Dashboard) fetchRedisInfoCmd() tea.Cmd {
 	return func() tea.Msg {
-		ctx, finish := devContext(d.devTracker, d.devKey)
+		ctx, finish := devContext(d.devTracker, d.devKey, "dashboard.fetchRedisInfoCmd")
 		defer finish()
 		redisInfo, err := d.client.GetRedisInfo(ctx)
 		if err != nil {
@@ -265,7 +265,7 @@ func (d *Dashboard) fetchRedisInfoCmd() tea.Cmd {
 
 func (d *Dashboard) fetchHistoryCmd() tea.Cmd {
 	return func() tea.Msg {
-		ctx, finish := devContext(d.devTracker, d.devKey)
+		ctx, finish := devContext(d.devTracker, d.devKey, "dashboard.fetchHistoryCmd")
 		defer finish()
 		days := d.historyRanges[d.historyRangeIdx]
 		history, err := d.client.GetStatsHistory(ctx, days)

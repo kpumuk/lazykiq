@@ -282,7 +282,7 @@ func (q *QueueDetails) SetQueue(queueName string) {
 // fetchDataCmd fetches queues data from Redis.
 func (q *QueueDetails) fetchDataCmd() tea.Cmd {
 	return func() tea.Msg {
-		ctx, finish := devContext(q.devTracker, q.devKey)
+		ctx, finish := devContext(q.devTracker, q.devKey, "queue_details.fetchDataCmd")
 		defer finish()
 
 		queues, err := q.client.GetQueues(ctx)

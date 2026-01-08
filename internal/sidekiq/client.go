@@ -3,6 +3,7 @@ package sidekiq
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -94,6 +95,17 @@ func (c *Client) Close() error {
 // Redis returns the underlying Redis client for benchmarking and testing.
 func (c *Client) Redis() *redis.Client {
 	return c.redis
+}
+
+// Do executes a raw Redis command.
+func (c *Client) Do(ctx context.Context, args ...any) (any, error) {
+	if c == nil || c.redis == nil {
+		return nil, errors.New("redis client is nil")
+	}
+	if len(args) == 0 {
+		return nil, errors.New("no command provided")
+	}
+	return c.redis.Do(ctx, args...).Result()
 }
 
 // AddHook attaches a Redis hook to the underlying client.

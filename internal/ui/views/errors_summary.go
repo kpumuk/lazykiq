@@ -236,7 +236,7 @@ func (e *ErrorsSummary) SetDevelopment(tracker *devtools.Tracker, key string) {
 // fetchDataCmd fetches dead and retry jobs and builds summary data.
 func (e *ErrorsSummary) fetchDataCmd() tea.Cmd {
 	return func() tea.Msg {
-		ctx, finish := devContext(e.devTracker, e.devKey)
+		ctx, finish := devContext(e.devTracker, e.devKey, "errors.fetchDataCmd")
 		defer finish()
 		deadJobs, retryJobs, err := fetchErrorJobs(ctx, e.client, e.filter)
 		if err != nil {
