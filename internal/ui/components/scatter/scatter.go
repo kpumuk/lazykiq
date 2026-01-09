@@ -126,11 +126,14 @@ func (m Model) View() string {
 	if m.width < 2 || m.height < 2 {
 		return ""
 	}
-	if len(m.points) == 0 || len(m.timeBuckets) == 0 {
+	empty := func() string {
 		return charts.RenderCentered(m.width, m.height, m.emptyMessage)
 	}
+	if len(m.points) == 0 || len(m.timeBuckets) == 0 {
+		return empty()
+	}
 	if m.maxCount == 0 {
-		return charts.RenderCentered(m.width, m.height, m.emptyMessage)
+		return empty()
 	}
 
 	labels := m.yLabels

@@ -56,9 +56,11 @@ type Option func(*Model)
 // New creates a new timeseries chart model with functional options.
 func New(opts ...Option) Model {
 	m := Model{
-		styles: DefaultStyles(),
-		xSteps: 2,
-		ySteps: 2,
+		styles:     DefaultStyles(),
+		xSteps:     2,
+		ySteps:     2,
+		xFormatter: func(int, float64) string { return "" },
+		yFormatter: func(int, float64) string { return "" },
 	}
 	for _, opt := range opts {
 		opt(&m)
@@ -125,6 +127,36 @@ func (m *Model) SetSize(w, h int) {
 // SetSeries updates the data series.
 func (m *Model) SetSeries(series ...Series) {
 	m.series = series
+}
+
+// SetXFormatter updates the X-axis label formatter.
+func (m *Model) SetXFormatter(formatter func(int, float64) string) {
+	m.xFormatter = formatter
+}
+
+// SetYFormatter updates the Y-axis label formatter.
+func (m *Model) SetYFormatter(formatter func(int, float64) string) {
+	m.yFormatter = formatter
+}
+
+// SetXYSteps updates the number of label steps for X and Y axes.
+func (m *Model) SetXYSteps(xSteps, ySteps int) {
+	m.xSteps, m.ySteps = xSteps, ySteps
+}
+
+// SetTimeRange sets an explicit time range (overrides auto-detection).
+func (m *Model) SetTimeRange(minTime, maxTime time.Time) {
+	m.minTime, m.maxTime = &minTime, &maxTime
+}
+
+// SetValueRange sets an explicit value range (overrides auto-detection).
+func (m *Model) SetValueRange(minValue, maxValue float64) {
+	m.minValue, m.maxValue = &minValue, &maxValue
+}
+
+// SetEmptyMessage updates the empty state message.
+func (m *Model) SetEmptyMessage(msg string) {
+	m.emptyMessage = msg
 }
 
 // Width returns the current width.

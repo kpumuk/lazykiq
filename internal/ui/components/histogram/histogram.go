@@ -109,12 +109,15 @@ func (m Model) View() string {
 	if m.width < 2 || m.height < 2 {
 		return ""
 	}
-	if len(m.totals) == 0 {
+	empty := func() string {
 		return charts.RenderCentered(m.width, m.height, m.emptyMessage)
+	}
+	if len(m.totals) == 0 {
+		return empty()
 	}
 	maxTotal := slices.Max(m.totals)
 	if maxTotal == 0 {
-		return charts.RenderCentered(m.width, m.height, m.emptyMessage)
+		return empty()
 	}
 
 	labels := m.labels
@@ -133,17 +136,17 @@ func (m Model) View() string {
 	labelWidth := charts.MaxLabelWidth(yLabels)
 	chartWidth := max(m.width-labelWidth-1, 1)
 	if chartWidth < 2 {
-		return charts.RenderCentered(m.width, m.height, m.emptyMessage)
+		return empty()
 	}
 
 	plotWidth := max(chartWidth-1, 1)
 	series := charts.RemapSeries(m.totals, plotWidth)
 	if len(series) == 0 {
-		return charts.RenderCentered(m.width, m.height, m.emptyMessage)
+		return empty()
 	}
 	maxVal := slices.Max(series)
 	if maxVal == 0 {
-		return charts.RenderCentered(m.width, m.height, m.emptyMessage)
+		return empty()
 	}
 
 	maxHeight := float64(max(chartHeight-1, 1))
