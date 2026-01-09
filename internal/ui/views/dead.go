@@ -21,6 +21,14 @@ import (
 
 const deadPageSize = 25
 
+type deadJobAction int
+
+const (
+	deadJobActionNone deadJobAction = iota
+	deadJobActionDelete
+	deadJobActionRetry
+)
+
 // deadDataMsg carries dead jobs data internally.
 type deadDataMsg struct {
 	jobs        []*sidekiq.SortedEntry
@@ -49,6 +57,7 @@ type Dead struct {
 	dangerousActionsEnabled bool
 	frameStyles             frame.Styles
 	filterStyle             filterdialog.Styles
+	pendingJobAction        deadJobAction
 	pendingJobEntry         *sidekiq.SortedEntry
 	pendingJobTarget        string
 }
@@ -111,13 +120,22 @@ func (d *Dead) Update(msg tea.Msg) (View, tea.Cmd) {
 		if d.pendingJobTarget != "" && msg.Target != d.pendingJobTarget {
 			return d, nil
 		}
+		action := d.pendingJobAction
 		entry := d.pendingJobEntry
+		d.pendingJobAction = deadJobActionNone
 		d.pendingJobEntry = nil
 		d.pendingJobTarget = ""
 		if !msg.Confirmed {
 			return d, nil
 		}
-		return d, d.deleteJobCmd(entry)
+		switch action {
+		case deadJobActionNone:
+			return d, nil
+		case deadJobActionDelete:
+			return d, d.deleteJobCmd(entry)
+		case deadJobActionRetry:
+			return d, d.retryNowJobCmd(entry)
+		}
 
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -171,9 +189,18 @@ func (d *Dead) Update(msg tea.Msg) (View, tea.Cmd) {
 			switch msg.String() {
 			case "D":
 				if entry, ok := d.selectedEntry(); ok {
+					d.pendingJobAction = deadJobActionDelete
 					d.pendingJobEntry = entry
 					d.pendingJobTarget = entry.JID()
 					return d, d.openDeleteConfirm(entry)
+				}
+				return d, nil
+			case "R":
+				if entry, ok := d.selectedEntry(); ok {
+					d.pendingJobAction = deadJobActionRetry
+					d.pendingJobEntry = entry
+					d.pendingJobTarget = entry.JID()
+					return d, d.openRetryNowConfirm(entry)
 				}
 				return d, nil
 			}
@@ -246,6 +273,7 @@ func (d *Dead) MutationBindings() []key.Binding {
 	}
 	return []key.Binding{
 		helpBinding([]string{"D"}, "shift+d", "delete job"),
+		helpBinding([]string{"R"}, "shift+r", "retry now"),
 	}
 }
 
@@ -269,6 +297,7 @@ func (d *Dead) HelpSections() []HelpSection {
 			Title: "Dangerous Actions",
 			Bindings: []key.Binding{
 				helpBinding([]string{"D"}, "shift+d", "delete job"),
+				helpBinding([]string{"R"}, "shift+r", "retry now"),
 			},
 		})
 	}
@@ -501,22 +530,36 @@ func (d *Dead) openDeleteConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
 	}
 	return func() tea.Msg {
 		return dialogs.OpenDialogMsg{
-			Model: confirmdialog.New(
-				confirmdialog.WithStyles(confirmdialog.Styles{
-					Title:           d.styles.Title,
-					Border:          d.styles.FocusBorder,
-					Text:            d.styles.Text,
-					Muted:           d.styles.Muted,
-					Button:          d.styles.Muted.Padding(0, 1),
-					ButtonYesActive: d.styles.DangerAction,
-					ButtonNoActive:  d.styles.NeutralAction,
-				}),
-				confirmdialog.WithTitle("Delete job"),
-				confirmdialog.WithMessage(fmt.Sprintf(
+			Model: newConfirmDialog(
+				d.styles,
+				"Delete job",
+				fmt.Sprintf(
 					"Are you sure you want to delete the %s job?\n\nThis action is not recoverable.",
 					d.styles.Text.Bold(true).Render(jobName),
-				)),
-				confirmdialog.WithTarget(entry.JID()),
+				),
+				entry.JID(),
+				d.styles.DangerAction,
+			),
+		}
+	}
+}
+
+func (d *Dead) openRetryNowConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
+	jobName := entry.DisplayClass()
+	if jobName == "" {
+		jobName = "selected"
+	}
+	return func() tea.Msg {
+		return dialogs.OpenDialogMsg{
+			Model: newConfirmDialog(
+				d.styles,
+				"Retry job",
+				fmt.Sprintf(
+					"Retry the %s job now?\n\nThis will enqueue it immediately.",
+					d.styles.Text.Bold(true).Render(jobName),
+				),
+				entry.JID(),
+				d.styles.DangerAction,
 			),
 		}
 	}
@@ -526,6 +569,16 @@ func (d *Dead) deleteJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
 	return func() tea.Msg {
 		ctx := devtools.WithTracker(context.Background(), "dead.deleteJobCmd")
 		if err := d.client.DeleteDeadJob(ctx, entry); err != nil {
+			return ConnectionErrorMsg{Err: err}
+		}
+		return RefreshMsg{}
+	}
+}
+
+func (d *Dead) retryNowJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
+	return func() tea.Msg {
+		ctx := devtools.WithTracker(context.Background(), "dead.retryNowJobCmd")
+		if err := d.client.RetryNowDeadJob(ctx, entry); err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}
 		return RefreshMsg{}

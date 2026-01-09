@@ -178,7 +178,8 @@ Key principles:
 
 ## Keys
 
-1-7: views, q: quit, tab/shift+tab: reserved, ?: help, esc: pop stacked view
+1-9: views, q: quit, tab/shift+tab: reserved, ?: help, esc: pop stacked view
+Always update the documentation website under `doc/` with any new shortcuts added to any view.
 
 ## Dependencies
 

@@ -21,6 +21,14 @@ import (
 
 const scheduledPageSize = 25
 
+type scheduledJobAction int
+
+const (
+	scheduledJobActionNone scheduledJobAction = iota
+	scheduledJobActionDelete
+	scheduledJobActionAddToQueue
+)
+
 // scheduledDataMsg carries scheduled jobs data internally.
 type scheduledDataMsg struct {
 	jobs        []*sidekiq.SortedEntry
@@ -49,6 +57,7 @@ type Scheduled struct {
 	dangerousActionsEnabled bool
 	frameStyles             frame.Styles
 	filterStyle             filterdialog.Styles
+	pendingJobAction        scheduledJobAction
 	pendingJobEntry         *sidekiq.SortedEntry
 	pendingJobTarget        string
 }
@@ -111,13 +120,22 @@ func (s *Scheduled) Update(msg tea.Msg) (View, tea.Cmd) {
 		if s.pendingJobTarget != "" && msg.Target != s.pendingJobTarget {
 			return s, nil
 		}
+		action := s.pendingJobAction
 		entry := s.pendingJobEntry
+		s.pendingJobAction = scheduledJobActionNone
 		s.pendingJobEntry = nil
 		s.pendingJobTarget = ""
 		if !msg.Confirmed {
 			return s, nil
 		}
-		return s, s.deleteJobCmd(entry)
+		switch action {
+		case scheduledJobActionNone:
+			return s, nil
+		case scheduledJobActionDelete:
+			return s, s.deleteJobCmd(entry)
+		case scheduledJobActionAddToQueue:
+			return s, s.addToQueueJobCmd(entry)
+		}
 
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -171,9 +189,18 @@ func (s *Scheduled) Update(msg tea.Msg) (View, tea.Cmd) {
 			switch msg.String() {
 			case "D":
 				if entry, ok := s.selectedEntry(); ok {
+					s.pendingJobAction = scheduledJobActionDelete
 					s.pendingJobEntry = entry
 					s.pendingJobTarget = entry.JID()
 					return s, s.openDeleteConfirm(entry)
+				}
+				return s, nil
+			case "R":
+				if entry, ok := s.selectedEntry(); ok {
+					s.pendingJobAction = scheduledJobActionAddToQueue
+					s.pendingJobEntry = entry
+					s.pendingJobTarget = entry.JID()
+					return s, s.openAddToQueueConfirm(entry)
 				}
 				return s, nil
 			}
@@ -246,6 +273,7 @@ func (s *Scheduled) MutationBindings() []key.Binding {
 	}
 	return []key.Binding{
 		helpBinding([]string{"D"}, "shift+d", "delete job"),
+		helpBinding([]string{"R"}, "shift+r", "add to queue"),
 	}
 }
 
@@ -269,6 +297,7 @@ func (s *Scheduled) HelpSections() []HelpSection {
 			Title: "Dangerous Actions",
 			Bindings: []key.Binding{
 				helpBinding([]string{"D"}, "shift+d", "delete job"),
+				helpBinding([]string{"R"}, "shift+r", "add to queue"),
 			},
 		})
 	}
@@ -489,22 +518,36 @@ func (s *Scheduled) openDeleteConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
 	}
 	return func() tea.Msg {
 		return dialogs.OpenDialogMsg{
-			Model: confirmdialog.New(
-				confirmdialog.WithStyles(confirmdialog.Styles{
-					Title:           s.styles.Title,
-					Border:          s.styles.FocusBorder,
-					Text:            s.styles.Text,
-					Muted:           s.styles.Muted,
-					Button:          s.styles.Muted.Padding(0, 1),
-					ButtonYesActive: s.styles.DangerAction,
-					ButtonNoActive:  s.styles.NeutralAction,
-				}),
-				confirmdialog.WithTitle("Delete job"),
-				confirmdialog.WithMessage(fmt.Sprintf(
+			Model: newConfirmDialog(
+				s.styles,
+				"Delete job",
+				fmt.Sprintf(
 					"Are you sure you want to delete the %s job?\n\nThis action is not recoverable.",
 					s.styles.Text.Bold(true).Render(jobName),
-				)),
-				confirmdialog.WithTarget(entry.JID()),
+				),
+				entry.JID(),
+				s.styles.DangerAction,
+			),
+		}
+	}
+}
+
+func (s *Scheduled) openAddToQueueConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
+	jobName := entry.DisplayClass()
+	if jobName == "" {
+		jobName = "selected"
+	}
+	return func() tea.Msg {
+		return dialogs.OpenDialogMsg{
+			Model: newConfirmDialog(
+				s.styles,
+				"Add to queue",
+				fmt.Sprintf(
+					"Add the %s job to the queue now?\n\nThis will enqueue it immediately.",
+					s.styles.Text.Bold(true).Render(jobName),
+				),
+				entry.JID(),
+				s.styles.DangerAction,
 			),
 		}
 	}
@@ -514,6 +557,16 @@ func (s *Scheduled) deleteJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
 	return func() tea.Msg {
 		ctx := devtools.WithTracker(context.Background(), "scheduled.deleteJobCmd")
 		if err := s.client.DeleteScheduledJob(ctx, entry); err != nil {
+			return ConnectionErrorMsg{Err: err}
+		}
+		return RefreshMsg{}
+	}
+}
+
+func (s *Scheduled) addToQueueJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
+	return func() tea.Msg {
+		ctx := devtools.WithTracker(context.Background(), "scheduled.addToQueueJobCmd")
+		if err := s.client.AddScheduledJobToQueue(ctx, entry); err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}
 		return RefreshMsg{}

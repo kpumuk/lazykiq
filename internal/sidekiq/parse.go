@@ -20,6 +20,14 @@ func parseOptionalInt64(field any) (int64, bool) {
 			return 0, false
 		}
 		return parsed, true
+	case json.Number:
+		if parsed, err := value.Int64(); err == nil {
+			return parsed, true
+		}
+		if parsed, err := value.Float64(); err == nil {
+			return int64(parsed), true
+		}
+		return 0, false
 	case float64:
 		return int64(value), true
 	case int64:
@@ -42,6 +50,14 @@ func parseOptionalFloat64(field any) (float64, bool) {
 			return 0, false
 		}
 		return parsed, true
+	case json.Number:
+		if parsed, err := value.Float64(); err == nil {
+			return parsed, true
+		}
+		if parsed, err := value.Int64(); err == nil {
+			return float64(parsed), true
+		}
+		return 0, false
 	case float64:
 		return value, true
 	case int64:

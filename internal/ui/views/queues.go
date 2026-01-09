@@ -130,22 +130,15 @@ func (q *QueuesList) Update(msg tea.Msg) (View, tea.Cmd) {
 				if queueName, ok := q.selectedQueueName(); ok {
 					return q, func() tea.Msg {
 						return dialogs.OpenDialogMsg{
-							Model: confirmdialog.New(
-								confirmdialog.WithStyles(confirmdialog.Styles{
-									Title:           q.styles.Title,
-									Border:          q.styles.FocusBorder,
-									Text:            q.styles.Text,
-									Muted:           q.styles.Muted,
-									Button:          q.styles.Muted.Padding(0, 1),
-									ButtonYesActive: q.styles.DangerAction,
-									ButtonNoActive:  q.styles.NeutralAction,
-								}),
-								confirmdialog.WithTitle("Delete queue"),
-								confirmdialog.WithMessage(fmt.Sprintf(
+							Model: newConfirmDialog(
+								q.styles,
+								"Delete queue",
+								fmt.Sprintf(
 									"Are you sure you want to delete the %s queue?\n\nThis will remove all jobs currently in the queue.\nThe queue will be created again automatically if you add new jobs to it later.",
 									q.styles.Text.Bold(true).Render(queueName),
-								)),
-								confirmdialog.WithTarget(queueName),
+								),
+								queueName,
+								q.styles.DangerAction,
 							),
 						}
 					}

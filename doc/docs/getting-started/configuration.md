@@ -3,7 +3,7 @@ title: "Configuration"
 description: "Configure Lazykiq flags and Redis connection."
 summary: "Configure Lazykiq flags and Redis connection."
 date: 2025-12-30T00:00:00Z
-lastmod: 2026-01-08T00:00:00Z
+lastmod: 2026-01-09T00:00:00Z
 draft: false
 weight: 25
 toc: true
@@ -42,6 +42,10 @@ lazykiq --redis redis://redis.internal:6379/2
 ```
 
 ## Dangerous actions
+
+{{< callout context="danger" title="Danger" icon="outline/alert-octagon" >}}
+For limitations and caveats, see [Danger Mode]({{< relref "danger-mode.md" >}}).
+{{< /callout >}}
 
 Lazykiq is read-only by default. To enable actions that *change* Sidekiq state,
 start it with `--danger` (alias: `--yolo`). This enables mutation operations

@@ -2,6 +2,7 @@ package sidekiq
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"testing"
 	"time"
@@ -546,6 +547,171 @@ func TestKillRetryJob_MovesToDead(t *testing.T) {
 	windowEnd := end.Add(scoreWindow)
 	if deadAt.Before(windowStart) || deadAt.After(windowEnd) {
 		t.Fatalf("dead score time = %v, want between %v and %v", deadAt, windowStart, windowEnd)
+	}
+}
+
+func TestRetryNowRetryJob_Sidekiq7(t *testing.T) {
+	mr, client := setupTestRedis(t)
+	ctx := context.Background()
+
+	originalNow := nowFuncSidekiq
+	nowFuncSidekiq = func() time.Time {
+		return time.Unix(1700000000, 123456000)
+	}
+	t.Cleanup(func() { nowFuncSidekiq = originalNow })
+
+	jobJSON := `{"jid":"retry_now","class":"MyJob","queue":"default","args":[1,2],"retry_count":2,"created_at":1700000000.5}`
+	_, _ = mr.ZAdd("retry", testScoreA, jobJSON)
+
+	entry := NewSortedEntry(jobJSON, testScoreA)
+	if err := client.RetryNowRetryJob(ctx, entry); err != nil {
+		t.Fatalf("RetryNowRetryJob failed: %v", err)
+	}
+
+	if size, _ := client.redis.ZCard(ctx, "retry").Result(); size != 0 {
+		t.Fatalf("retry size = %d, want 0", size)
+	}
+
+	if ok, _ := client.redis.SIsMember(ctx, "queues", "default").Result(); !ok {
+		t.Fatalf("queue set missing default queue")
+	}
+
+	values, err := client.redis.LRange(ctx, "queue:default", 0, -1).Result()
+	if err != nil {
+		t.Fatalf("queue lrange failed: %v", err)
+	}
+	if len(values) != 1 {
+		t.Fatalf("queue size = %d, want 1", len(values))
+	}
+
+	var payload map[string]any
+	if err := safeParseJSON([]byte(values[0]), &payload); err != nil {
+		t.Fatalf("safeParseJSON queued payload: %v", err)
+	}
+
+	retryCount, ok := payload["retry_count"].(json.Number)
+	if !ok || retryCount.String() != "1" {
+		t.Fatalf("retry_count = %v, want 1", payload["retry_count"])
+	}
+
+	enqueuedAt, ok := payload["enqueued_at"].(json.Number)
+	if !ok {
+		t.Fatalf("enqueued_at type = %T, want json.Number", payload["enqueued_at"])
+	}
+	if enqueuedAt.String() != "1700000000.123456" {
+		t.Fatalf("enqueued_at = %q, want %q", enqueuedAt.String(), "1700000000.123456")
+	}
+}
+
+func TestRetryNowRetryJob_Sidekiq8(t *testing.T) {
+	mr, client := setupTestRedis(t)
+	ctx := context.Background()
+
+	originalNow := nowFuncSidekiq
+	nowFuncSidekiq = func() time.Time {
+		return time.Unix(1700000000, 123456000)
+	}
+	t.Cleanup(func() { nowFuncSidekiq = originalNow })
+
+	jobJSON := `{"jid":"retry_now8","class":"MyJob","queue":"default","args":[1,2],"retry_count":1,"created_at":1700000000123}`
+	_, _ = mr.ZAdd("retry", testScoreA, jobJSON)
+
+	entry := NewSortedEntry(jobJSON, testScoreA)
+	if err := client.RetryNowRetryJob(ctx, entry); err != nil {
+		t.Fatalf("RetryNowRetryJob failed: %v", err)
+	}
+
+	values, err := client.redis.LRange(ctx, "queue:default", 0, -1).Result()
+	if err != nil {
+		t.Fatalf("queue lrange failed: %v", err)
+	}
+	if len(values) != 1 {
+		t.Fatalf("queue size = %d, want 1", len(values))
+	}
+
+	var payload map[string]any
+	if err := safeParseJSON([]byte(values[0]), &payload); err != nil {
+		t.Fatalf("safeParseJSON queued payload: %v", err)
+	}
+
+	enqueuedAt, ok := payload["enqueued_at"].(json.Number)
+	if !ok {
+		t.Fatalf("enqueued_at type = %T, want json.Number", payload["enqueued_at"])
+	}
+	if enqueuedAt.String() != "1700000000123" {
+		t.Fatalf("enqueued_at = %q, want %q", enqueuedAt.String(), "1700000000123")
+	}
+}
+
+func TestAddScheduledJobToQueue_RemovesAt(t *testing.T) {
+	mr, client := setupTestRedis(t)
+	ctx := context.Background()
+
+	originalNow := nowFuncSidekiq
+	nowFuncSidekiq = func() time.Time {
+		return time.Unix(1700000000, 0)
+	}
+	t.Cleanup(func() { nowFuncSidekiq = originalNow })
+
+	jobJSON := `{"jid":"sched_now","class":"MyJob","queue":"default","args":[],"created_at":1700000000.0,"at":1700000100.0}`
+	_, _ = mr.ZAdd("schedule", testScoreA, jobJSON)
+
+	entry := NewSortedEntry(jobJSON, testScoreA)
+	if err := client.AddScheduledJobToQueue(ctx, entry); err != nil {
+		t.Fatalf("AddScheduledJobToQueue failed: %v", err)
+	}
+
+	values, err := client.redis.LRange(ctx, "queue:default", 0, -1).Result()
+	if err != nil {
+		t.Fatalf("queue lrange failed: %v", err)
+	}
+	if len(values) != 1 {
+		t.Fatalf("queue size = %d, want 1", len(values))
+	}
+
+	var payload map[string]any
+	if err := safeParseJSON([]byte(values[0]), &payload); err != nil {
+		t.Fatalf("safeParseJSON queued payload: %v", err)
+	}
+	if _, ok := payload["at"]; ok {
+		t.Fatalf("expected \"at\" to be removed")
+	}
+	if _, ok := payload["enqueued_at"]; !ok {
+		t.Fatalf("expected enqueued_at to be set")
+	}
+}
+
+func TestRetryNowDeadJob_MissingQueue(t *testing.T) {
+	mr, client := setupTestRedis(t)
+	ctx := context.Background()
+
+	jobJSON := `{"jid":"dead_now","class":"MyJob","args":[],"created_at":1700000000.5}`
+	_, _ = mr.ZAdd("dead", testScoreA, jobJSON)
+
+	entry := NewSortedEntry(jobJSON, testScoreA)
+	if err := client.RetryNowDeadJob(ctx, entry); err == nil {
+		t.Fatalf("RetryNowDeadJob should fail without queue")
+	}
+
+	if size, _ := client.redis.ZCard(ctx, "dead").Result(); size != 1 {
+		t.Fatalf("dead size = %d, want 1", size)
+	}
+}
+
+func TestRetryNowRetryJob_InvalidJSON(t *testing.T) {
+	mr, client := setupTestRedis(t)
+	ctx := context.Background()
+
+	jobJSON := `{"jid":"bad-json"`
+	_, _ = mr.ZAdd("retry", testScoreA, jobJSON)
+
+	entry := NewSortedEntry(jobJSON, testScoreA)
+	if err := client.RetryNowRetryJob(ctx, entry); err == nil {
+		t.Fatalf("RetryNowRetryJob should fail for invalid JSON")
+	}
+
+	if size, _ := client.redis.ZCard(ctx, "retry").Result(); size != 1 {
+		t.Fatalf("retry size = %d, want 1", size)
 	}
 }
 

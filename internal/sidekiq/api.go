@@ -81,8 +81,17 @@ type API interface {
 	// KillRetryJob moves a retry job to the dead set.
 	KillRetryJob(ctx context.Context, entry *SortedEntry) error
 
+	// RetryNowRetryJob moves a retry job to its queue immediately.
+	RetryNowRetryJob(ctx context.Context, entry *SortedEntry) error
+
+	// AddScheduledJobToQueue moves a scheduled job to its queue immediately.
+	AddScheduledJobToQueue(ctx context.Context, entry *SortedEntry) error
+
 	// DeleteScheduledJob removes a scheduled job from the scheduled set.
 	DeleteScheduledJob(ctx context.Context, entry *SortedEntry) error
+
+	// RetryNowDeadJob moves a dead job to its queue immediately.
+	RetryNowDeadJob(ctx context.Context, entry *SortedEntry) error
 
 	// DeleteDeadJob removes a dead job from the dead set.
 	DeleteDeadJob(ctx context.Context, entry *SortedEntry) error

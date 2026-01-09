@@ -2,7 +2,9 @@ package sidekiq
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -215,6 +217,74 @@ func (c *Client) KillRetryJob(ctx context.Context, entry *SortedEntry) error {
 	return err
 }
 
+// RetryNowRetryJob moves a retry job to its queue immediately (Sidekiq "Retry Now").
+func (c *Client) RetryNowRetryJob(ctx context.Context, entry *SortedEntry) error {
+	return c.moveSortedEntryToQueue(ctx, retrySetKey, entry, true)
+}
+
+// RetryNowDeadJob moves a dead job to its queue immediately (Sidekiq "Retry Now").
+func (c *Client) RetryNowDeadJob(ctx context.Context, entry *SortedEntry) error {
+	return c.moveSortedEntryToQueue(ctx, deadSetKey, entry, true)
+}
+
+// AddScheduledJobToQueue moves a scheduled job to its queue immediately (Sidekiq "Add to queue").
+func (c *Client) AddScheduledJobToQueue(ctx context.Context, entry *SortedEntry) error {
+	return c.moveSortedEntryToQueue(ctx, scheduleSetKey, entry, false)
+}
+
+func (c *Client) moveSortedEntryToQueue(ctx context.Context, key string, entry *SortedEntry, decrementRetryCount bool) error {
+	if entry == nil || entry.JobRecord == nil {
+		return errors.New("sorted entry is nil")
+	}
+	rawValue := entry.Value()
+	if rawValue == "" {
+		return errors.New("sorted entry payload is empty")
+	}
+
+	payload := make(map[string]any)
+	if err := safeParseJSON([]byte(rawValue), &payload); err != nil {
+		return err
+	}
+
+	queueName, ok := payload["queue"].(string)
+	if !ok || strings.TrimSpace(queueName) == "" {
+		return errors.New("job payload missing queue")
+	}
+
+	format := detectTimestampFormat(payload, c.DetectVersion(ctx))
+	if decrementRetryCount {
+		decrementRetryCountField(payload)
+	}
+
+	// Ensure we always enqueue immediately.
+	delete(payload, "at")
+
+	if payload["created_at"] == nil {
+		payload["created_at"] = nowTimestamp(format)
+	}
+	payload["enqueued_at"] = nowTimestamp(format)
+
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
+	removed, err := c.redis.ZRem(ctx, key, rawValue).Result()
+	if err != nil && !errors.Is(err, redis.Nil) {
+		return err
+	}
+	if removed == 0 {
+		return errors.New("job not found")
+	}
+
+	_, err = c.redis.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+		pipe.SAdd(ctx, queueSetKey, queueName)
+		pipe.LPush(ctx, queuePrefixKey+queueName, encoded)
+		return nil
+	})
+	return err
+}
+
 // DeleteScheduledJob removes a job from the scheduled set.
 func (c *Client) DeleteScheduledJob(ctx context.Context, entry *SortedEntry) error {
 	return c.deleteSortedEntry(ctx, scheduleSetKey, entry)
@@ -239,4 +309,29 @@ func (c *Client) deleteSortedEntry(ctx context.Context, key string, entry *Sorte
 		return err
 	}
 	return nil
+}
+
+var nowFuncSidekiq = time.Now
+
+func nowTimestamp(format timestampFormat) json.Number {
+	now := nowFuncSidekiq()
+	if format == timestampMilliseconds {
+		ms := now.UnixNano() / int64(time.Millisecond)
+		return json.Number(strconv.FormatInt(ms, 10))
+	}
+	seconds := float64(now.UnixNano()) / float64(time.Second)
+	seconds = math.Round(seconds*1e6) / 1e6
+	return json.Number(strconv.FormatFloat(seconds, 'f', -1, 64))
+}
+
+func decrementRetryCountField(payload map[string]any) {
+	raw, ok := payload["retry_count"]
+	if !ok || raw == nil {
+		return
+	}
+	count, ok := parseOptionalInt64(raw)
+	if !ok {
+		return
+	}
+	payload["retry_count"] = json.Number(strconv.FormatInt(count-1, 10))
 }
