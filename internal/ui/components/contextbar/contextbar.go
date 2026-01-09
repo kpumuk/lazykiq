@@ -86,6 +86,8 @@ type Styles struct {
 	Desc       lipgloss.Style
 	DangerKey  lipgloss.Style
 	DangerDesc lipgloss.Style
+	HintGap    lipgloss.Style
+	HintColumn lipgloss.Style
 }
 
 // DefaultStyles returns default styles for the context bar.
@@ -98,6 +100,8 @@ func DefaultStyles() Styles {
 		Desc:       lipgloss.NewStyle(),
 		DangerKey:  lipgloss.NewStyle(),
 		DangerDesc: lipgloss.NewStyle(),
+		HintGap:    lipgloss.NewStyle().PaddingRight(2),
+		HintColumn: lipgloss.NewStyle(),
 	}
 }
 
@@ -370,9 +374,9 @@ func (m Model) buildTwoColumnTable(tbl *table.Table, normalItems, dangerItems []
 	}
 	tbl.StyleFunc(func(_, col int) lipgloss.Style {
 		if col == 0 {
-			return lipgloss.NewStyle().PaddingRight(m.gap)
+			return m.styles.HintGap
 		}
-		return lipgloss.NewStyle()
+		return m.styles.HintColumn
 	})
 }
 
