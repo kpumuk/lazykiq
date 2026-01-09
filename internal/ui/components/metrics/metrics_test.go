@@ -1,9 +1,12 @@
 package metrics
 
 import (
+	"fmt"
 	"testing"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/exp/golden"
 )
 
 func testStyles() Styles {
@@ -27,50 +30,52 @@ func testData() Data {
 	}
 }
 
-func TestViewSnapshots(t *testing.T) {
+func TestViewDimensions(t *testing.T) {
 	data := testData()
-	cases := []struct {
-		name     string
-		width    int
-		expected string
+	cases := map[string]struct {
+		width     int
+		wantEmpty bool
 	}{
-		{
-			name:     "truncate",
-			width:    99,
-			expected: " Processed: 1   Failed: 22   Busy: 333   Enqueued: 4.4K   Retries: 55.6K   Scheduled: 6   Dead: 7.8",
-		},
-		{
-			name:     "min-spacing",
-			width:    101,
-			expected: " Processed: 1   Failed: 22   Busy: 333   Enqueued: 4.4K   Retries: 55.6K   Scheduled: 6   Dead: 7.8M ",
-		},
-		{
-			name:     "trim-padding",
-			width:    116,
-			expected: " Processed: 1    Failed: 22      Busy: 333        Enqueued: 4.4K   Retries: 55.6K   Scheduled: 6     Dead: 7.8M     ",
-		},
-		{
-			name:     "equal-width",
-			width:    118,
-			expected: " Processed: 1     Failed: 22       Busy: 333        Enqueued: 4.4K   Retries: 55.6K   Scheduled: 6     Dead: 7.8M     ",
-		},
-		{
-			name:     "extra-distributed",
-			width:    120,
-			expected: " Processed: 1      Failed: 22        Busy: 333        Enqueued: 4.4K   Retries: 55.6K   Scheduled: 6     Dead: 7.8M     ",
-		},
+		"zero width": {width: 0, wantEmpty: true},
+		"narrow":     {width: 60, wantEmpty: false},
+		"wide":       {width: 120, wantEmpty: false},
 	}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
 			m := New(
 				WithStyles(testStyles()),
 				WithWidth(tc.width),
 				WithData(data),
 			)
-			if got := m.View(); got != tc.expected {
-				t.Fatalf("unexpected output:\nexpected %q\ngot      %q", tc.expected, got)
+			output := m.View()
+			if tc.wantEmpty {
+				if output != "" {
+					t.Fatalf("expected empty output, got %q", output)
+				}
+				return
 			}
+			if w := ansi.StringWidth(output); w != tc.width {
+				t.Fatalf("expected width %d, got %d", tc.width, w)
+			}
+			if m.Height() != 1 {
+				t.Fatalf("expected height 1, got %d", m.Height())
+			}
+		})
+	}
+}
+
+func TestGoldenMetricsWidths(t *testing.T) {
+	data := testData()
+	for _, width := range []int{99, 101, 116, 118, 120} {
+		t.Run(fmt.Sprintf("width %d", width), func(t *testing.T) {
+			m := New(
+				WithStyles(testStyles()),
+				WithWidth(width),
+				WithData(data),
+			)
+			output := ansi.Strip(m.View())
+			golden.RequireEqual(t, []byte(output))
 		})
 	}
 }

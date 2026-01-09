@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/exp/golden"
 )
 
 func TestFrameLineCountAndWidth(t *testing.T) {
@@ -80,4 +82,43 @@ func TestFrameFocusStyles(t *testing.T) {
 	if strings.Contains(unfocused.View(), "\x1b[") {
 		t.Fatalf("expected unfocused view to avoid ANSI sequences")
 	}
+}
+
+func TestGoldenFrameBasic(t *testing.T) {
+	box := New(
+		WithSize(20, 5),
+		WithTitle("Title"),
+		WithTitlePadding(1),
+		WithContent("hello"),
+	)
+
+	output := ansi.Strip(box.View())
+	golden.RequireEqual(t, []byte(output))
+}
+
+func TestGoldenFrameWithMeta(t *testing.T) {
+	box := New(
+		WithSize(30, 6),
+		WithTitle("Queue"),
+		WithTitlePadding(1),
+		WithMeta("3 items"),
+		WithMetaPadding(1),
+		WithContent("row 1\nrow 2"),
+	)
+
+	output := ansi.Strip(box.View())
+	golden.RequireEqual(t, []byte(output))
+}
+
+func TestGoldenFrameWithFilter(t *testing.T) {
+	box := New(
+		WithSize(26, 4),
+		WithTitle("Errors"),
+		WithFilter("timeout"),
+		WithTitlePadding(1),
+		WithContent("row"),
+	)
+
+	output := ansi.Strip(box.View())
+	golden.RequireEqual(t, []byte(output))
 }
