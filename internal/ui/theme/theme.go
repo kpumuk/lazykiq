@@ -80,7 +80,7 @@ var DefaultTheme = Theme{
 	},
 	MetricsBarBg: compat.CompleteAdaptiveColor{
 		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#1c7ed6"), ANSI256: lipgloss.Color("33"), ANSI: lipgloss.Color("12")},
-		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#4dabf7"), ANSI256: lipgloss.Color("25"), ANSI: lipgloss.Color("4")},
+		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#275DA9"), ANSI256: lipgloss.Color("25"), ANSI: lipgloss.Color("4")},
 	},
 
 	// Borders
