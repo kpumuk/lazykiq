@@ -11,6 +11,7 @@ import (
 	"github.com/kpumuk/lazykiq/internal/devtools"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
+	"github.com/kpumuk/lazykiq/internal/ui/components/lazytable"
 	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
@@ -19,7 +20,16 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/format"
 )
 
-const scheduledPageSize = 25
+const (
+	scheduledWindowPages      = 3
+	scheduledFallbackPageSize = 25
+)
+
+type scheduledPayload struct {
+	jobs       []*sidekiq.SortedEntry
+	firstEntry *sidekiq.SortedEntry
+	lastEntry  *sidekiq.SortedEntry
+}
 
 type scheduledJobAction int
 
@@ -28,16 +38,6 @@ const (
 	scheduledJobActionDelete
 	scheduledJobActionAddToQueue
 )
-
-// scheduledDataMsg carries scheduled jobs data internally.
-type scheduledDataMsg struct {
-	jobs        []*sidekiq.SortedEntry
-	firstEntry  *sidekiq.SortedEntry
-	lastEntry   *sidekiq.SortedEntry
-	currentPage int
-	totalPages  int
-	totalSize   int64
-}
 
 // Scheduled shows jobs scheduled for future execution.
 type Scheduled struct {
@@ -48,11 +48,8 @@ type Scheduled struct {
 	jobs                    []*sidekiq.SortedEntry
 	firstEntry              *sidekiq.SortedEntry
 	lastEntry               *sidekiq.SortedEntry
-	table                   table.Model
+	lazy                    lazytable.Model
 	ready                   bool
-	currentPage             int
-	totalPages              int
-	totalSize               int64
 	filter                  string
 	dangerousActionsEnabled bool
 	frameStyles             frame.Styles
@@ -64,39 +61,52 @@ type Scheduled struct {
 
 // NewScheduled creates a new Scheduled view.
 func NewScheduled(client sidekiq.API) *Scheduled {
-	return &Scheduled{
-		client:      client,
-		currentPage: 1,
-		totalPages:  1,
-		table: table.New(
-			table.WithColumns(scheduledJobColumns),
-			table.WithEmptyMessage("No scheduled jobs"),
+	s := &Scheduled{
+		client: client,
+		lazy: lazytable.New(
+			lazytable.WithTableOptions(
+				table.WithColumns(scheduledJobColumns),
+				table.WithEmptyMessage("No scheduled jobs"),
+			),
+			lazytable.WithWindowPages(scheduledWindowPages),
+			lazytable.WithFallbackPageSize(scheduledFallbackPageSize),
 		),
 	}
+	s.lazy.SetFetcher(s.fetchWindow)
+	s.lazy.SetErrorHandler(func(err error) tea.Msg {
+		return ConnectionErrorMsg{Err: err}
+	})
+	return s
 }
 
 // Init implements View.
 func (s *Scheduled) Init() tea.Cmd {
 	s.reset()
-	return s.fetchDataCmd()
+	return s.lazy.RequestWindow(0, lazytable.CursorStart)
 }
 
 // Update implements View.
 func (s *Scheduled) Update(msg tea.Msg) (View, tea.Cmd) {
 	switch msg := msg.(type) {
-	case scheduledDataMsg:
-		s.jobs = msg.jobs
-		s.firstEntry = msg.firstEntry
-		s.lastEntry = msg.lastEntry
-		s.currentPage = msg.currentPage
-		s.totalPages = msg.totalPages
-		s.totalSize = msg.totalSize
+	case lazytable.DataMsg:
+		if msg.RequestID != s.lazy.RequestID() {
+			return s, nil
+		}
+		if payload, ok := msg.Result.Payload.(scheduledPayload); ok {
+			s.jobs = payload.jobs
+			s.firstEntry = payload.firstEntry
+			s.lastEntry = payload.lastEntry
+		}
 		s.ready = true
-		s.updateTableRows()
-		return s, nil
+		var cmd tea.Cmd
+		s.lazy, cmd = s.lazy.Update(msg)
+		return s, cmd
 
 	case RefreshMsg:
-		return s, s.fetchDataCmd()
+		if s.lazy.Loading() {
+			return s, nil
+		}
+		return s, s.lazy.RequestWindow(s.lazy.WindowStart(), lazytable.CursorKeep)
 
 	case filterdialog.ActionMsg:
 		if msg.Action == filterdialog.ActionNone {
@@ -106,9 +116,9 @@ func (s *Scheduled) Update(msg tea.Msg) (View, tea.Cmd) {
 			return s, nil
 		}
 		s.filter = msg.Query
-		s.currentPage = 1
-		s.table.SetCursor(0)
-		return s, s.fetchDataCmd()
+		s.updateEmptyMessage()
+		s.lazy.Table().SetCursor(0)
+		return s, s.lazy.RequestWindow(0, lazytable.CursorStart)
 
 	case confirmdialog.ActionMsg:
 		if !s.dangerousActionsEnabled {
@@ -144,9 +154,9 @@ func (s *Scheduled) Update(msg tea.Msg) (View, tea.Cmd) {
 		case "ctrl+u":
 			if s.filter != "" {
 				s.filter = ""
-				s.currentPage = 1
-				s.table.SetCursor(0)
-				return s, s.fetchDataCmd()
+				s.updateEmptyMessage()
+				s.lazy.Table().SetCursor(0)
+				return s, s.lazy.RequestWindow(0, lazytable.CursorStart)
 			}
 			return s, nil
 		case "c":
@@ -158,26 +168,20 @@ func (s *Scheduled) Update(msg tea.Msg) (View, tea.Cmd) {
 
 		switch msg.String() {
 		case "alt+left", "[":
-			if s.filter != "" {
-				return s, nil
-			}
-			if s.currentPage > 1 {
-				s.currentPage--
-				return s, s.fetchDataCmd()
+			if s.filter == "" {
+				s.lazy.MovePage(-1)
+				return s, s.lazy.MaybePrefetch()
 			}
 			return s, nil
 		case "alt+right", "]":
-			if s.filter != "" {
-				return s, nil
-			}
-			if s.currentPage < s.totalPages {
-				s.currentPage++
-				return s, s.fetchDataCmd()
+			if s.filter == "" {
+				s.lazy.MovePage(1)
+				return s, s.lazy.MaybePrefetch()
 			}
 			return s, nil
 		case "enter":
 			// Show detail for selected job
-			if idx := s.table.Cursor(); idx >= 0 && idx < len(s.jobs) {
+			if idx := s.lazy.Table().Cursor(); idx >= 0 && idx < len(s.jobs) {
 				return s, func() tea.Msg {
 					return ShowJobDetailMsg{Job: s.jobs[idx].JobRecord}
 				}
@@ -206,8 +210,9 @@ func (s *Scheduled) Update(msg tea.Msg) (View, tea.Cmd) {
 			}
 		}
 
-		s.table, _ = s.table.Update(msg)
-		return s, nil
+		var cmd tea.Cmd
+		s.lazy, cmd = s.lazy.Update(msg)
+		return s, cmd
 	}
 
 	return s, nil
@@ -219,7 +224,7 @@ func (s *Scheduled) View() string {
 		return s.renderMessage("Loading...")
 	}
 
-	if len(s.jobs) == 0 && s.totalSize == 0 && s.filter == "" {
+	if len(s.jobs) == 0 && s.lazy.Total() == 0 && s.filter == "" {
 		return s.renderMessage("No scheduled jobs")
 	}
 
@@ -251,7 +256,7 @@ func (s *Scheduled) ContextItems() []ContextItem {
 	items := []ContextItem{
 		{Label: "Next scheduled in", Value: nextScheduled},
 		{Label: "Latest scheduled in", Value: latestScheduled},
-		{Label: "Total items", Value: format.Number(s.totalSize)},
+		{Label: "Total items", Value: format.Number(s.lazy.Total())},
 	}
 	return items
 }
@@ -261,7 +266,7 @@ func (s *Scheduled) HintBindings() []key.Binding {
 	return []key.Binding{
 		helpBinding([]string{"/"}, "/", "filter"),
 		helpBinding([]string{"ctrl+u"}, "ctrl+u", "reset filter"),
-		helpBinding([]string{"[", "]"}, "[ ⋰ ]", "change page"),
+		helpBinding([]string{"[", "]"}, "[ ⋰ ]", "page up/down"),
 		helpBinding([]string{"enter"}, "enter", "job detail"),
 	}
 }
@@ -285,8 +290,8 @@ func (s *Scheduled) HelpSections() []HelpSection {
 			Bindings: []key.Binding{
 				helpBinding([]string{"/"}, "/", "filter"),
 				helpBinding([]string{"ctrl+u"}, "ctrl+u", "clear filter"),
-				helpBinding([]string{"["}, "[", "previous page"),
-				helpBinding([]string{"]"}, "]", "next page"),
+				helpBinding([]string{"["}, "[", "page up"),
+				helpBinding([]string{"]"}, "]", "page down"),
 				helpBinding([]string{"c"}, "c", "copy jid"),
 				helpBinding([]string{"enter"}, "enter", "job detail"),
 			},
@@ -306,7 +311,7 @@ func (s *Scheduled) HelpSections() []HelpSection {
 
 // TableHelp implements TableHelpProvider.
 func (s *Scheduled) TableHelp() []key.Binding {
-	return tableHelpBindings(s.table.KeyMap)
+	return tableHelpBindings(s.lazy.Table().KeyMap)
 }
 
 // SetSize implements View.
@@ -354,76 +359,86 @@ func (s *Scheduled) SetStyles(styles Styles) View {
 		Placeholder: styles.Muted,
 		Cursor:      styles.Text,
 	}
-	s.table.SetStyles(table.Styles{
-		Text:      styles.Text,
-		Muted:     styles.Muted,
-		Header:    styles.TableHeader,
-		Selected:  styles.TableSelected,
-		Separator: styles.TableSeparator,
+	s.lazy.SetSpinnerStyle(styles.Muted)
+	s.lazy.SetTableStyles(table.Styles{
+		Text:           styles.Text,
+		Muted:          styles.Muted,
+		Header:         styles.TableHeader,
+		Selected:       styles.TableSelected,
+		Separator:      styles.TableSeparator,
+		ScrollbarTrack: styles.ScrollbarTrack,
+		ScrollbarThumb: styles.ScrollbarThumb,
 	})
 	return s
 }
 
-// fetchDataCmd fetches scheduled jobs data from Redis.
-func (s *Scheduled) fetchDataCmd() tea.Cmd {
-	return func() tea.Msg {
-		ctx := devtools.WithTracker(context.Background(), "scheduled.fetchDataCmd")
+func (s *Scheduled) fetchWindow(
+	ctx context.Context,
+	windowStart int,
+	windowSize int,
+	_ lazytable.CursorIntent,
+) (lazytable.FetchResult, error) {
+	ctx = devtools.WithTracker(ctx, "scheduled.fetchWindow")
 
-		if s.filter != "" {
-			jobs, err := s.client.ScanScheduledJobs(ctx, s.filter)
-			if err != nil {
-				return ConnectionErrorMsg{Err: err}
-			}
-			firstEntry, lastEntry := sortedEntryBounds(jobs)
-
-			return scheduledDataMsg{
-				jobs:        jobs,
-				firstEntry:  firstEntry,
-				lastEntry:   lastEntry,
-				currentPage: 1,
-				totalPages:  1,
-				totalSize:   int64(len(jobs)),
-			}
-		}
-
-		currentPage := s.currentPage
-		totalPages := 1
-
-		start := (currentPage - 1) * scheduledPageSize
-		jobs, totalSize, err := s.client.GetScheduledJobs(ctx, start, scheduledPageSize)
+	if s.filter != "" {
+		jobs, err := s.client.ScanScheduledJobs(ctx, s.filter)
 		if err != nil {
-			return ConnectionErrorMsg{Err: err}
+			return lazytable.FetchResult{}, err
 		}
+		firstEntry, lastEntry := sortedEntryBounds(jobs)
+		return lazytable.FetchResult{
+			Rows:        s.buildRows(jobs),
+			Total:       int64(len(jobs)),
+			WindowStart: 0,
+			Payload: scheduledPayload{
+				jobs:       jobs,
+				firstEntry: firstEntry,
+				lastEntry:  lastEntry,
+			},
+		}, nil
+	}
 
-		var firstEntry *sidekiq.SortedEntry
-		var lastEntry *sidekiq.SortedEntry
-		if totalSize > 0 {
-			firstEntry, lastEntry, err = s.client.GetScheduledBounds(ctx)
+	if windowSize <= 0 {
+		windowSize = max(scheduledFallbackPageSize, 1) * scheduledWindowPages
+	}
+
+	jobs, totalSize, err := s.client.GetScheduledJobs(ctx, windowStart, windowSize)
+	if err != nil {
+		return lazytable.FetchResult{}, err
+	}
+
+	if totalSize > 0 {
+		maxStart := max(int(totalSize)-windowSize, 0)
+		if windowStart > maxStart {
+			windowStart = maxStart
+			jobs, totalSize, err = s.client.GetScheduledJobs(ctx, windowStart, windowSize)
 			if err != nil {
-				return ConnectionErrorMsg{Err: err}
+				return lazytable.FetchResult{}, err
 			}
 		}
+	} else {
+		windowStart = 0
+	}
 
-		if totalSize > 0 {
-			totalPages = int((totalSize + scheduledPageSize - 1) / scheduledPageSize)
-		}
-
-		if currentPage > totalPages {
-			currentPage = totalPages
-		}
-		if currentPage < 1 {
-			currentPage = 1
-		}
-
-		return scheduledDataMsg{
-			jobs:        jobs,
-			firstEntry:  firstEntry,
-			lastEntry:   lastEntry,
-			currentPage: currentPage,
-			totalPages:  totalPages,
-			totalSize:   totalSize,
+	var firstEntry *sidekiq.SortedEntry
+	var lastEntry *sidekiq.SortedEntry
+	if totalSize > 0 {
+		firstEntry, lastEntry, err = s.client.GetScheduledBounds(ctx)
+		if err != nil {
+			return lazytable.FetchResult{}, err
 		}
 	}
+
+	return lazytable.FetchResult{
+		Rows:        s.buildRows(jobs),
+		Total:       totalSize,
+		WindowStart: windowStart,
+		Payload: scheduledPayload{
+			jobs:       jobs,
+			firstEntry: firstEntry,
+			lastEntry:  lastEntry,
+		},
+	}, nil
 }
 
 func (s *Scheduled) renderMessage(msg string) string {
@@ -435,19 +450,16 @@ func (s *Scheduled) renderMessage(msg string) string {
 }
 
 func (s *Scheduled) reset() {
-	s.currentPage = 1
-	s.totalPages = 1
-	s.totalSize = 0
 	s.jobs = nil
 	s.firstEntry = nil
 	s.lastEntry = nil
 	s.ready = false
-	s.table.SetRows(nil)
-	s.table.SetCursor(0)
+	s.lazy.Reset()
+	s.updateEmptyMessage()
 }
 
 func (s *Scheduled) selectedEntry() (*sidekiq.SortedEntry, bool) {
-	idx := s.table.Cursor()
+	idx := s.lazy.Table().Cursor()
 	if idx < 0 || idx >= len(s.jobs) {
 		return nil, false
 	}
@@ -468,24 +480,23 @@ func (s *Scheduled) updateTableSize() {
 	tableHeight := max(s.height-2, 3)
 	// Table width: view width - box borders - padding
 	tableWidth := s.width - 4
-	s.table.SetSize(tableWidth, tableHeight)
+	s.lazy.SetSize(tableWidth, tableHeight)
 }
 
-// updateTableRows converts job data to table rows.
-func (s *Scheduled) updateTableRows() {
+func (s *Scheduled) updateEmptyMessage() {
 	if s.filter != "" {
-		s.table.SetEmptyMessage("No matches")
+		s.lazy.SetEmptyMessage("No matches")
 	} else {
-		s.table.SetEmptyMessage("No scheduled jobs")
+		s.lazy.SetEmptyMessage("No scheduled jobs")
 	}
+}
 
-	rows := make([]table.Row, 0, len(s.jobs))
+func (s *Scheduled) buildRows(jobs []*sidekiq.SortedEntry) []table.Row {
+	rows := make([]table.Row, 0, len(jobs))
 	now := time.Now()
-	for _, job := range s.jobs {
-		// Format "when" as time until job runs (job.At() is in the future)
+	for _, job := range jobs {
 		when := format.Duration(int64(job.At().Sub(now).Seconds()))
-
-		row := table.Row{
+		rows = append(rows, table.Row{
 			ID: job.JID(),
 			Cells: []string{
 				when,
@@ -493,11 +504,25 @@ func (s *Scheduled) updateTableRows() {
 				job.DisplayClass(),
 				format.Args(job.DisplayArgs()),
 			},
-		}
-		rows = append(rows, row)
+		})
 	}
-	s.table.SetRows(rows)
-	s.updateTableSize()
+	return rows
+}
+
+func (s *Scheduled) rowsMeta() string {
+	start, end, total := s.lazy.Range()
+	totalLabel := format.Number(total)
+	if total == 0 || len(s.jobs) == 0 {
+		return s.styles.MetricLabel.Render("rows: ") + s.styles.MetricValue.Render("0/0")
+	}
+
+	rangeLabel := fmt.Sprintf(
+		"%s-%s/%s",
+		format.Number(int64(start)),
+		format.Number(int64(end)),
+		totalLabel,
+	)
+	return s.styles.MetricLabel.Render("rows: ") + s.styles.MetricValue.Render(rangeLabel)
 }
 
 func (s *Scheduled) openFilterDialog() tea.Cmd {
@@ -575,12 +600,10 @@ func (s *Scheduled) addToQueueJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
 
 // renderJobsBox renders the bordered box containing the jobs table.
 func (s *Scheduled) renderJobsBox() string {
-	// Build meta: page only
-	pageInfo := s.styles.MetricLabel.Render("page: ") + s.styles.MetricValue.Render(fmt.Sprintf("%d/%d", s.currentPage, s.totalPages))
-	meta := pageInfo
+	meta := s.rowsMeta()
 
 	// Get table content
-	content := s.table.View()
+	content := s.lazy.View()
 
 	box := frame.New(
 		frame.WithStyles(s.frameStyles),

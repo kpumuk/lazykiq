@@ -262,11 +262,13 @@ func (p *ProcessesList) Dispose() {
 func (p *ProcessesList) SetStyles(styles Styles) View {
 	p.styles = styles
 	p.table.SetStyles(table.Styles{
-		Text:      styles.Text,
-		Muted:     styles.Muted,
-		Header:    styles.TableHeader,
-		Selected:  styles.TableSelected,
-		Separator: styles.TableSeparator,
+		Text:           styles.Text,
+		Muted:          styles.Muted,
+		Header:         styles.TableHeader,
+		Selected:       styles.TableSelected,
+		Separator:      styles.TableSeparator,
+		ScrollbarTrack: styles.ScrollbarTrack,
+		ScrollbarThumb: styles.ScrollbarThumb,
 	})
 	p.frameStyles = frame.Styles{
 		Focused: frame.StyleState{
