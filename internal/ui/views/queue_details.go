@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/kpumuk/lazykiq/internal/devtools"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
+	"github.com/kpumuk/lazykiq/internal/ui/components/lazytable"
 	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 	"github.com/kpumuk/lazykiq/internal/ui/format"
@@ -26,16 +28,16 @@ type QueueInfo struct {
 	Latency float64
 }
 
-// queuesDataMsg carries queues data internally.
-type queuesDataMsg struct {
+type queueDetailsPayload struct {
 	queues        []*QueueInfo
 	jobs          []*sidekiq.PositionedEntry
-	currentPage   int
-	totalPages    int
 	selectedQueue int
 }
 
-const queuesPageSize = 25
+const (
+	queuesWindowPages      = 3
+	queuesFallbackPageSize = 25
+)
 
 // QueueDetails shows the jobs in a specific Sidekiq queue.
 type QueueDetails struct {
@@ -45,10 +47,8 @@ type QueueDetails struct {
 	styles           Styles
 	queues           []*QueueInfo
 	jobs             []*sidekiq.PositionedEntry
-	table            table.Model
+	lazy             lazytable.Model
 	ready            bool
-	currentPage      int
-	totalPages       int
 	selectedQueue    int
 	selectedQueueKey string // Queue name to select after loading
 	displayOrder     []int  // Maps ctrl+1-5 to queue indices
@@ -56,41 +56,58 @@ type QueueDetails struct {
 
 // NewQueueDetails creates a new QueueDetails view.
 func NewQueueDetails(client sidekiq.API) *QueueDetails {
-	return &QueueDetails{
+	q := &QueueDetails{
 		client:        client,
-		currentPage:   1,
-		totalPages:    1,
 		selectedQueue: 0,
-		table: table.New(
-			table.WithColumns(queueJobColumns),
-			table.WithEmptyMessage("No jobs in queue"),
+		lazy: lazytable.New(
+			lazytable.WithTableOptions(
+				table.WithColumns(queueJobColumns),
+				table.WithEmptyMessage("No jobs in queue"),
+			),
+			lazytable.WithWindowPages(queuesWindowPages),
+			lazytable.WithFallbackPageSize(queuesFallbackPageSize),
 		),
 	}
+	q.lazy.SetFetcher(q.fetchWindow)
+	q.lazy.SetErrorHandler(func(err error) tea.Msg {
+		return ConnectionErrorMsg{Err: err}
+	})
+	return q
 }
 
 // Init implements View.
 func (q *QueueDetails) Init() tea.Cmd {
 	q.reset()
-	return q.fetchDataCmd()
+	return q.lazy.RequestWindow(0, lazytable.CursorStart)
 }
 
 // Update implements View.
 func (q *QueueDetails) Update(msg tea.Msg) (View, tea.Cmd) {
 	switch msg := msg.(type) {
-	case queuesDataMsg:
-		q.queues = msg.queues
-		q.jobs = msg.jobs
-		q.currentPage = msg.currentPage
-		q.totalPages = msg.totalPages
-		q.selectedQueue = msg.selectedQueue
+	case lazytable.DataMsg:
+		if msg.RequestID != q.lazy.RequestID() {
+			return q, nil
+		}
+		if payload, ok := msg.Result.Payload.(queueDetailsPayload); ok {
+			q.queues = payload.queues
+			q.jobs = payload.jobs
+			q.selectedQueue = payload.selectedQueue
+		}
 		// Clear the queue key after successfully loading
 		q.selectedQueueKey = ""
 		q.ready = true
-		q.updateTableRows()
-		return q, nil
+		var cmd tea.Cmd
+		q.lazy, cmd = q.lazy.Update(msg)
+		return q, cmd
 
 	case RefreshMsg:
-		return q, q.fetchDataCmd()
+		if q.lazy.Loading() {
+			return q, nil
+		}
+		if q.selectedQueueKey != "" {
+			return q, q.lazy.RequestWindow(0, lazytable.CursorStart)
+		}
+		return q, q.lazy.RequestWindow(q.lazy.WindowStart(), lazytable.CursorKeep)
 
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -100,7 +117,7 @@ func (q *QueueDetails) Update(msg tea.Msg) (View, tea.Cmd) {
 				return ShowQueuesListMsg{}
 			}
 		case "c":
-			if idx := q.table.Cursor(); idx >= 0 && idx < len(q.jobs) {
+			if idx := q.lazy.Table().Cursor(); idx >= 0 && idx < len(q.jobs) {
 				if q.jobs[idx] != nil {
 					return q, copyTextCmd(q.jobs[idx].JID())
 				}
@@ -113,26 +130,20 @@ func (q *QueueDetails) Update(msg tea.Msg) (View, tea.Cmd) {
 				if queueIdx >= 0 && queueIdx < len(q.queues) && q.selectedQueue != queueIdx {
 					q.selectedQueue = queueIdx
 					q.selectedQueueKey = "" // Clear queue key when manually switching
-					q.currentPage = 1
-					return q, q.fetchDataCmd()
+					q.lazy.Table().SetCursor(0)
+					return q, q.lazy.RequestWindow(0, lazytable.CursorStart)
 				}
 			}
 			return q, nil
 		case "alt+left", "[":
-			if q.currentPage > 1 {
-				q.currentPage--
-				return q, q.fetchDataCmd()
-			}
-			return q, nil
+			q.lazy.MovePage(-1)
+			return q, q.lazy.MaybePrefetch()
 		case "alt+right", "]":
-			if q.currentPage < q.totalPages {
-				q.currentPage++
-				return q, q.fetchDataCmd()
-			}
-			return q, nil
+			q.lazy.MovePage(1)
+			return q, q.lazy.MaybePrefetch()
 		case "enter":
 			// Show detail for selected job
-			if idx := q.table.Cursor(); idx >= 0 && idx < len(q.jobs) {
+			if idx := q.lazy.Table().Cursor(); idx >= 0 && idx < len(q.jobs) {
 				return q, func() tea.Msg {
 					return ShowJobDetailMsg{Job: q.jobs[idx].JobRecord}
 				}
@@ -140,8 +151,9 @@ func (q *QueueDetails) Update(msg tea.Msg) (View, tea.Cmd) {
 			return q, nil
 		}
 
-		q.table, _ = q.table.Update(msg)
-		return q, nil
+		var cmd tea.Cmd
+		q.lazy, cmd = q.lazy.Update(msg)
+		return q, cmd
 	}
 
 	return q, nil
@@ -196,8 +208,16 @@ func (q *QueueDetails) ContextItems() []ContextItem {
 	if queueName != "" {
 		items = append(items, ContextItem{Label: "Queue", Value: q.styles.QueueText.Render(queueName)})
 	}
-	if q.totalPages > 0 {
-		items = append(items, ContextItem{Label: "Page", Value: fmt.Sprintf("%d/%d", q.currentPage, q.totalPages)})
+	if start, end, total := q.lazy.Range(); total > 0 && len(q.jobs) > 0 {
+		items = append(items, ContextItem{
+			Label: "Rows",
+			Value: fmt.Sprintf(
+				"%s-%s/%s",
+				format.Number(int64(start)),
+				format.Number(int64(end)),
+				format.Number(total),
+			),
+		})
 	}
 	return items
 }
@@ -206,7 +226,7 @@ func (q *QueueDetails) ContextItems() []ContextItem {
 func (q *QueueDetails) HintBindings() []key.Binding {
 	return []key.Binding{
 		helpBinding([]string{"s"}, "s", "switch queue"),
-		helpBinding([]string{"[", "]"}, "[ ⋰ ]", "change page"),
+		helpBinding([]string{"[", "]"}, "[ ⋰ ]", "page up/down"),
 		helpBinding([]string{"enter"}, "enter", "job detail"),
 	}
 }
@@ -218,8 +238,8 @@ func (q *QueueDetails) HelpSections() []HelpSection {
 		Bindings: []key.Binding{
 			helpBinding([]string{"s"}, "s", "switch queue"),
 			helpBinding([]string{"ctrl+1"}, "ctrl+1-5", "select queue"),
-			helpBinding([]string{"["}, "[", "previous page"),
-			helpBinding([]string{"]"}, "]", "next page"),
+			helpBinding([]string{"["}, "[", "page up"),
+			helpBinding([]string{"]"}, "]", "page down"),
 			helpBinding([]string{"c"}, "c", "copy jid"),
 			helpBinding([]string{"enter"}, "enter", "job detail"),
 		},
@@ -229,7 +249,7 @@ func (q *QueueDetails) HelpSections() []HelpSection {
 
 // TableHelp implements TableHelpProvider.
 func (q *QueueDetails) TableHelp() []key.Binding {
-	return tableHelpBindings(q.table.KeyMap)
+	return tableHelpBindings(q.lazy.Table().KeyMap)
 }
 
 // SetSize implements View.
@@ -249,12 +269,15 @@ func (q *QueueDetails) Dispose() {
 // SetStyles implements View.
 func (q *QueueDetails) SetStyles(styles Styles) View {
 	q.styles = styles
-	q.table.SetStyles(table.Styles{
-		Text:      styles.Text,
-		Muted:     styles.Muted,
-		Header:    styles.TableHeader,
-		Selected:  styles.TableSelected,
-		Separator: styles.TableSeparator,
+	q.lazy.SetSpinnerStyle(styles.Muted)
+	q.lazy.SetTableStyles(table.Styles{
+		Text:           styles.Text,
+		Muted:          styles.Muted,
+		Header:         styles.TableHeader,
+		Selected:       styles.TableSelected,
+		Separator:      styles.TableSeparator,
+		ScrollbarTrack: styles.ScrollbarTrack,
+		ScrollbarThumb: styles.ScrollbarThumb,
 	})
 	return q
 }
@@ -262,7 +285,7 @@ func (q *QueueDetails) SetStyles(styles Styles) View {
 // SetQueue allows setting the selected queue by name.
 func (q *QueueDetails) SetQueue(queueName string) {
 	q.selectedQueueKey = queueName
-	q.currentPage = 1
+	q.lazy.Table().SetCursor(0)
 	// Try to find and select immediately if queues are already loaded
 	for i, queue := range q.queues {
 		if queue.Name == queueName {
@@ -272,81 +295,99 @@ func (q *QueueDetails) SetQueue(queueName string) {
 	}
 }
 
-// fetchDataCmd fetches queues data from Redis.
-func (q *QueueDetails) fetchDataCmd() tea.Cmd {
-	return func() tea.Msg {
-		ctx := devtools.WithTracker(context.Background(), "queue_details.fetchDataCmd")
+func (q *QueueDetails) fetchWindow(
+	ctx context.Context,
+	windowStart int,
+	windowSize int,
+	_ lazytable.CursorIntent,
+) (lazytable.FetchResult, error) {
+	ctx = devtools.WithTracker(ctx, "queue_details.fetchWindow")
 
-		queues, err := q.client.GetQueues(ctx)
-		if err != nil {
-			return ConnectionErrorMsg{Err: err}
-		}
+	queues, err := q.client.GetQueues(ctx)
+	if err != nil {
+		return lazytable.FetchResult{}, err
+	}
 
-		queueInfos := make([]*QueueInfo, len(queues))
-		for i, queue := range queues {
-			size, _ := queue.Size(ctx)
-			latency, _ := queue.Latency(ctx)
-			queueInfos[i] = &QueueInfo{
-				Name:    queue.Name(),
-				Size:    size,
-				Latency: latency,
-			}
-		}
-
-		var jobs []*sidekiq.PositionedEntry
-		var totalSize int64
-		currentPage := q.currentPage
-		totalPages := 1
-		selectedQueue := q.selectedQueue
-
-		// If a queue key is set, find it by name
-		if q.selectedQueueKey != "" && len(queues) > 0 {
-			found := false
-			for i, queue := range queues {
-				if queue.Name() == q.selectedQueueKey {
-					selectedQueue = i
-					found = true
-					break
-				}
-			}
-			// If queue was not found, default to first queue
-			if !found {
-				selectedQueue = 0
-			}
-		} else if selectedQueue >= len(queues) {
-			selectedQueue = 0
-		}
-
-		if len(queues) > 0 && selectedQueue < len(queues) {
-			start := (currentPage - 1) * queuesPageSize
-			jobs, totalSize, _ = queues[selectedQueue].GetJobs(ctx, start, queuesPageSize)
-
-			if totalSize > 0 {
-				totalPages = int((totalSize + queuesPageSize - 1) / queuesPageSize)
-			}
-
-			if currentPage > totalPages {
-				currentPage = totalPages
-			}
-			if currentPage < 1 {
-				currentPage = 1
-			}
-		}
-
-		return queuesDataMsg{
-			queues:        queueInfos,
-			jobs:          jobs,
-			currentPage:   currentPage,
-			totalPages:    totalPages,
-			selectedQueue: selectedQueue,
+	queueInfos := make([]*QueueInfo, len(queues))
+	for i, queue := range queues {
+		size, _ := queue.Size(ctx)
+		latency, _ := queue.Latency(ctx)
+		queueInfos[i] = &QueueInfo{
+			Name:    queue.Name(),
+			Size:    size,
+			Latency: latency,
 		}
 	}
+
+	selectedQueue := q.resolveSelectedQueue(queues, q.selectedQueue)
+	jobs, totalSize, windowStart := q.fetchQueueJobs(ctx, queues, selectedQueue, windowStart, windowSize)
+
+	return lazytable.FetchResult{
+		Rows:        q.buildRows(jobs),
+		Total:       totalSize,
+		WindowStart: windowStart,
+		Payload: queueDetailsPayload{
+			queues:        queueInfos,
+			jobs:          jobs,
+			selectedQueue: selectedQueue,
+		},
+	}, nil
+}
+
+func (q *QueueDetails) resolveSelectedQueue(queues []*sidekiq.Queue, selected int) int {
+	if len(queues) == 0 {
+		return 0
+	}
+
+	if q.selectedQueueKey != "" {
+		if idx := slices.IndexFunc(queues, func(queue *sidekiq.Queue) bool {
+			return queue.Name() == q.selectedQueueKey
+		}); idx >= 0 {
+			return idx
+		}
+		return 0
+	}
+
+	if selected < 0 || selected >= len(queues) {
+		return 0
+	}
+	return selected
+}
+
+func (q *QueueDetails) fetchQueueJobs(
+	ctx context.Context,
+	queues []*sidekiq.Queue,
+	selectedQueue int,
+	windowStart int,
+	windowSize int,
+) ([]*sidekiq.PositionedEntry, int64, int) {
+	if len(queues) == 0 || selectedQueue < 0 || selectedQueue >= len(queues) {
+		return nil, 0, 0
+	}
+
+	if windowSize <= 0 {
+		windowSize = max(queuesFallbackPageSize, 1) * queuesWindowPages
+	}
+
+	queue := queues[selectedQueue]
+	jobs, totalSize, _ := queue.GetJobs(ctx, windowStart, windowSize)
+
+	if totalSize > 0 {
+		maxStart := max(int(totalSize)-windowSize, 0)
+		if windowStart > maxStart {
+			windowStart = maxStart
+			jobs, totalSize, _ = queue.GetJobs(ctx, windowStart, windowSize)
+		}
+	} else {
+		windowStart = 0
+	}
+
+	return jobs, totalSize, windowStart
 }
 
 func (q *QueueDetails) reset() {
 	q.ready = false
-	q.currentPage = 1
-	q.totalPages = 1
+	q.lazy.Reset()
 	// Only reset selectedQueue if no queue key is set
 	if q.selectedQueueKey == "" {
 		q.selectedQueue = 0
@@ -354,8 +395,6 @@ func (q *QueueDetails) reset() {
 	q.queues = nil
 	q.jobs = nil
 	q.displayOrder = nil
-	q.table.SetRows(nil)
-	q.table.SetCursor(0)
 }
 
 // renderQueueList renders the compact queue list (outside the border).
@@ -459,14 +498,13 @@ func (q *QueueDetails) updateTableSize() {
 	tableHeight := max(q.height-2, 3)
 	// Table width: view width - box borders - padding
 	tableWidth := q.width - 4
-	q.table.SetSize(tableWidth, tableHeight)
+	q.lazy.SetSize(tableWidth, tableHeight)
 }
 
-// updateTableRows converts job data to table rows.
-func (q *QueueDetails) updateTableRows() {
-	rows := make([]table.Row, 0, len(q.jobs))
-	for _, job := range q.jobs {
-		row := table.Row{
+func (q *QueueDetails) buildRows(jobs []*sidekiq.PositionedEntry) []table.Row {
+	rows := make([]table.Row, 0, len(jobs))
+	for _, job := range jobs {
+		rows = append(rows, table.Row{
 			ID: job.JID(),
 			Cells: []string{
 				strconv.Itoa(job.Position),
@@ -474,11 +512,25 @@ func (q *QueueDetails) updateTableRows() {
 				format.Args(job.DisplayArgs()),
 				formatContext(job.Context()),
 			},
-		}
-		rows = append(rows, row)
+		})
 	}
-	q.table.SetRows(rows)
-	q.updateTableSize()
+	return rows
+}
+
+func (q *QueueDetails) rowsMeta() string {
+	start, end, total := q.lazy.Range()
+	totalLabel := format.Number(total)
+	if total == 0 || len(q.jobs) == 0 {
+		return q.styles.MetricLabel.Render("rows: ") + q.styles.MetricValue.Render("0/0")
+	}
+
+	rangeLabel := fmt.Sprintf(
+		"%s-%s/%s",
+		format.Number(int64(start)),
+		format.Number(int64(end)),
+		totalLabel,
+	)
+	return q.styles.MetricLabel.Render("rows: ") + q.styles.MetricValue.Render(rangeLabel)
 }
 
 // formatContext formats the context map as a string.
@@ -507,14 +559,13 @@ func (q *QueueDetails) renderJobsBox() string {
 	// Build meta: SIZE and PAGE info
 	sep := q.styles.Muted.Render(" • ")
 	sizeInfo := q.styles.MetricLabel.Render("SIZE: ") + q.styles.MetricValue.Render(format.ShortNumber(queueSize))
-	pageInfo := q.styles.MetricLabel.Render("PAGE: ") + q.styles.MetricValue.Render(fmt.Sprintf("%d/%d", q.currentPage, q.totalPages))
-	meta := sizeInfo + sep + pageInfo
+	meta := sizeInfo + sep + q.rowsMeta()
 
 	// Calculate box height
 	boxHeight := q.height
 
 	// Get table content
-	content := q.table.View()
+	content := q.lazy.View()
 
 	box := frame.New(
 		frame.WithStyles(frame.Styles{

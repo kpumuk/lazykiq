@@ -35,6 +35,8 @@ type Styles struct {
 	TableHeader    lipgloss.Style
 	TableSelected  lipgloss.Style
 	TableSeparator lipgloss.Style
+	ScrollbarTrack lipgloss.Style
+	ScrollbarThumb lipgloss.Style
 }
 
 // DefaultStyles returns zero-value styles.
@@ -259,11 +261,13 @@ func (m *Model) toggleFocus() tea.Cmd {
 
 func (m *Model) applyStyles() {
 	m.table.SetStyles(table.Styles{
-		Text:      m.styles.Text,
-		Muted:     m.styles.Muted,
-		Header:    m.styles.TableHeader,
-		Selected:  m.styles.TableSelected,
-		Separator: m.styles.TableSeparator,
+		Text:           m.styles.Text,
+		Muted:          m.styles.Muted,
+		Header:         m.styles.TableHeader,
+		Selected:       m.styles.TableSelected,
+		Separator:      m.styles.TableSeparator,
+		ScrollbarTrack: m.styles.ScrollbarTrack,
+		ScrollbarThumb: m.styles.ScrollbarThumb,
 	})
 	inputStyles := m.input.Styles()
 	inputStyles.Focused.Text = m.styles.Text

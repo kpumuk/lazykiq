@@ -234,11 +234,13 @@ func (b *Busy) Dispose() {
 func (b *Busy) SetStyles(styles Styles) View {
 	b.styles = styles
 	b.table.SetStyles(table.Styles{
-		Text:      styles.Text,
-		Muted:     styles.Muted,
-		Header:    styles.TableHeader,
-		Selected:  styles.TableSelected,
-		Separator: styles.TableSeparator,
+		Text:           styles.Text,
+		Muted:          styles.Muted,
+		Header:         styles.TableHeader,
+		Selected:       styles.TableSelected,
+		Separator:      styles.TableSeparator,
+		ScrollbarTrack: styles.ScrollbarTrack,
+		ScrollbarThumb: styles.ScrollbarThumb,
 	})
 	b.filterStyle = filterdialog.Styles{
 		Title:       styles.Title,

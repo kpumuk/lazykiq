@@ -218,11 +218,13 @@ func (e *ErrorsSummary) SetStyles(styles Styles) View {
 		Cursor:      styles.Text,
 	}
 	e.table.SetStyles(table.Styles{
-		Text:      styles.Text,
-		Muted:     styles.Muted,
-		Header:    styles.TableHeader,
-		Selected:  styles.TableSelected,
-		Separator: styles.TableSeparator,
+		Text:           styles.Text,
+		Muted:          styles.Muted,
+		Header:         styles.TableHeader,
+		Selected:       styles.TableSelected,
+		Separator:      styles.TableSeparator,
+		ScrollbarTrack: styles.ScrollbarTrack,
+		ScrollbarThumb: styles.ScrollbarThumb,
 	})
 	return e
 }

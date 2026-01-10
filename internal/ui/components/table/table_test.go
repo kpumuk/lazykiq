@@ -14,11 +14,13 @@ import (
 
 func blankStyles() Styles {
 	return Styles{
-		Text:      lipgloss.NewStyle(),
-		Muted:     lipgloss.NewStyle(),
-		Header:    lipgloss.NewStyle(),
-		Selected:  lipgloss.NewStyle(),
-		Separator: lipgloss.NewStyle(),
+		Text:           lipgloss.NewStyle(),
+		Muted:          lipgloss.NewStyle(),
+		Header:         lipgloss.NewStyle(),
+		Selected:       lipgloss.NewStyle(),
+		Separator:      lipgloss.NewStyle(),
+		ScrollbarTrack: lipgloss.NewStyle(),
+		ScrollbarThumb: lipgloss.NewStyle(),
 	}
 }
 
@@ -302,28 +304,28 @@ func TestGetVisibleContent(t *testing.T) {
 		content        string
 		yOffset        int
 		viewportHeight int
-		want           string
+		want           []string
 	}{
 		{
 			name:           "Empty",
 			content:        "",
 			yOffset:        0,
 			viewportHeight: 2,
-			want:           "",
+			want:           []string{"", ""},
 		},
 		{
 			name:           "ClampOffset",
 			content:        "a\nb\nc",
 			yOffset:        5,
 			viewportHeight: 1,
-			want:           "c",
+			want:           []string{"c"},
 		},
 		{
 			name:           "SliceWindow",
 			content:        "a\nb\nc",
 			yOffset:        1,
 			viewportHeight: 2,
-			want:           "b\nc",
+			want:           []string{"b", "c"},
 		},
 	}
 
@@ -335,7 +337,7 @@ func TestGetVisibleContent(t *testing.T) {
 				viewportHeight: tc.viewportHeight,
 			}
 			got := table.getVisibleContent()
-			if got != tc.want {
+			if strings.Join(got, "\n") != strings.Join(tc.want, "\n") {
 				t.Fatalf("want %q, got %q", tc.want, got)
 			}
 		})
@@ -403,7 +405,7 @@ func TestNavigationMethods(t *testing.T) {
 			name:       "ScrollToEnd",
 			action:     func(m *Model) { m.ScrollToEnd() },
 			wantCursor: 0,
-			wantX:      9,
+			wantX:      10,
 			wantY:      0,
 		},
 	}
@@ -562,8 +564,8 @@ func TestSetRows_ClampsHorizontalScroll(t *testing.T) {
 		row("row-1", "a", "b"),
 	})
 
-	if table.xOffset != 0 {
-		t.Fatalf("want xOffset 0 after rows shrink, got %d", table.xOffset)
+	if table.xOffset != table.maxScrollOffset() {
+		t.Fatalf("want xOffset %d after rows shrink, got %d", table.maxScrollOffset(), table.xOffset)
 	}
 }
 
@@ -594,8 +596,8 @@ func TestSetColumns_ClampsHorizontalScroll(t *testing.T) {
 		row("row-1", "a", "b"),
 	})
 
-	if table.xOffset != 0 {
-		t.Fatalf("want xOffset 0 after columns shrink, got %d", table.xOffset)
+	if table.xOffset != table.maxScrollOffset() {
+		t.Fatalf("want xOffset %d after columns shrink, got %d", table.maxScrollOffset(), table.xOffset)
 	}
 }
 

@@ -276,11 +276,13 @@ func (q *QueuesList) Dispose() {
 func (q *QueuesList) SetStyles(styles Styles) View {
 	q.styles = styles
 	q.table.SetStyles(table.Styles{
-		Text:      styles.Text,
-		Muted:     styles.Muted,
-		Header:    styles.TableHeader,
-		Selected:  styles.TableSelected,
-		Separator: styles.TableSeparator,
+		Text:           styles.Text,
+		Muted:          styles.Muted,
+		Header:         styles.TableHeader,
+		Selected:       styles.TableSelected,
+		Separator:      styles.TableSeparator,
+		ScrollbarTrack: styles.ScrollbarTrack,
+		ScrollbarThumb: styles.ScrollbarThumb,
 	})
 	q.frameStyles = frame.Styles{
 		Focused: frame.StyleState{

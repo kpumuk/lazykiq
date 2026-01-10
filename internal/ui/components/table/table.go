@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/kpumuk/lazykiq/internal/mathutil"
+	"github.com/kpumuk/lazykiq/internal/ui/components/scrollbar"
 )
 
 // Row represents one line in the table. ID is used to preserve selection across refreshes.
@@ -107,21 +108,25 @@ func DefaultKeyMap() KeyMap {
 
 // Styles holds the styles needed by the table.
 type Styles struct {
-	Text      lipgloss.Style
-	Muted     lipgloss.Style
-	Header    lipgloss.Style
-	Selected  lipgloss.Style
-	Separator lipgloss.Style
+	Text           lipgloss.Style
+	Muted          lipgloss.Style
+	Header         lipgloss.Style
+	Selected       lipgloss.Style
+	Separator      lipgloss.Style
+	ScrollbarTrack lipgloss.Style
+	ScrollbarThumb lipgloss.Style
 }
 
 // DefaultStyles returns a set of default style definitions for this table.
 func DefaultStyles() Styles {
 	return Styles{
-		Text:      lipgloss.NewStyle(),
-		Muted:     lipgloss.NewStyle().Faint(true),
-		Header:    lipgloss.NewStyle().Bold(true),
-		Selected:  lipgloss.NewStyle().Reverse(true),
-		Separator: lipgloss.NewStyle().Faint(true),
+		Text:           lipgloss.NewStyle(),
+		Muted:          lipgloss.NewStyle().Faint(true),
+		Header:         lipgloss.NewStyle().Bold(true),
+		Selected:       lipgloss.NewStyle().Reverse(true),
+		Separator:      lipgloss.NewStyle().Faint(true),
+		ScrollbarTrack: lipgloss.NewStyle(),
+		ScrollbarThumb: lipgloss.NewStyle(),
 	}
 }
 
@@ -129,22 +134,27 @@ func DefaultStyles() Styles {
 type Model struct {
 	KeyMap KeyMap
 
-	columns        []Column
-	rows           []Row
-	styles         Styles
-	width          int
-	height         int
-	cursor         int
-	yOffset        int
-	xOffset        int
-	maxRowWidth    int
-	colWidths      []int // dynamic column widths (max of defined and actual)
-	lastColWidth   int
-	emptyMessage   string
-	content        string // pre-rendered body content
-	viewportHeight int
-	fullRows       map[int]string // row index -> full-width content
-	selectionSpans map[int]SelectionSpan
+	columns           []Column
+	rows              []Row
+	styles            Styles
+	width             int
+	height            int
+	cursor            int
+	yOffset           int
+	xOffset           int
+	maxRowWidth       int
+	colWidths         []int // dynamic column widths (max of defined and actual)
+	lastColWidth      int
+	emptyMessage      string
+	content           string // pre-rendered body content
+	viewportHeight    int
+	fullRows          map[int]string // row index -> full-width content
+	selectionSpans    map[int]SelectionSpan
+	scrollbar         scrollbar.Model
+	scrollbarOverride bool
+	scrollbarTotal    int
+	scrollbarOffset   int
+	scrollbarHeader   []string
 }
 
 // Option is used to set options in New.
@@ -163,6 +173,7 @@ func New(opts ...Option) Model {
 	}
 
 	m.updateViewport()
+	m.updateScrollbar()
 
 	return m
 }
@@ -221,6 +232,7 @@ func WithEmptyMessage(msg string) Option {
 func (m *Model) SetStyles(s Styles) {
 	m.styles = s
 	m.updateViewport()
+	m.updateScrollbar()
 }
 
 // SetSize sets the table dimensions.
@@ -232,6 +244,7 @@ func (m *Model) SetSize(width, height int) {
 	m.height = height
 	m.viewportHeight = max(height-2, 1) // minus header and separator
 	m.updateViewport()
+	m.updateScrollbar()
 	m.clampScroll()
 }
 
@@ -276,6 +289,8 @@ func (m *Model) SetRowsWithMeta(rows []Row, fullRows map[int]string, spans map[i
 // SetColumns sets a new columns state.
 func (m *Model) SetColumns(cols []Column) {
 	m.columns = cols
+	m.colWidths = nil
+	m.lastColWidth = 0
 	m.updateViewport()
 }
 
@@ -298,10 +313,34 @@ func (m *Model) SetSelectionSpans(spans map[int]SelectionSpan) {
 	m.clampScroll()
 }
 
+// SetScrollbarHeader sets scrollbar header lines (one per header line).
+func (m *Model) SetScrollbarHeader(lines []string) {
+	m.scrollbarHeader = lines
+}
+
+// SetScrollbar overrides the scrollbar total and offset values.
+func (m *Model) SetScrollbar(total, offset int) {
+	m.scrollbarOverride = true
+	m.scrollbarTotal = total
+	m.scrollbarOffset = offset
+}
+
+// ClearScrollbar clears the scrollbar override, using row-based values instead.
+func (m *Model) ClearScrollbar() {
+	m.scrollbarOverride = false
+}
+
 // SetCursor sets the cursor position in the table.
 func (m *Model) SetCursor(n int) {
 	m.cursor = mathutil.Clamp(n, 0, len(m.rows)-1)
 	m.ensureSelectedVisible()
+	m.updateViewport()
+}
+
+// SetYOffset sets the vertical scroll offset.
+func (m *Model) SetYOffset(offset int) {
+	maxY := max(len(m.rows)-m.viewportHeight, 0)
+	m.yOffset = mathutil.Clamp(offset, 0, maxY)
 	m.updateViewport()
 }
 
@@ -336,6 +375,16 @@ func (m Model) Width() int {
 // Height returns the table height.
 func (m Model) Height() int {
 	return m.height
+}
+
+// ViewportHeight returns the visible row count.
+func (m Model) ViewportHeight() int {
+	return m.viewportHeight
+}
+
+// YOffset returns the top visible row offset.
+func (m Model) YOffset() int {
+	return m.yOffset
 }
 
 // RowCount returns the number of rows.
@@ -375,9 +424,16 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 // View renders the table (header + visible rows).
 func (m Model) View() string {
-	header := m.renderHeader()
-	body := m.getVisibleContent()
-	return header + "\n" + body
+	headerLines := strings.Split(m.renderHeader(), "\n")
+	bodyLines := m.getVisibleContent()
+
+	if m.scrollbarWidth() > 0 {
+		headerLines = appendScrollbar(headerLines, m.headerScrollbarLines(len(headerLines)))
+		bodyLines = appendScrollbar(bodyLines, m.scrollbarLines())
+	}
+
+	headerLines = append(headerLines, bodyLines...)
+	return strings.Join(headerLines, "\n")
 }
 
 // MoveUp moves the selection up by n rows.
@@ -431,7 +487,7 @@ func (m *Model) ScrollToEnd() {
 
 // maxScrollOffset returns the maximum horizontal scroll offset.
 func (m *Model) maxScrollOffset() int {
-	maxScroll := m.maxRowWidth - m.width
+	maxScroll := m.maxRowWidth - m.contentWidth()
 	if maxScroll < 0 {
 		return 0
 	}
@@ -478,6 +534,14 @@ func (m *Model) updateViewport() {
 	m.content = m.renderBody()
 }
 
+func (m *Model) updateScrollbar() {
+	m.scrollbar.SetStyles(scrollbar.Styles{
+		Track: m.styles.ScrollbarTrack,
+		Thumb: m.styles.ScrollbarThumb,
+	})
+	m.scrollbar.SetSize(scrollbar.DefaultWidth, m.viewportHeight)
+}
+
 // renderHeader renders the table header with separator.
 func (m Model) renderHeader() string {
 	var cols []string
@@ -521,33 +585,50 @@ func (m Model) renderHeader() string {
 	}
 
 	// Apply horizontal scroll to header
-	header = applyHorizontalScroll(header, m.xOffset, m.width)
+	header = applyHorizontalScroll(header, m.xOffset, m.contentWidth())
 	styledHeader := m.styles.Header.Render(header)
 
 	// Separator line (also scrolled)
 	separator := strings.Repeat("─", totalWidth)
-	separator = applyHorizontalScroll(separator, m.xOffset, m.width)
+	separator = applyHorizontalScroll(separator, m.xOffset, m.contentWidth())
 
 	return styledHeader + "\n" + m.styles.Separator.Render(separator)
 }
 
 // renderBody renders all table rows (for scrolling).
 func (m *Model) renderBody() string {
-	if len(m.rows) == 0 {
+	if len(m.columns) == 0 {
 		m.maxRowWidth = 0
 		m.colWidths = nil
-		m.lastColWidth = m.computeLastColWidth(nil)
+		m.lastColWidth = 0
 		return m.styles.Muted.Render(m.emptyMessage)
 	}
 
-	// First pass: find max width for each column (at least the defined width)
-	m.colWidths = make([]int, len(m.columns))
 	lastCol := len(m.columns) - 1
+
+	baseWidths := make([]int, len(m.columns))
+	if len(m.colWidths) == len(m.columns) {
+		copy(baseWidths, m.colWidths)
+	}
 	for i, col := range m.columns {
-		if i < lastCol {
-			m.colWidths[i] = col.Width
+		if col.Width > baseWidths[i] {
+			baseWidths[i] = col.Width
 		}
 	}
+
+	if len(m.rows) == 0 {
+		m.colWidths = baseWidths
+		m.lastColWidth = m.computeLastColWidth(m.colWidths, m.contentWidth())
+		m.maxRowWidth = m.columnRowWidth(m.lastColWidth)
+		empty := m.emptyMessage
+		if m.contentWidth() > 0 {
+			empty = padCell(empty, m.contentWidth(), AlignLeft)
+		}
+		return m.styles.Muted.Render(empty)
+	}
+
+	// First pass: find max width for each column (at least the defined width)
+	m.colWidths = baseWidths
 	for i, row := range m.rows {
 		if m.fullRows != nil {
 			if _, ok := m.fullRows[i]; ok {
@@ -562,11 +643,11 @@ func (m *Model) renderBody() string {
 		}
 	}
 
-	m.lastColWidth = m.computeLastColWidth(m.colWidths)
+	m.lastColWidth = m.computeLastColWidth(m.colWidths, m.contentWidth())
 
 	// Second pass: build all rows using actual column widths (no truncation)
 	rawRows := make([]string, 0, len(m.rows))
-	maxWidth := 0
+	maxWidth := m.columnRowWidth(m.lastColWidth)
 	for i, row := range m.rows {
 		if m.fullRows != nil {
 			if fullRow, ok := m.fullRows[i]; ok {
@@ -620,12 +701,12 @@ func (m *Model) renderBody() string {
 		}
 
 		// Apply horizontal scroll offset (before styling)
-		row = applyHorizontalScroll(row, m.xOffset, m.width)
+		row = applyHorizontalScroll(row, m.xOffset, m.contentWidth())
 
 		// Apply selection highlight
 		if i == m.cursor {
 			if hasSpan {
-				row = applySelection(row, span, maxWidth, m.xOffset, m.width, m.styles.Selected)
+				row = applySelection(row, span, maxWidth, m.xOffset, m.contentWidth(), m.styles.Selected)
 			} else {
 				row = m.styles.Selected.Render(ansi.Strip(row))
 			}
@@ -640,9 +721,9 @@ func (m *Model) renderBody() string {
 }
 
 // getVisibleContent returns the visible portion of content based on yOffset.
-func (m Model) getVisibleContent() string {
+func (m Model) getVisibleContent() []string {
 	if m.content == "" {
-		return ""
+		return blankScrollbar(m.viewportHeight, m.contentWidth())
 	}
 
 	lines := strings.Split(m.content, "\n")
@@ -655,8 +736,11 @@ func (m Model) getVisibleContent() string {
 
 	// Get visible slice
 	end := min(yOffset+m.viewportHeight, len(lines))
-
-	return strings.Join(lines[yOffset:end], "\n")
+	visible := lines[yOffset:end]
+	if len(visible) < m.viewportHeight {
+		visible = append(visible, blankScrollbar(m.viewportHeight-len(visible), m.contentWidth())...)
+	}
+	return visible
 }
 
 // applyHorizontalScroll applies horizontal scroll offset to a plain text line.
@@ -711,7 +795,7 @@ func applySelection(line string, span SelectionSpan, maxWidth, xOffset, visibleW
 	return prefix + style.Render(mid) + suffix
 }
 
-func (m Model) computeLastColWidth(colWidths []int) int {
+func (m Model) computeLastColWidth(colWidths []int, contentWidth int) int {
 	if len(m.columns) == 0 {
 		return 0
 	}
@@ -734,14 +818,133 @@ func (m Model) computeLastColWidth(colWidths []int) int {
 		fixedWidth += lastCol // spaces between columns
 	}
 
-	if m.width > 0 {
-		remaining := m.width - fixedWidth
+	if contentWidth > 0 {
+		remaining := contentWidth - fixedWidth
 		if remaining > lastWidth {
 			lastWidth = remaining
 		}
 	}
 
 	return lastWidth
+}
+
+func (m Model) columnRowWidth(lastColWidth int) int {
+	if len(m.columns) == 0 {
+		return 0
+	}
+	total := 0
+	lastCol := len(m.columns) - 1
+	for i := range m.columns {
+		width := m.columns[i].Width
+		if i == lastCol {
+			width = lastColWidth
+		} else if m.colWidths != nil && i < len(m.colWidths) && m.colWidths[i] > width {
+			width = m.colWidths[i]
+		}
+		total += width
+	}
+	if len(m.columns) > 1 {
+		total += lastCol // spaces between columns
+	}
+	return total
+}
+
+func (m Model) contentWidth() int {
+	return max(m.width-m.scrollbarWidth(), 0)
+}
+
+func (m Model) scrollbarWidth() int {
+	if m.width <= 0 {
+		return 0
+	}
+	return scrollbar.DefaultWidth
+}
+
+func (m Model) scrollbarLines() []string {
+	if m.viewportHeight <= 0 || m.scrollbarWidth() == 0 {
+		return nil
+	}
+
+	total := len(m.rows)
+	offset := m.yOffset
+	if m.scrollbarOverride {
+		total = m.scrollbarTotal
+		offset = m.scrollbarOffset
+	}
+	if total < 0 {
+		total = 0
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	sb := m.scrollbar
+	sb.SetRange(total, m.viewportHeight, offset)
+	sb.SetSize(m.scrollbarWidth(), m.viewportHeight)
+	lines := strings.Split(sb.View(), "\n")
+	if len(lines) < m.viewportHeight {
+		lines = append(lines, blankScrollbar(m.viewportHeight-len(lines), m.scrollbarWidth())...)
+	}
+	return lines
+}
+
+func (m Model) headerScrollbarLines(height int) []string {
+	if height <= 0 {
+		return nil
+	}
+	if m.scrollbarHeader == nil {
+		return blankScrollbar(height, m.scrollbarWidth())
+	}
+	return normalizeScrollbarLines(m.scrollbarHeader, height, m.scrollbarWidth())
+}
+
+func appendScrollbar(lines, scrollbarLines []string) []string {
+	if len(lines) == 0 {
+		return lines
+	}
+	width := 0
+	if len(scrollbarLines) > 0 {
+		width = lipgloss.Width(scrollbarLines[0])
+	}
+	for i, line := range lines {
+		sbLine := strings.Repeat(" ", width)
+		if i < len(scrollbarLines) {
+			sbLine = scrollbarLines[i]
+		}
+		lines[i] = line + sbLine
+	}
+	return lines
+}
+
+func blankScrollbar(height, width int) []string {
+	if height <= 0 {
+		return nil
+	}
+	line := strings.Repeat(" ", max(width, 0))
+	lines := make([]string, height)
+	for i := range height {
+		lines[i] = line
+	}
+	return lines
+}
+
+func normalizeScrollbarLines(lines []string, height, width int) []string {
+	out := make([]string, height)
+	for i := range height {
+		line := ""
+		if i < len(lines) {
+			line = lines[i]
+		}
+		if width > 0 {
+			line = ansi.Cut(line, 0, width)
+			lineWidth := lipgloss.Width(line)
+			if lineWidth < width {
+				line += strings.Repeat(" ", width-lineWidth)
+			}
+		}
+		out[i] = line
+	}
+	return out
 }
 
 // padCell pads a string to the specified width with the given alignment.
