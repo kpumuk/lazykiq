@@ -3,11 +3,13 @@ package lazytable
 
 import (
 	"context"
+	"slices"
 
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/kpumuk/lazykiq/internal/mathutil"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 )
 
@@ -171,9 +173,7 @@ func (m *Model) RequestWindow(windowStart int, intent CursorIntent) tea.Cmd {
 	if m.fetcher == nil {
 		return nil
 	}
-	if windowStart < 0 {
-		windowStart = 0
-	}
+	windowStart = max(windowStart, 0)
 	m.pendingIntent = intent
 	if intent == CursorKeep {
 		m.captureAnchor()
@@ -312,14 +312,10 @@ func (m Model) Range() (int, int, int64) {
 		return 0, 0, m.totalSize
 	}
 
-	start := m.windowStart + m.table.YOffset() + 1
-	end := m.windowStart + min(m.table.YOffset()+m.table.ViewportHeight(), len(rows))
-	if start < 0 {
-		start = 0
-	}
-	if end < 0 {
-		end = 0
-	}
+	yOffset := m.table.YOffset()
+	viewport := m.table.ViewportHeight()
+	start := max(m.windowStart+yOffset+1, 0)
+	end := max(m.windowStart+min(yOffset+viewport, len(rows)), 0)
 	if start > end {
 		start = end
 	}
@@ -373,14 +369,14 @@ func (m *Model) captureAnchor() {
 		return
 	}
 	cursor := m.table.Cursor()
+	m.anchor = anchorState{
+		abs:          m.windowStart + cursor,
+		screenOffset: cursor - m.table.YOffset(),
+		pending:      true,
+	}
 	if cursor >= 0 && cursor < len(rows) {
 		m.anchor.rowID = rows[cursor].ID
-	} else {
-		m.anchor.rowID = ""
 	}
-	m.anchor.abs = m.windowStart + cursor
-	m.anchor.screenOffset = m.table.Cursor() - m.table.YOffset()
-	m.anchor.pending = true
 }
 
 func (m *Model) applyAnchor() {
@@ -392,39 +388,23 @@ func (m *Model) applyAnchor() {
 	if len(rows) == 0 {
 		return
 	}
-	rel := -1
+	rel := m.anchor.abs - m.windowStart
 	if m.anchor.rowID != "" {
-		for i, row := range rows {
-			if row.ID == m.anchor.rowID {
-				rel = i
-				break
-			}
+		if idx := slices.IndexFunc(rows, func(row table.Row) bool {
+			return row.ID == m.anchor.rowID
+		}); idx >= 0 {
+			rel = idx
 		}
 	}
-	if rel < 0 {
-		rel = m.anchor.abs - m.windowStart
-	}
-	if rel < 0 {
-		rel = 0
-	}
-	if rel >= len(rows) {
-		rel = len(rows) - 1
-	}
+	rel = mathutil.Clamp(rel, 0, len(rows)-1)
 	m.table.SetCursor(rel)
 
-	offset := max(m.anchor.screenOffset, 0)
-	maxOffset := max(m.table.ViewportHeight()-1, 0)
-	if offset > maxOffset {
-		offset = maxOffset
-	}
+	offset := mathutil.Clamp(m.anchor.screenOffset, 0, max(m.table.ViewportHeight()-1, 0))
 	m.table.SetYOffset(rel - offset)
 }
 
 func (m *Model) maybePrefetch() tea.Cmd {
-	if m.loading || m.fetcher == nil {
-		return nil
-	}
-	if m.totalSize == 0 {
+	if m.loading || m.fetcher == nil || m.totalSize == 0 {
 		return nil
 	}
 	rows := m.table.Rows()
@@ -464,10 +444,9 @@ func (m *Model) syncScrollbar() {
 		return
 	}
 	total := int(m.totalSize)
-	offset := m.windowStart + m.table.YOffset()
 	if m.windowStart == 0 && total <= len(rows) {
 		m.table.ClearScrollbar()
 		return
 	}
-	m.table.SetScrollbar(total, offset)
+	m.table.SetScrollbar(total, m.windowStart+m.table.YOffset())
 }

@@ -109,10 +109,7 @@ func (s *Scheduled) Update(msg tea.Msg) (View, tea.Cmd) {
 		return s, s.lazy.RequestWindow(s.lazy.WindowStart(), lazytable.CursorKeep)
 
 	case filterdialog.ActionMsg:
-		if msg.Action == filterdialog.ActionNone {
-			return s, nil
-		}
-		if msg.Query == s.filter {
+		if msg.Action == filterdialog.ActionNone || msg.Query == s.filter {
 			return s, nil
 		}
 		s.filter = msg.Query
@@ -121,13 +118,7 @@ func (s *Scheduled) Update(msg tea.Msg) (View, tea.Cmd) {
 		return s, s.lazy.RequestWindow(0, lazytable.CursorStart)
 
 	case confirmdialog.ActionMsg:
-		if !s.dangerousActionsEnabled {
-			return s, nil
-		}
-		if s.pendingJobEntry == nil {
-			return s, nil
-		}
-		if s.pendingJobTarget != "" && msg.Target != s.pendingJobTarget {
+		if !s.dangerousActionsEnabled || s.pendingJobEntry == nil || (s.pendingJobTarget != "" && msg.Target != s.pendingJobTarget) {
 			return s, nil
 		}
 		action := s.pendingJobAction
@@ -152,13 +143,13 @@ func (s *Scheduled) Update(msg tea.Msg) (View, tea.Cmd) {
 		case "/":
 			return s, s.openFilterDialog()
 		case "ctrl+u":
-			if s.filter != "" {
-				s.filter = ""
-				s.updateEmptyMessage()
-				s.lazy.Table().SetCursor(0)
-				return s, s.lazy.RequestWindow(0, lazytable.CursorStart)
+			if s.filter == "" {
+				return s, nil
 			}
-			return s, nil
+			s.filter = ""
+			s.updateEmptyMessage()
+			s.lazy.Table().SetCursor(0)
+			return s, s.lazy.RequestWindow(0, lazytable.CursorStart)
 		case "c":
 			if entry, ok := s.selectedEntry(); ok {
 				return s, copyTextCmd(entry.JID())
@@ -484,11 +475,11 @@ func (s *Scheduled) updateTableSize() {
 }
 
 func (s *Scheduled) updateEmptyMessage() {
+	msg := "No scheduled jobs"
 	if s.filter != "" {
-		s.lazy.SetEmptyMessage("No matches")
-	} else {
-		s.lazy.SetEmptyMessage("No scheduled jobs")
+		msg = "No matches"
 	}
+	s.lazy.SetEmptyMessage(msg)
 }
 
 func (s *Scheduled) buildRows(jobs []*sidekiq.SortedEntry) []table.Row {
@@ -511,18 +502,18 @@ func (s *Scheduled) buildRows(jobs []*sidekiq.SortedEntry) []table.Row {
 
 func (s *Scheduled) rowsMeta() string {
 	start, end, total := s.lazy.Range()
-	totalLabel := format.Number(total)
+	label := s.styles.MetricLabel.Render("rows: ")
 	if total == 0 || len(s.jobs) == 0 {
-		return s.styles.MetricLabel.Render("rows: ") + s.styles.MetricValue.Render("0/0")
+		return label + s.styles.MetricValue.Render("0/0")
 	}
 
 	rangeLabel := fmt.Sprintf(
 		"%s-%s/%s",
 		format.Number(int64(start)),
 		format.Number(int64(end)),
-		totalLabel,
+		format.Number(total),
 	)
-	return s.styles.MetricLabel.Render("rows: ") + s.styles.MetricValue.Render(rangeLabel)
+	return label + s.styles.MetricValue.Render(rangeLabel)
 }
 
 func (s *Scheduled) openFilterDialog() tea.Cmd {
@@ -537,10 +528,7 @@ func (s *Scheduled) openFilterDialog() tea.Cmd {
 }
 
 func (s *Scheduled) openDeleteConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
-	jobName := entry.DisplayClass()
-	if jobName == "" {
-		jobName = "selected"
-	}
+	jobName := s.jobName(entry)
 	return func() tea.Msg {
 		return dialogs.OpenDialogMsg{
 			Model: newConfirmDialog(
@@ -558,10 +546,7 @@ func (s *Scheduled) openDeleteConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
 }
 
 func (s *Scheduled) openAddToQueueConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
-	jobName := entry.DisplayClass()
-	if jobName == "" {
-		jobName = "selected"
-	}
+	jobName := s.jobName(entry)
 	return func() tea.Msg {
 		return dialogs.OpenDialogMsg{
 			Model: newConfirmDialog(
@@ -600,24 +585,25 @@ func (s *Scheduled) addToQueueJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
 
 // renderJobsBox renders the bordered box containing the jobs table.
 func (s *Scheduled) renderJobsBox() string {
-	meta := s.rowsMeta()
-
-	// Get table content
-	content := s.lazy.View()
-
-	box := frame.New(
+	return frame.New(
 		frame.WithStyles(s.frameStyles),
 		frame.WithTitle("Scheduled"),
 		frame.WithFilter(s.filter),
 		frame.WithTitlePadding(0),
-		frame.WithMeta(meta),
-		frame.WithContent(content),
+		frame.WithMeta(s.rowsMeta()),
+		frame.WithContent(s.lazy.View()),
 		frame.WithPadding(1),
 		frame.WithSize(s.width, s.height),
 		frame.WithMinHeight(5),
 		frame.WithFocused(true),
-	)
-	return box.View()
+	).View()
+}
+
+func (s *Scheduled) jobName(entry *sidekiq.SortedEntry) string {
+	if name := entry.DisplayClass(); name != "" {
+		return name
+	}
+	return "selected"
 }
 
 // renderJobDetail renders the job detail view.

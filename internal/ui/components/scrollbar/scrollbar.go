@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+
+	"github.com/kpumuk/lazykiq/internal/mathutil"
 )
 
 const (
@@ -129,14 +131,14 @@ func (m Model) View() string {
 	}
 
 	blank := strings.Repeat(" ", m.width)
-	if m.total <= m.visible || m.total <= 0 || m.visible <= 0 {
+	if m.total <= 0 || m.visible <= 0 || m.total <= m.visible {
 		return strings.TrimRight(strings.Repeat(blank+"\n", m.height), "\n")
 	}
 
 	ratio := float64(m.height) / float64(m.total)
-	thumbHeight := maxInt(1, int(math.Round(float64(m.visible)*ratio)))
-	maxOffset := maxInt(m.height-thumbHeight, 0)
-	thumbOffset := clamp(int(math.Round(float64(m.offset)*ratio)), 0, maxOffset)
+	thumbHeight := max(1, int(math.Round(float64(m.visible)*ratio)))
+	maxOffset := max(m.height-thumbHeight, 0)
+	thumbOffset := mathutil.Clamp(int(math.Round(float64(m.offset)*ratio)), 0, maxOffset)
 
 	track := m.styles.Track.Render(strings.Repeat(scrollbarTrack, m.width))
 	thumb := m.styles.Thumb.Render(strings.Repeat(scrollbarThumb, m.width))
@@ -153,21 +155,4 @@ func (m Model) View() string {
 		}
 	}
 	return b.String()
-}
-
-func clamp(value, minVal, maxVal int) int {
-	if value < minVal {
-		return minVal
-	}
-	if value > maxVal {
-		return maxVal
-	}
-	return value
-}
-
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }

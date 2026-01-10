@@ -111,10 +111,7 @@ func (r *Retries) Update(msg tea.Msg) (View, tea.Cmd) {
 		return r, r.lazy.RequestWindow(r.lazy.WindowStart(), lazytable.CursorKeep)
 
 	case filterdialog.ActionMsg:
-		if msg.Action == filterdialog.ActionNone {
-			return r, nil
-		}
-		if msg.Query == r.filter {
+		if msg.Action == filterdialog.ActionNone || msg.Query == r.filter {
 			return r, nil
 		}
 		r.filter = msg.Query
@@ -123,13 +120,7 @@ func (r *Retries) Update(msg tea.Msg) (View, tea.Cmd) {
 		return r, r.lazy.RequestWindow(0, lazytable.CursorStart)
 
 	case confirmdialog.ActionMsg:
-		if !r.dangerousActionsEnabled {
-			return r, nil
-		}
-		if r.pendingJobEntry == nil {
-			return r, nil
-		}
-		if r.pendingJobTarget != "" && msg.Target != r.pendingJobTarget {
+		if !r.dangerousActionsEnabled || r.pendingJobEntry == nil || (r.pendingJobTarget != "" && msg.Target != r.pendingJobTarget) {
 			return r, nil
 		}
 		action := r.pendingJobAction
@@ -156,13 +147,13 @@ func (r *Retries) Update(msg tea.Msg) (View, tea.Cmd) {
 		case "/":
 			return r, r.openFilterDialog()
 		case "ctrl+u":
-			if r.filter != "" {
-				r.filter = ""
-				r.updateEmptyMessage()
-				r.lazy.Table().SetCursor(0)
-				return r, r.lazy.RequestWindow(0, lazytable.CursorStart)
+			if r.filter == "" {
+				return r, nil
 			}
-			return r, nil
+			r.filter = ""
+			r.updateEmptyMessage()
+			r.lazy.Table().SetCursor(0)
+			return r, r.lazy.RequestWindow(0, lazytable.CursorStart)
 		case "c":
 			if entry, ok := r.selectedEntry(); ok {
 				return r, copyTextCmd(entry.JID())
@@ -500,11 +491,11 @@ func (r *Retries) updateTableSize() {
 }
 
 func (r *Retries) updateEmptyMessage() {
+	msg := "No retries"
 	if r.filter != "" {
-		r.lazy.SetEmptyMessage("No matches")
-	} else {
-		r.lazy.SetEmptyMessage("No retries")
+		msg = "No matches"
 	}
+	r.lazy.SetEmptyMessage(msg)
 }
 
 func (r *Retries) buildRows(jobs []*sidekiq.SortedEntry) []table.Row {
@@ -539,18 +530,18 @@ func (r *Retries) buildRows(jobs []*sidekiq.SortedEntry) []table.Row {
 
 func (r *Retries) rowsMeta() string {
 	start, end, total := r.lazy.Range()
-	totalLabel := format.Number(total)
+	label := r.styles.MetricLabel.Render("rows: ")
 	if total == 0 || len(r.jobs) == 0 {
-		return r.styles.MetricLabel.Render("rows: ") + r.styles.MetricValue.Render("0/0")
+		return label + r.styles.MetricValue.Render("0/0")
 	}
 
 	rangeLabel := fmt.Sprintf(
 		"%s-%s/%s",
 		format.Number(int64(start)),
 		format.Number(int64(end)),
-		totalLabel,
+		format.Number(total),
 	)
-	return r.styles.MetricLabel.Render("rows: ") + r.styles.MetricValue.Render(rangeLabel)
+	return label + r.styles.MetricValue.Render(rangeLabel)
 }
 
 func (r *Retries) openFilterDialog() tea.Cmd {
@@ -565,10 +556,7 @@ func (r *Retries) openFilterDialog() tea.Cmd {
 }
 
 func (r *Retries) openDeleteConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
-	jobName := entry.DisplayClass()
-	if jobName == "" {
-		jobName = "selected"
-	}
+	jobName := r.jobName(entry)
 	return func() tea.Msg {
 		return dialogs.OpenDialogMsg{
 			Model: newConfirmDialog(
@@ -586,10 +574,7 @@ func (r *Retries) openDeleteConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
 }
 
 func (r *Retries) openKillConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
-	jobName := entry.DisplayClass()
-	if jobName == "" {
-		jobName = "selected"
-	}
+	jobName := r.jobName(entry)
 	return func() tea.Msg {
 		return dialogs.OpenDialogMsg{
 			Model: newConfirmDialog(
@@ -607,10 +592,7 @@ func (r *Retries) openKillConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
 }
 
 func (r *Retries) openRetryNowConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
-	jobName := entry.DisplayClass()
-	if jobName == "" {
-		jobName = "selected"
-	}
+	jobName := r.jobName(entry)
 	return func() tea.Msg {
 		return dialogs.OpenDialogMsg{
 			Model: newConfirmDialog(
@@ -659,24 +641,25 @@ func (r *Retries) retryNowJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
 
 // renderJobsBox renders the bordered box containing the jobs table.
 func (r *Retries) renderJobsBox() string {
-	meta := r.rowsMeta()
-
-	// Get table content
-	content := r.lazy.View()
-
-	box := frame.New(
+	return frame.New(
 		frame.WithStyles(r.frameStyles),
 		frame.WithTitle("Retries"),
 		frame.WithFilter(r.filter),
 		frame.WithTitlePadding(0),
-		frame.WithMeta(meta),
-		frame.WithContent(content),
+		frame.WithMeta(r.rowsMeta()),
+		frame.WithContent(r.lazy.View()),
 		frame.WithPadding(1),
 		frame.WithSize(r.width, r.height),
 		frame.WithMinHeight(5),
 		frame.WithFocused(true),
-	)
-	return box.View()
+	).View()
+}
+
+func (r *Retries) jobName(entry *sidekiq.SortedEntry) string {
+	if name := entry.DisplayClass(); name != "" {
+		return name
+	}
+	return "selected"
 }
 
 // renderJobDetail renders the job detail view.

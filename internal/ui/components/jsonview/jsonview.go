@@ -9,6 +9,8 @@ import (
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/kpumuk/lazykiq/internal/mathutil"
 )
 
 // Styles holds styles for JSON tokens.
@@ -160,9 +162,7 @@ func (m Model) renderTokens(tokens []chroma.Token, offset, width int) string {
 	if width <= 0 {
 		return ""
 	}
-	if offset < 0 {
-		offset = 0
-	}
+	offset = max(offset, 0)
 
 	end := offset + width
 	var builder strings.Builder
@@ -182,8 +182,8 @@ func (m Model) renderTokens(tokens []chroma.Token, offset, width int) string {
 		tokenEnd := col + tokenWidth
 
 		if tokenEnd > offset && tokenStart < end {
-			start := max(offset-tokenStart, 0)
-			stop := min(end-tokenStart, tokenWidth)
+			start := mathutil.Clamp(offset-tokenStart, 0, tokenWidth)
+			stop := mathutil.Clamp(end-tokenStart, 0, tokenWidth)
 			segment := ansi.Cut(token.Value, start, stop)
 			if segment != "" {
 				builder.WriteString(m.styleForToken(token).Render(segment))
@@ -229,9 +229,7 @@ func applyHorizontalScroll(line string, offset, visibleWidth int) string {
 	if visibleWidth <= 0 {
 		return ""
 	}
-	if offset < 0 {
-		offset = 0
-	}
+	offset = max(offset, 0)
 
 	cut := ansi.Cut(line, offset, offset+visibleWidth)
 	cutWidth := lipgloss.Width(cut)

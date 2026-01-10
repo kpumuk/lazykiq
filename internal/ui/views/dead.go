@@ -109,10 +109,7 @@ func (d *Dead) Update(msg tea.Msg) (View, tea.Cmd) {
 		return d, d.lazy.RequestWindow(d.lazy.WindowStart(), lazytable.CursorKeep)
 
 	case filterdialog.ActionMsg:
-		if msg.Action == filterdialog.ActionNone {
-			return d, nil
-		}
-		if msg.Query == d.filter {
+		if msg.Action == filterdialog.ActionNone || msg.Query == d.filter {
 			return d, nil
 		}
 		d.filter = msg.Query
@@ -121,13 +118,7 @@ func (d *Dead) Update(msg tea.Msg) (View, tea.Cmd) {
 		return d, d.lazy.RequestWindow(0, lazytable.CursorStart)
 
 	case confirmdialog.ActionMsg:
-		if !d.dangerousActionsEnabled {
-			return d, nil
-		}
-		if d.pendingJobEntry == nil {
-			return d, nil
-		}
-		if d.pendingJobTarget != "" && msg.Target != d.pendingJobTarget {
+		if !d.dangerousActionsEnabled || d.pendingJobEntry == nil || (d.pendingJobTarget != "" && msg.Target != d.pendingJobTarget) {
 			return d, nil
 		}
 		action := d.pendingJobAction
@@ -152,13 +143,13 @@ func (d *Dead) Update(msg tea.Msg) (View, tea.Cmd) {
 		case "/":
 			return d, d.openFilterDialog()
 		case "ctrl+u":
-			if d.filter != "" {
-				d.filter = ""
-				d.updateEmptyMessage()
-				d.lazy.Table().SetCursor(0)
-				return d, d.lazy.RequestWindow(0, lazytable.CursorStart)
+			if d.filter == "" {
+				return d, nil
 			}
-			return d, nil
+			d.filter = ""
+			d.updateEmptyMessage()
+			d.lazy.Table().SetCursor(0)
+			return d, d.lazy.RequestWindow(0, lazytable.CursorStart)
 		case "c":
 			if entry, ok := d.selectedEntry(); ok {
 				return d, copyTextCmd(entry.JID())
@@ -489,11 +480,11 @@ func (d *Dead) updateTableSize() {
 }
 
 func (d *Dead) updateEmptyMessage() {
+	msg := "No dead jobs"
 	if d.filter != "" {
-		d.lazy.SetEmptyMessage("No matches")
-	} else {
-		d.lazy.SetEmptyMessage("No dead jobs")
+		msg = "No matches"
 	}
+	d.lazy.SetEmptyMessage(msg)
 }
 
 func (d *Dead) buildRows(jobs []*sidekiq.SortedEntry) []table.Row {
@@ -564,10 +555,7 @@ func (d *Dead) openFilterDialog() tea.Cmd {
 }
 
 func (d *Dead) openDeleteConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
-	jobName := entry.DisplayClass()
-	if jobName == "" {
-		jobName = "selected"
-	}
+	jobName := d.jobName(entry)
 	return func() tea.Msg {
 		return dialogs.OpenDialogMsg{
 			Model: newConfirmDialog(
@@ -585,10 +573,7 @@ func (d *Dead) openDeleteConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
 }
 
 func (d *Dead) openRetryNowConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
-	jobName := entry.DisplayClass()
-	if jobName == "" {
-		jobName = "selected"
-	}
+	jobName := d.jobName(entry)
 	return func() tea.Msg {
 		return dialogs.OpenDialogMsg{
 			Model: newConfirmDialog(
@@ -627,40 +612,41 @@ func (d *Dead) retryNowJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
 
 func (d *Dead) rowsMeta() string {
 	start, end, total := d.lazy.Range()
-	totalLabel := format.Number(total)
+	label := d.styles.MetricLabel.Render("rows: ")
 	if total == 0 || len(d.jobs) == 0 {
-		return d.styles.MetricLabel.Render("rows: ") + d.styles.MetricValue.Render("0/0")
+		return label + d.styles.MetricValue.Render("0/0")
 	}
 
 	rangeLabel := fmt.Sprintf(
 		"%s-%s/%s",
 		format.Number(int64(start)),
 		format.Number(int64(end)),
-		totalLabel,
+		format.Number(total),
 	)
-	return d.styles.MetricLabel.Render("rows: ") + d.styles.MetricValue.Render(rangeLabel)
+	return label + d.styles.MetricValue.Render(rangeLabel)
 }
 
 // renderJobsBox renders the bordered box containing the jobs table.
 func (d *Dead) renderJobsBox() string {
-	meta := d.rowsMeta()
-
-	// Get table content
-	content := d.lazy.View()
-
-	box := frame.New(
+	return frame.New(
 		frame.WithStyles(d.frameStyles),
 		frame.WithTitle("Dead Jobs"),
 		frame.WithFilter(d.filter),
 		frame.WithTitlePadding(0),
-		frame.WithMeta(meta),
-		frame.WithContent(content),
+		frame.WithMeta(d.rowsMeta()),
+		frame.WithContent(d.lazy.View()),
 		frame.WithPadding(1),
 		frame.WithSize(d.width, d.height),
 		frame.WithMinHeight(5),
 		frame.WithFocused(true),
-	)
-	return box.View()
+	).View()
+}
+
+func (d *Dead) jobName(entry *sidekiq.SortedEntry) string {
+	if name := entry.DisplayClass(); name != "" {
+		return name
+	}
+	return "selected"
 }
 
 // renderJobDetail renders the job detail view.
