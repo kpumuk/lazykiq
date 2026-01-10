@@ -3,7 +3,7 @@ title: "Scheduled"
 description: "Inspect jobs scheduled to run in the future."
 summary: "Inspect jobs scheduled to run in the future."
 date: 2025-12-30T00:00:00Z
-lastmod: 2026-01-09T00:00:00Z
+lastmod: 2026-01-10T00:00:00Z
 draft: false
 weight: 80
 toc: true
@@ -24,7 +24,8 @@ Scheduled jobs are queued to run at a specific time.
 | `c`          | Copy job JID.                                             |
 | `/`          | Filter jobs by substring.                                 |
 | `Ctrl+u`     | Clear filter.                                             |
-| `[` / `]`    | Previous or next page (also `Alt+Left` / `Alt+Right`).    |
+| `[` / `]`    | Page up or down (also `Alt+Left` / `Alt+Right`).          |
+| `g` / `G`    | Jump to start or end.                                     |
 | `D`          | Delete job (requires `--danger`).                         |
 | `R`          | Add job to queue now (requires `--danger`).               |
 | `q`          | Quit.                                                     |

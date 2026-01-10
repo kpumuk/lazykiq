@@ -283,6 +283,8 @@ func (s *Scheduled) HelpSections() []HelpSection {
 				helpBinding([]string{"ctrl+u"}, "ctrl+u", "clear filter"),
 				helpBinding([]string{"["}, "[", "page up"),
 				helpBinding([]string{"]"}, "]", "page down"),
+				helpBinding([]string{"g"}, "g", "jump to start"),
+				helpBinding([]string{"G"}, "shift+g", "jump to end"),
 				helpBinding([]string{"c"}, "c", "copy jid"),
 				helpBinding([]string{"enter"}, "enter", "job detail"),
 			},

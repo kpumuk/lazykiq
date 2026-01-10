@@ -170,10 +170,6 @@ func (d *Dead) Update(msg tea.Msg) (View, tea.Cmd) {
 				return d, d.lazy.MaybePrefetch()
 			}
 			return d, nil
-		case "g":
-			return d, d.jumpToStart()
-		case "G":
-			return d, d.jumpToEnd()
 		case "enter":
 			// Show detail for selected job
 			if idx := d.lazy.Table().Cursor(); idx >= 0 && idx < len(d.jobs) {
@@ -287,6 +283,8 @@ func (d *Dead) HelpSections() []HelpSection {
 				helpBinding([]string{"ctrl+u"}, "ctrl+u", "clear filter"),
 				helpBinding([]string{"["}, "[", "page up"),
 				helpBinding([]string{"]"}, "]", "page down"),
+				helpBinding([]string{"g"}, "g", "jump to start"),
+				helpBinding([]string{"G"}, "shift+g", "jump to end"),
 				helpBinding([]string{"c"}, "c", "copy jid"),
 				helpBinding([]string{"enter"}, "enter", "job detail"),
 			},
@@ -513,34 +511,6 @@ func (d *Dead) buildRows(jobs []*sidekiq.SortedEntry) []table.Row {
 		})
 	}
 	return rows
-}
-
-func (d *Dead) jumpToStart() tea.Cmd {
-	if d.filter != "" {
-		d.lazy.GotoTop()
-		return nil
-	}
-	if d.lazy.WindowStart() == 0 {
-		d.lazy.GotoTop()
-		return nil
-	}
-	return d.lazy.RequestWindow(0, lazytable.CursorStart)
-}
-
-func (d *Dead) jumpToEnd() tea.Cmd {
-	if d.filter != "" {
-		d.lazy.GotoBottom()
-		return nil
-	}
-	if d.lazy.Total() == 0 {
-		return nil
-	}
-	maxStart := max(int(d.lazy.Total())-d.lazy.WindowSize(), 0)
-	if d.lazy.WindowStart() == maxStart {
-		d.lazy.GotoBottom()
-		return nil
-	}
-	return d.lazy.RequestWindow(maxStart, lazytable.CursorEnd)
 }
 
 func (d *Dead) openFilterDialog() tea.Cmd {

@@ -5,6 +5,7 @@ import (
 	"context"
 	"slices"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -183,10 +184,7 @@ func (m *Model) RequestWindow(windowStart int, intent CursorIntent) tea.Cmd {
 	m.loading = true
 	m.requestID++
 	requestID := m.requestID
-	windowSize := m.windowSize
-	if windowSize <= 0 {
-		windowSize = max(m.pageSize, m.fallbackPageSize) * max(m.windowPages, 1)
-	}
+	windowSize := m.effectiveWindowSize()
 
 	return tea.Batch(
 		m.spinner.Tick,
@@ -229,6 +227,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, cmd
 
 	case tea.KeyMsg:
+		if handled, cmd := m.handleJump(msg); handled {
+			return m, cmd
+		}
 		m.table, _ = m.table.Update(msg)
 		m.syncScrollbar()
 		return m, m.maybePrefetch()
@@ -320,6 +321,56 @@ func (m Model) Range() (int, int, int64) {
 		start = end
 	}
 	return start, end, m.totalSize
+}
+
+func (m *Model) handleJump(msg tea.KeyMsg) (bool, tea.Cmd) {
+	if key.Matches(msg, m.table.KeyMap.GotoTop) {
+		return true, m.jumpToStart()
+	}
+	if key.Matches(msg, m.table.KeyMap.GotoBottom) {
+		return true, m.jumpToEnd()
+	}
+	return false, nil
+}
+
+func (m *Model) jumpToStart() tea.Cmd {
+	if m.totalSize == 0 || m.windowStart == 0 {
+		return m.gotoTopLocal()
+	}
+	return m.RequestWindow(0, CursorStart)
+}
+
+func (m *Model) jumpToEnd() tea.Cmd {
+	rows := m.table.Rows()
+	if m.totalSize == 0 || len(rows) == 0 {
+		return m.gotoBottomLocal()
+	}
+
+	windowSize := m.effectiveWindowSize()
+	maxStart := max(int(m.totalSize)-windowSize, 0)
+	if m.windowStart == maxStart {
+		return m.gotoBottomLocal()
+	}
+	return m.RequestWindow(maxStart, CursorEnd)
+}
+
+func (m *Model) gotoTopLocal() tea.Cmd {
+	m.table.GotoTop()
+	m.syncScrollbar()
+	return nil
+}
+
+func (m *Model) gotoBottomLocal() tea.Cmd {
+	m.table.GotoBottom()
+	m.syncScrollbar()
+	return nil
+}
+
+func (m Model) effectiveWindowSize() int {
+	if m.windowSize > 0 {
+		return m.windowSize
+	}
+	return max(m.pageSize, m.fallbackPageSize) * max(m.windowPages, 1)
 }
 
 func (m *Model) fetchCmd(requestID, windowStart, windowSize int, intent CursorIntent) tea.Cmd {
