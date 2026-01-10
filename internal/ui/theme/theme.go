@@ -215,6 +215,8 @@ type Styles struct {
 	TableHeader    lipgloss.Style
 	TableSelected  lipgloss.Style
 	TableSeparator lipgloss.Style
+	ScrollbarTrack lipgloss.Style
+	ScrollbarThumb lipgloss.Style
 
 	// Layout helpers
 	BoxPadding  lipgloss.Style
@@ -341,6 +343,10 @@ func NewStyles() Styles {
 
 		TableSeparator: lipgloss.NewStyle().
 			Foreground(t.Border),
+		ScrollbarTrack: lipgloss.NewStyle().
+			Foreground(t.Border),
+		ScrollbarThumb: lipgloss.NewStyle().
+			Foreground(t.BorderFocus),
 
 		// Layout helpers
 		BoxPadding: lipgloss.NewStyle().

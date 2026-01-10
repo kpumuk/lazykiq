@@ -3,7 +3,7 @@ title: "Queues"
 description: "Browse queues and inspect queued jobs."
 summary: "Browse queues and inspect queued jobs."
 date: 2025-12-30T00:00:00Z
-lastmod: 2026-01-08T00:00:00Z
+lastmod: 2026-01-10T00:00:00Z
 draft: false
 weight: 60
 toc: true
@@ -23,7 +23,8 @@ Queues show the backlog waiting to be processed, with per-queue counts.
 | `Enter`           | Show job details.                                         |
 | `c`               | Copy job JID.                                             |
 | `Ctrl+1`–`Ctrl+5` | Select queue.                                             |
-| `[` / `]`         | Previous or next page (also `Alt+Left` / `Alt+Right`).    |
+| `[` / `]`         | Page up or down (also `Alt+Left` / `Alt+Right`).          |
+| `g` / `G`         | Jump to start or end.                                     |
 | `s`               | Open queue list.                                          |
 | `q`               | Quit.                                                     |
 

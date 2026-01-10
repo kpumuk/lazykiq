@@ -77,9 +77,7 @@ func (q *Queue) Latency(ctx context.Context) (float64, error) {
 	}
 
 	latency := time.Since(enqueuedAt).Seconds()
-	if latency < 0 {
-		latency = 0
-	}
+	latency = max(latency, 0)
 
 	return latency, nil
 }

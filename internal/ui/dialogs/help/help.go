@@ -9,6 +9,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/kpumuk/lazykiq/internal/mathutil"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 )
@@ -285,12 +286,7 @@ func (m *Model) clampOffset(totalLines, visible int) {
 		return
 	}
 	maxOffset := totalLines - visible
-	if m.yOffset > maxOffset {
-		m.yOffset = maxOffset
-	}
-	if m.yOffset < 0 {
-		m.yOffset = 0
-	}
+	m.yOffset = mathutil.Clamp(m.yOffset, 0, maxOffset)
 }
 
 func (m *Model) scrollBy(delta int) {
@@ -306,14 +302,8 @@ func (m *Model) scrollBy(delta int) {
 }
 
 func (m *Model) scrollTo(offset int) {
-	if offset < 0 {
-		offset = 0
-	}
 	maxOffset := m.maxOffset()
-	if offset > maxOffset {
-		offset = maxOffset
-	}
-	m.yOffset = offset
+	m.yOffset = mathutil.Clamp(offset, 0, maxOffset)
 }
 
 func splitSections(sections []Section) ([]Section, []Section) {

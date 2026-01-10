@@ -3,7 +3,7 @@ title: "Metrics"
 description: "At-a-glance counters and job metrics."
 summary: "At-a-glance counters and job metrics."
 date: 2025-12-30T00:00:00Z
-lastmod: 2026-01-08T00:00:00Z
+lastmod: 2026-01-10T00:00:00Z
 draft: false
 weight: 110
 toc: true
@@ -24,7 +24,7 @@ and dead counts in real time, plus per-job metrics.
 | `Enter`      | Open job metrics.                                         |
 | `/`          | Filter jobs by substring.                                 |
 | `Ctrl+u`     | Clear filter.                                             |
-| `[` / `]`    | Previous or next page (also `Alt+Left` / `Alt+Right`).    |
+| `[` / `]`    | Page up or down (also `Alt+Left` / `Alt+Right`).          |
 | `{` / `}`    | Change metrics period.                                    |
 | `q`          | Quit.                                                     |
 

@@ -11,6 +11,7 @@ import (
 	"github.com/kpumuk/lazykiq/internal/devtools"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
+	"github.com/kpumuk/lazykiq/internal/ui/components/lazytable"
 	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
@@ -19,7 +20,10 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/format"
 )
 
-const deadPageSize = 25
+const (
+	deadWindowPages      = 3
+	deadFallbackPageSize = 25
+)
 
 type deadJobAction int
 
@@ -29,14 +33,10 @@ const (
 	deadJobActionRetry
 )
 
-// deadDataMsg carries dead jobs data internally.
-type deadDataMsg struct {
-	jobs        []*sidekiq.SortedEntry
-	firstEntry  *sidekiq.SortedEntry
-	lastEntry   *sidekiq.SortedEntry
-	currentPage int
-	totalPages  int
-	totalSize   int64
+type deadPayload struct {
+	jobs       []*sidekiq.SortedEntry
+	firstEntry *sidekiq.SortedEntry
+	lastEntry  *sidekiq.SortedEntry
 }
 
 // Dead shows dead/morgue jobs.
@@ -48,11 +48,8 @@ type Dead struct {
 	jobs                    []*sidekiq.SortedEntry
 	firstEntry              *sidekiq.SortedEntry
 	lastEntry               *sidekiq.SortedEntry
-	table                   table.Model
+	lazy                    lazytable.Model
 	ready                   bool
-	currentPage             int
-	totalPages              int
-	totalSize               int64
 	filter                  string
 	dangerousActionsEnabled bool
 	frameStyles             frame.Styles
@@ -64,60 +61,64 @@ type Dead struct {
 
 // NewDead creates a new Dead view.
 func NewDead(client sidekiq.API) *Dead {
-	return &Dead{
-		client:      client,
-		currentPage: 1,
-		totalPages:  1,
-		table: table.New(
-			table.WithColumns(deadJobColumns),
-			table.WithEmptyMessage("No dead jobs"),
+	d := &Dead{
+		client: client,
+		lazy: lazytable.New(
+			lazytable.WithTableOptions(
+				table.WithColumns(deadJobColumns),
+				table.WithEmptyMessage("No dead jobs"),
+			),
+			lazytable.WithWindowPages(deadWindowPages),
+			lazytable.WithFallbackPageSize(deadFallbackPageSize),
 		),
 	}
+	d.lazy.SetFetcher(d.fetchWindow)
+	d.lazy.SetErrorHandler(func(err error) tea.Msg {
+		return ConnectionErrorMsg{Err: err}
+	})
+	return d
 }
 
 // Init implements View.
 func (d *Dead) Init() tea.Cmd {
 	d.reset()
-	return d.fetchDataCmd()
+	return d.lazy.RequestWindow(0, lazytable.CursorStart)
 }
 
 // Update implements View.
 func (d *Dead) Update(msg tea.Msg) (View, tea.Cmd) {
 	switch msg := msg.(type) {
-	case deadDataMsg:
-		d.jobs = msg.jobs
-		d.firstEntry = msg.firstEntry
-		d.lastEntry = msg.lastEntry
-		d.currentPage = msg.currentPage
-		d.totalPages = msg.totalPages
-		d.totalSize = msg.totalSize
-		d.ready = true
-		d.updateTableRows()
-		return d, nil
-
-	case RefreshMsg:
-		return d, d.fetchDataCmd()
-
-	case filterdialog.ActionMsg:
-		if msg.Action == filterdialog.ActionNone {
+	case lazytable.DataMsg:
+		if msg.RequestID != d.lazy.RequestID() {
 			return d, nil
 		}
-		if msg.Query == d.filter {
+		if payload, ok := msg.Result.Payload.(deadPayload); ok {
+			d.jobs = payload.jobs
+			d.firstEntry = payload.firstEntry
+			d.lastEntry = payload.lastEntry
+		}
+		d.ready = true
+		var cmd tea.Cmd
+		d.lazy, cmd = d.lazy.Update(msg)
+		return d, cmd
+
+	case RefreshMsg:
+		if d.lazy.Loading() {
+			return d, nil
+		}
+		return d, d.lazy.RequestWindow(d.lazy.WindowStart(), lazytable.CursorKeep)
+
+	case filterdialog.ActionMsg:
+		if msg.Action == filterdialog.ActionNone || msg.Query == d.filter {
 			return d, nil
 		}
 		d.filter = msg.Query
-		d.currentPage = 1
-		d.table.SetCursor(0)
-		return d, d.fetchDataCmd()
+		d.updateEmptyMessage()
+		d.lazy.Table().SetCursor(0)
+		return d, d.lazy.RequestWindow(0, lazytable.CursorStart)
 
 	case confirmdialog.ActionMsg:
-		if !d.dangerousActionsEnabled {
-			return d, nil
-		}
-		if d.pendingJobEntry == nil {
-			return d, nil
-		}
-		if d.pendingJobTarget != "" && msg.Target != d.pendingJobTarget {
+		if !d.dangerousActionsEnabled || d.pendingJobEntry == nil || (d.pendingJobTarget != "" && msg.Target != d.pendingJobTarget) {
 			return d, nil
 		}
 		action := d.pendingJobAction
@@ -142,13 +143,13 @@ func (d *Dead) Update(msg tea.Msg) (View, tea.Cmd) {
 		case "/":
 			return d, d.openFilterDialog()
 		case "ctrl+u":
-			if d.filter != "" {
-				d.filter = ""
-				d.currentPage = 1
-				d.table.SetCursor(0)
-				return d, d.fetchDataCmd()
+			if d.filter == "" {
+				return d, nil
 			}
-			return d, nil
+			d.filter = ""
+			d.updateEmptyMessage()
+			d.lazy.Table().SetCursor(0)
+			return d, d.lazy.RequestWindow(0, lazytable.CursorStart)
 		case "c":
 			if entry, ok := d.selectedEntry(); ok {
 				return d, copyTextCmd(entry.JID())
@@ -158,26 +159,20 @@ func (d *Dead) Update(msg tea.Msg) (View, tea.Cmd) {
 
 		switch msg.String() {
 		case "alt+left", "[":
-			if d.filter != "" {
-				return d, nil
-			}
-			if d.currentPage > 1 {
-				d.currentPage--
-				return d, d.fetchDataCmd()
+			if d.filter == "" {
+				d.lazy.MovePage(-1)
+				return d, d.lazy.MaybePrefetch()
 			}
 			return d, nil
 		case "alt+right", "]":
-			if d.filter != "" {
-				return d, nil
-			}
-			if d.currentPage < d.totalPages {
-				d.currentPage++
-				return d, d.fetchDataCmd()
+			if d.filter == "" {
+				d.lazy.MovePage(1)
+				return d, d.lazy.MaybePrefetch()
 			}
 			return d, nil
 		case "enter":
 			// Show detail for selected job
-			if idx := d.table.Cursor(); idx >= 0 && idx < len(d.jobs) {
+			if idx := d.lazy.Table().Cursor(); idx >= 0 && idx < len(d.jobs) {
 				return d, func() tea.Msg {
 					return ShowJobDetailMsg{Job: d.jobs[idx].JobRecord}
 				}
@@ -206,8 +201,9 @@ func (d *Dead) Update(msg tea.Msg) (View, tea.Cmd) {
 			}
 		}
 
-		d.table, _ = d.table.Update(msg)
-		return d, nil
+		var cmd tea.Cmd
+		d.lazy, cmd = d.lazy.Update(msg)
+		return d, cmd
 	}
 
 	return d, nil
@@ -219,7 +215,7 @@ func (d *Dead) View() string {
 		return d.renderMessage("Loading...")
 	}
 
-	if len(d.jobs) == 0 && d.totalSize == 0 && d.filter == "" {
+	if len(d.jobs) == 0 && d.lazy.Total() == 0 && d.filter == "" {
 		return d.renderMessage("No dead jobs")
 	}
 
@@ -251,7 +247,7 @@ func (d *Dead) ContextItems() []ContextItem {
 	items := []ContextItem{
 		{Label: "Last failed", Value: lastFailed},
 		{Label: "Oldest failed", Value: oldestFailed},
-		{Label: "Total items", Value: format.Number(d.totalSize)},
+		{Label: "Total items", Value: format.Number(d.lazy.Total())},
 	}
 	return items
 }
@@ -261,7 +257,7 @@ func (d *Dead) HintBindings() []key.Binding {
 	return []key.Binding{
 		helpBinding([]string{"/"}, "/", "filter"),
 		helpBinding([]string{"ctrl+u"}, "ctrl+u", "reset filter"),
-		helpBinding([]string{"[", "]"}, "[ ⋰ ]", "change page"),
+		helpBinding([]string{"[", "]"}, "[ ⋰ ]", "page up/down"),
 		helpBinding([]string{"enter"}, "enter", "job detail"),
 	}
 }
@@ -285,8 +281,10 @@ func (d *Dead) HelpSections() []HelpSection {
 			Bindings: []key.Binding{
 				helpBinding([]string{"/"}, "/", "filter"),
 				helpBinding([]string{"ctrl+u"}, "ctrl+u", "clear filter"),
-				helpBinding([]string{"["}, "[", "previous page"),
-				helpBinding([]string{"]"}, "]", "next page"),
+				helpBinding([]string{"["}, "[", "page up"),
+				helpBinding([]string{"]"}, "]", "page down"),
+				helpBinding([]string{"g"}, "g", "jump to start"),
+				helpBinding([]string{"G"}, "shift+g", "jump to end"),
 				helpBinding([]string{"c"}, "c", "copy jid"),
 				helpBinding([]string{"enter"}, "enter", "job detail"),
 			},
@@ -306,7 +304,7 @@ func (d *Dead) HelpSections() []HelpSection {
 
 // TableHelp implements TableHelpProvider.
 func (d *Dead) TableHelp() []key.Binding {
-	return tableHelpBindings(d.table.KeyMap)
+	return tableHelpBindings(d.lazy.Table().KeyMap)
 }
 
 // SetSize implements View.
@@ -354,76 +352,86 @@ func (d *Dead) SetStyles(styles Styles) View {
 		Placeholder: styles.Muted,
 		Cursor:      styles.Text,
 	}
-	d.table.SetStyles(table.Styles{
-		Text:      styles.Text,
-		Muted:     styles.Muted,
-		Header:    styles.TableHeader,
-		Selected:  styles.TableSelected,
-		Separator: styles.TableSeparator,
+	d.lazy.SetSpinnerStyle(styles.Muted)
+	d.lazy.SetTableStyles(table.Styles{
+		Text:           styles.Text,
+		Muted:          styles.Muted,
+		Header:         styles.TableHeader,
+		Selected:       styles.TableSelected,
+		Separator:      styles.TableSeparator,
+		ScrollbarTrack: styles.ScrollbarTrack,
+		ScrollbarThumb: styles.ScrollbarThumb,
 	})
 	return d
 }
 
-// fetchDataCmd fetches dead jobs data from Redis.
-func (d *Dead) fetchDataCmd() tea.Cmd {
-	return func() tea.Msg {
-		ctx := devtools.WithTracker(context.Background(), "dead.fetchDataCmd")
+func (d *Dead) fetchWindow(
+	ctx context.Context,
+	windowStart int,
+	windowSize int,
+	_ lazytable.CursorIntent,
+) (lazytable.FetchResult, error) {
+	ctx = devtools.WithTracker(ctx, "dead.fetchWindow")
 
-		if d.filter != "" {
-			jobs, err := d.client.ScanDeadJobs(ctx, d.filter)
-			if err != nil {
-				return ConnectionErrorMsg{Err: err}
-			}
-			firstEntry, lastEntry := sortedEntryBounds(jobs)
-
-			return deadDataMsg{
-				jobs:        jobs,
-				firstEntry:  firstEntry,
-				lastEntry:   lastEntry,
-				currentPage: 1,
-				totalPages:  1,
-				totalSize:   int64(len(jobs)),
-			}
-		}
-
-		currentPage := d.currentPage
-		totalPages := 1
-
-		start := (currentPage - 1) * deadPageSize
-		jobs, totalSize, err := d.client.GetDeadJobs(ctx, start, deadPageSize)
+	if d.filter != "" {
+		jobs, err := d.client.ScanDeadJobs(ctx, d.filter)
 		if err != nil {
-			return ConnectionErrorMsg{Err: err}
+			return lazytable.FetchResult{}, err
 		}
+		firstEntry, lastEntry := sortedEntryBounds(jobs)
+		return lazytable.FetchResult{
+			Rows:        d.buildRows(jobs),
+			Total:       int64(len(jobs)),
+			WindowStart: 0,
+			Payload: deadPayload{
+				jobs:       jobs,
+				firstEntry: firstEntry,
+				lastEntry:  lastEntry,
+			},
+		}, nil
+	}
 
-		var firstEntry *sidekiq.SortedEntry
-		var lastEntry *sidekiq.SortedEntry
-		if totalSize > 0 {
-			firstEntry, lastEntry, err = d.client.GetDeadBounds(ctx)
+	if windowSize <= 0 {
+		windowSize = max(deadFallbackPageSize, 1) * deadWindowPages
+	}
+
+	jobs, totalSize, err := d.client.GetDeadJobs(ctx, windowStart, windowSize)
+	if err != nil {
+		return lazytable.FetchResult{}, err
+	}
+
+	if totalSize > 0 {
+		maxStart := max(int(totalSize)-windowSize, 0)
+		if windowStart > maxStart {
+			windowStart = maxStart
+			jobs, totalSize, err = d.client.GetDeadJobs(ctx, windowStart, windowSize)
 			if err != nil {
-				return ConnectionErrorMsg{Err: err}
+				return lazytable.FetchResult{}, err
 			}
 		}
+	} else {
+		windowStart = 0
+	}
 
-		if totalSize > 0 {
-			totalPages = int((totalSize + deadPageSize - 1) / deadPageSize)
-		}
-
-		if currentPage > totalPages {
-			currentPage = totalPages
-		}
-		if currentPage < 1 {
-			currentPage = 1
-		}
-
-		return deadDataMsg{
-			jobs:        jobs,
-			firstEntry:  firstEntry,
-			lastEntry:   lastEntry,
-			currentPage: currentPage,
-			totalPages:  totalPages,
-			totalSize:   totalSize,
+	var firstEntry *sidekiq.SortedEntry
+	var lastEntry *sidekiq.SortedEntry
+	if totalSize > 0 {
+		firstEntry, lastEntry, err = d.client.GetDeadBounds(ctx)
+		if err != nil {
+			return lazytable.FetchResult{}, err
 		}
 	}
+
+	return lazytable.FetchResult{
+		Rows:        d.buildRows(jobs),
+		Total:       totalSize,
+		WindowStart: windowStart,
+		Payload: deadPayload{
+			jobs:       jobs,
+			firstEntry: firstEntry,
+			lastEntry:  lastEntry,
+		},
+	}, nil
 }
 
 func (d *Dead) renderMessage(msg string) string {
@@ -435,19 +443,16 @@ func (d *Dead) renderMessage(msg string) string {
 }
 
 func (d *Dead) reset() {
-	d.currentPage = 1
-	d.totalPages = 1
-	d.totalSize = 0
 	d.jobs = nil
 	d.firstEntry = nil
 	d.lastEntry = nil
 	d.ready = false
-	d.table.SetRows(nil)
-	d.table.SetCursor(0)
+	d.lazy.Reset()
+	d.updateEmptyMessage()
 }
 
 func (d *Dead) selectedEntry() (*sidekiq.SortedEntry, bool) {
-	idx := d.table.Cursor()
+	idx := d.lazy.Table().Cursor()
 	if idx < 0 || idx >= len(d.jobs) {
 		return nil, false
 	}
@@ -469,34 +474,32 @@ func (d *Dead) updateTableSize() {
 	tableHeight := max(d.height-2, 3)
 	// Table width: view width - box borders - padding
 	tableWidth := d.width - 4
-	d.table.SetSize(tableWidth, tableHeight)
+	d.lazy.SetSize(tableWidth, tableHeight)
 }
 
-// updateTableRows converts job data to table rows.
-func (d *Dead) updateTableRows() {
+func (d *Dead) updateEmptyMessage() {
+	msg := "No dead jobs"
 	if d.filter != "" {
-		d.table.SetEmptyMessage("No matches")
-	} else {
-		d.table.SetEmptyMessage("No dead jobs")
+		msg = "No matches"
 	}
+	d.lazy.SetEmptyMessage(msg)
+}
 
-	rows := make([]table.Row, 0, len(d.jobs))
+func (d *Dead) buildRows(jobs []*sidekiq.SortedEntry) []table.Row {
+	rows := make([]table.Row, 0, len(jobs))
 	now := time.Now()
-	for _, job := range d.jobs {
-		// Format "last retry" as relative time
+	for _, job := range jobs {
 		lastRetry := format.Duration(int64(now.Sub(job.At()).Seconds()))
 
-		// Format error
 		errorStr := ""
 		if job.HasError() {
 			errorStr = fmt.Sprintf("%s: %s", job.ErrorClass(), job.ErrorMessage())
-			// Truncate if too long
 			if len(errorStr) > 100 {
 				errorStr = errorStr[:97] + "..."
 			}
 		}
 
-		row := table.Row{
+		rows = append(rows, table.Row{
 			ID: job.JID(),
 			Cells: []string{
 				lastRetry,
@@ -505,11 +508,9 @@ func (d *Dead) updateTableRows() {
 				format.Args(job.DisplayArgs()),
 				errorStr,
 			},
-		}
-		rows = append(rows, row)
+		})
 	}
-	d.table.SetRows(rows)
-	d.updateTableSize()
+	return rows
 }
 
 func (d *Dead) openFilterDialog() tea.Cmd {
@@ -524,10 +525,7 @@ func (d *Dead) openFilterDialog() tea.Cmd {
 }
 
 func (d *Dead) openDeleteConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
-	jobName := entry.DisplayClass()
-	if jobName == "" {
-		jobName = "selected"
-	}
+	jobName := d.jobName(entry)
 	return func() tea.Msg {
 		return dialogs.OpenDialogMsg{
 			Model: newConfirmDialog(
@@ -545,10 +543,7 @@ func (d *Dead) openDeleteConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
 }
 
 func (d *Dead) openRetryNowConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
-	jobName := entry.DisplayClass()
-	if jobName == "" {
-		jobName = "selected"
-	}
+	jobName := d.jobName(entry)
 	return func() tea.Msg {
 		return dialogs.OpenDialogMsg{
 			Model: newConfirmDialog(
@@ -585,28 +580,43 @@ func (d *Dead) retryNowJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
 	}
 }
 
+func (d *Dead) rowsMeta() string {
+	start, end, total := d.lazy.Range()
+	label := d.styles.MetricLabel.Render("rows: ")
+	if total == 0 || len(d.jobs) == 0 {
+		return label + d.styles.MetricValue.Render("0/0")
+	}
+
+	rangeLabel := fmt.Sprintf(
+		"%s-%s/%s",
+		format.Number(int64(start)),
+		format.Number(int64(end)),
+		format.Number(total),
+	)
+	return label + d.styles.MetricValue.Render(rangeLabel)
+}
+
 // renderJobsBox renders the bordered box containing the jobs table.
 func (d *Dead) renderJobsBox() string {
-	// Build meta: page only
-	pageInfo := d.styles.MetricLabel.Render("page: ") + d.styles.MetricValue.Render(fmt.Sprintf("%d/%d", d.currentPage, d.totalPages))
-	meta := pageInfo
-
-	// Get table content
-	content := d.table.View()
-
-	box := frame.New(
+	return frame.New(
 		frame.WithStyles(d.frameStyles),
 		frame.WithTitle("Dead Jobs"),
 		frame.WithFilter(d.filter),
 		frame.WithTitlePadding(0),
-		frame.WithMeta(meta),
-		frame.WithContent(content),
+		frame.WithMeta(d.rowsMeta()),
+		frame.WithContent(d.lazy.View()),
 		frame.WithPadding(1),
 		frame.WithSize(d.width, d.height),
 		frame.WithMinHeight(5),
 		frame.WithFocused(true),
-	)
-	return box.View()
+	).View()
+}
+
+func (d *Dead) jobName(entry *sidekiq.SortedEntry) string {
+	if name := entry.DisplayClass(); name != "" {
+		return name
+	}
+	return "selected"
 }
 
 // renderJobDetail renders the job detail view.

@@ -204,9 +204,7 @@ func scatterRune(count, maxCount int64) rune {
 	if maxCount <= 0 {
 		return levels[0]
 	}
-	if count < 0 {
-		count = 0
-	}
+	count = max(count, 0)
 	ratio := math.Log1p(float64(count)) / math.Log1p(float64(maxCount))
 	idx := mathutil.Clamp(int(math.Round(ratio*float64(len(levels)-1))), 0, len(levels)-1)
 	return levels[idx]

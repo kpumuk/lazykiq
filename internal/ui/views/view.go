@@ -19,6 +19,8 @@ type Styles struct {
 	TableHeader     lipgloss.Style
 	TableSelected   lipgloss.Style
 	TableSeparator  lipgloss.Style
+	ScrollbarTrack  lipgloss.Style
+	ScrollbarThumb  lipgloss.Style
 	BoxPadding      lipgloss.Style
 	BorderStyle     lipgloss.Style
 	FocusBorder     lipgloss.Style

@@ -65,6 +65,7 @@ internal/
 - Table in `components/table/` subpackage to avoid import cycle (components ↔ views)
 - Table: last column not truncated/padded to allow horizontal scroll of variable content
 - Empty states: prefer `messagebox` for centered messages
+- Prefer `mathutil.Clamp` for bounds clamping instead of nested `min/max` or manual if ladders
 - Detail views are stacked: emit `ShowJobDetailMsg`/`ShowErrorDetailsMsg` and let `app.go` push views
 - Views with transient state should implement `views.Disposable` for cleanup when popped
 - App keeps a view registry + stack; `viewOrder` drives navbar ordering and view hotkeys
