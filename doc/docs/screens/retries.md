@@ -3,7 +3,7 @@ title: "Retries"
 description: "Review failed jobs scheduled for retry."
 summary: "Review failed jobs scheduled for retry."
 date: 2025-12-30T00:00:00Z
-lastmod: 2026-01-09T00:00:00Z
+lastmod: 2026-01-10T00:00:00Z
 draft: false
 weight: 70
 toc: true
@@ -24,7 +24,8 @@ Retries list jobs that failed and will be retried by Sidekiq.
 | `c`          | Copy job JID.                                             |
 | `/`          | Filter jobs by substring.                                 |
 | `Ctrl+u`     | Clear filter.                                             |
-| `[` / `]`    | Previous or next page (also `Alt+Left` / `Alt+Right`).    |
+| `[` / `]`    | Page up or down (also `Alt+Left` / `Alt+Right`).          |
+| `g` / `G`    | Jump to start or end.                                     |
 | `D`          | Delete job (requires `--danger`).                         |
 | `K`          | Kill job (move to dead, requires `--danger`).             |
 | `R`          | Retry job now (requires `--danger`).                      |
