@@ -27,19 +27,27 @@ func tableRow(id string, cells ...string) table.Row {
 	return table.Row{ID: id, Cells: cells}
 }
 
-func TestLazyTableAnchorKeepsSelection(t *testing.T) {
-	m := New(
-		WithTableOptions(
-			table.WithColumns([]table.Column{
-				{Title: "A", Width: 3},
-				{Title: "B", Width: 3},
-			}),
-			table.WithStyles(blankTableStyles()),
-		),
-		WithFetcher(func(_ context.Context, _, _ int, _ CursorIntent) (FetchResult, error) {
-			return FetchResult{}, nil
+func noopFetcher(_ context.Context, _, _ int, _ CursorIntent) (FetchResult, error) {
+	return FetchResult{}, nil
+}
+
+func newTestModel(tableOpts ...table.Option) Model {
+	opts := []table.Option{
+		table.WithColumns([]table.Column{
+			{Title: "A", Width: 3},
+			{Title: "B", Width: 3},
 		}),
+		table.WithStyles(blankTableStyles()),
+	}
+	opts = append(opts, tableOpts...)
+	return New(
+		WithTableOptions(opts...),
+		WithFetcher(noopFetcher),
 	)
+}
+
+func TestLazyTableAnchorKeepsSelection(t *testing.T) {
+	m := newTestModel()
 
 	m.SetSize(10, 5)
 	m.RequestWindow(0, CursorStart)
@@ -67,18 +75,7 @@ func TestLazyTableAnchorKeepsSelection(t *testing.T) {
 }
 
 func TestGoldenLazyTableLoaded(t *testing.T) {
-	m := New(
-		WithTableOptions(
-			table.WithColumns([]table.Column{
-				{Title: "A", Width: 3},
-				{Title: "B", Width: 3},
-			}),
-			table.WithStyles(blankTableStyles()),
-		),
-		WithFetcher(func(_ context.Context, _, _ int, _ CursorIntent) (FetchResult, error) {
-			return FetchResult{}, nil
-		}),
-	)
+	m := newTestModel()
 	m.SetSize(10, 4)
 	m.RequestWindow(0, CursorStart)
 	rows := []table.Row{
@@ -93,19 +90,7 @@ func TestGoldenLazyTableLoaded(t *testing.T) {
 }
 
 func TestGoldenLazyTableLoading(t *testing.T) {
-	m := New(
-		WithTableOptions(
-			table.WithColumns([]table.Column{
-				{Title: "A", Width: 3},
-				{Title: "B", Width: 3},
-			}),
-			table.WithStyles(blankTableStyles()),
-			table.WithEmptyMessage("Loading"),
-		),
-		WithFetcher(func(_ context.Context, _, _ int, _ CursorIntent) (FetchResult, error) {
-			return FetchResult{}, nil
-		}),
-	)
+	m := newTestModel(table.WithEmptyMessage("Loading"))
 	m.SetSize(10, 4)
 	m.RequestWindow(0, CursorStart)
 

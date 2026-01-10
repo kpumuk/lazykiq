@@ -28,6 +28,11 @@ func row(id string, cells ...string) Row {
 	return Row{ID: id, Cells: cells}
 }
 
+func newTestTable(opts ...Option) Model {
+	opts = append([]Option{WithStyles(blankStyles())}, opts...)
+	return New(opts...)
+}
+
 func TestApplyHorizontalScroll(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -99,8 +104,7 @@ func TestApplyHorizontalScroll_ANSIIntegrity(t *testing.T) {
 }
 
 func TestRenderBody_EmptyMessage(t *testing.T) {
-	table := New(
-		WithStyles(blankStyles()),
+	table := newTestTable(
 		WithEmptyMessage("Nothing here"),
 	)
 
@@ -123,9 +127,7 @@ func assertANSIGrounded(t *testing.T, s string) {
 }
 
 func TestSetEmptyMessage(t *testing.T) {
-	table := New(
-		WithStyles(blankStyles()),
-	)
+	table := newTestTable()
 	table.SetEmptyMessage("Nada")
 
 	got := table.renderBody()
@@ -135,7 +137,7 @@ func TestSetEmptyMessage(t *testing.T) {
 }
 
 func TestRenderBody_LastColumnNotTruncated(t *testing.T) {
-	table := New(
+	table := newTestTable(
 		WithColumns([]Column{
 			{Title: "A", Width: 3},
 			{Title: "B", Width: 3},
@@ -143,7 +145,6 @@ func TestRenderBody_LastColumnNotTruncated(t *testing.T) {
 		WithRows([]Row{
 			row("row-1", "foo", "this-is-long"),
 		}),
-		WithStyles(blankStyles()),
 		WithWidth(80),
 	)
 
@@ -156,7 +157,7 @@ func TestRenderBody_LastColumnNotTruncated(t *testing.T) {
 }
 
 func TestRenderHeader_UsesDynamicWidth(t *testing.T) {
-	table := New(
+	table := newTestTable(
 		WithColumns([]Column{
 			{Title: "ID", Width: 2},
 			{Title: "Value", Width: 5},
@@ -164,7 +165,6 @@ func TestRenderHeader_UsesDynamicWidth(t *testing.T) {
 		WithRows([]Row{
 			row("row-1", "123456", "short"),
 		}),
-		WithStyles(blankStyles()),
 		WithWidth(80),
 	)
 
@@ -182,7 +182,7 @@ func TestRenderHeader_UsesDynamicWidth(t *testing.T) {
 }
 
 func TestUpdate_KeyHandling(t *testing.T) {
-	base := New(
+	base := newTestTable(
 		WithColumns([]Column{
 			{Title: "A", Width: 3},
 			{Title: "B", Width: 3},
@@ -194,7 +194,6 @@ func TestUpdate_KeyHandling(t *testing.T) {
 			row("row-4", "seven", "eight"),
 			row("row-5", "nine", "ten"),
 		}),
-		WithStyles(blankStyles()),
 		WithWidth(5),
 		WithHeight(4),
 	)
@@ -345,7 +344,7 @@ func TestGetVisibleContent(t *testing.T) {
 }
 
 func TestSelectionKeepsVisible(t *testing.T) {
-	table := New(
+	table := newTestTable(
 		WithColumns([]Column{{Title: "A", Width: 1}}),
 		WithRows([]Row{
 			row("row-1", "1"),
@@ -354,7 +353,6 @@ func TestSelectionKeepsVisible(t *testing.T) {
 			row("row-4", "4"),
 			row("row-5", "5"),
 		}),
-		WithStyles(blankStyles()),
 		WithWidth(10),
 		WithHeight(4),
 	)
@@ -410,7 +408,7 @@ func TestNavigationMethods(t *testing.T) {
 		},
 	}
 
-	base := New(
+	base := newTestTable(
 		WithColumns([]Column{
 			{Title: "A", Width: 3},
 			{Title: "B", Width: 3},
@@ -422,7 +420,6 @@ func TestNavigationMethods(t *testing.T) {
 			row("row-4", "seven", "eight"),
 			row("row-5", "nine", "ten"),
 		}),
-		WithStyles(blankStyles()),
 		WithWidth(5),
 		WithHeight(4),
 	)
@@ -450,7 +447,7 @@ func TestNavigationMethods(t *testing.T) {
 }
 
 func TestScrollRightClamps(t *testing.T) {
-	table := New(
+	table := newTestTable(
 		WithColumns([]Column{
 			{Title: "A", Width: 1},
 			{Title: "B", Width: 1},
@@ -458,7 +455,6 @@ func TestScrollRightClamps(t *testing.T) {
 		WithRows([]Row{
 			row("row-1", "a", "bbbbbbbbbb"),
 		}),
-		WithStyles(blankStyles()),
 		WithWidth(5),
 	)
 
@@ -471,14 +467,13 @@ func TestScrollRightClamps(t *testing.T) {
 }
 
 func TestSetRows_ClampsCursor(t *testing.T) {
-	table := New(
+	table := newTestTable(
 		WithColumns([]Column{{Title: "A", Width: 1}}),
 		WithRows([]Row{
 			row("row-1", "1"),
 			row("row-2", "2"),
 			row("row-3", "3"),
 		}),
-		WithStyles(blankStyles()),
 		WithWidth(10),
 		WithHeight(4),
 	)
@@ -492,14 +487,13 @@ func TestSetRows_ClampsCursor(t *testing.T) {
 }
 
 func TestSetRows_PreservesSelectionByID(t *testing.T) {
-	table := New(
+	table := newTestTable(
 		WithColumns([]Column{{Title: "A", Width: 1}}),
 		WithRows([]Row{
 			row("row-a", "a"),
 			row("row-b", "b"),
 			row("row-c", "c"),
 		}),
-		WithStyles(blankStyles()),
 		WithWidth(10),
 		WithHeight(4),
 	)
@@ -520,10 +514,9 @@ func TestSetRows_PreservesSelectionByID(t *testing.T) {
 }
 
 func TestSetStyles_RefreshesContent(t *testing.T) {
-	table := New(
+	table := newTestTable(
 		WithColumns([]Column{{Title: "A", Width: 1}}),
 		WithRows([]Row{row("row-1", "1")}),
-		WithStyles(blankStyles()),
 		WithWidth(4),
 		WithHeight(3),
 	)
@@ -542,7 +535,7 @@ func TestSetStyles_RefreshesContent(t *testing.T) {
 }
 
 func TestSetRows_ClampsHorizontalScroll(t *testing.T) {
-	table := New(
+	table := newTestTable(
 		WithColumns([]Column{
 			{Title: "A", Width: 2},
 			{Title: "B", Width: 2},
@@ -550,7 +543,6 @@ func TestSetRows_ClampsHorizontalScroll(t *testing.T) {
 		WithRows([]Row{
 			row("row-1", "a", "long-value"),
 		}),
-		WithStyles(blankStyles()),
 		WithWidth(4),
 		WithHeight(3),
 	)
@@ -570,7 +562,7 @@ func TestSetRows_ClampsHorizontalScroll(t *testing.T) {
 }
 
 func TestSetColumns_ClampsHorizontalScroll(t *testing.T) {
-	table := New(
+	table := newTestTable(
 		WithColumns([]Column{
 			{Title: "A", Width: 2},
 			{Title: "B", Width: 10},
@@ -578,7 +570,6 @@ func TestSetColumns_ClampsHorizontalScroll(t *testing.T) {
 		WithRows([]Row{
 			row("row-1", "a", "bbbbbbbbbb"),
 		}),
-		WithStyles(blankStyles()),
 		WithWidth(4),
 		WithHeight(3),
 	)
@@ -605,7 +596,7 @@ func TestSetColumns_ClampsHorizontalScroll(t *testing.T) {
 // Run with GOLDEN_UPDATE=1 to regenerate golden files after intentional changes.
 
 func TestGoldenBasic(t *testing.T) {
-	table := New(
+	table := newTestTable(
 		WithColumns([]Column{
 			{Title: "A", Width: 3},
 			{Title: "B", Width: 3},
@@ -614,7 +605,6 @@ func TestGoldenBasic(t *testing.T) {
 			row("row-1", "one", "two"),
 			row("row-2", "three", "four"),
 		}),
-		WithStyles(blankStyles()),
 		WithWidth(10),
 		WithHeight(4),
 	)
@@ -624,7 +614,7 @@ func TestGoldenBasic(t *testing.T) {
 }
 
 func TestGoldenHorizontalScroll(t *testing.T) {
-	table := New(
+	table := newTestTable(
 		WithColumns([]Column{
 			{Title: "A", Width: 3},
 			{Title: "B", Width: 3},
@@ -633,7 +623,6 @@ func TestGoldenHorizontalScroll(t *testing.T) {
 			row("row-1", "one", "two"),
 			row("row-2", "three", "four"),
 		}),
-		WithStyles(blankStyles()),
 		WithWidth(5),
 		WithHeight(4),
 	)
@@ -645,7 +634,7 @@ func TestGoldenHorizontalScroll(t *testing.T) {
 }
 
 func TestGoldenVerticalScroll(t *testing.T) {
-	table := New(
+	table := newTestTable(
 		WithColumns([]Column{
 			{Title: "A", Width: 3},
 			{Title: "B", Width: 3},
@@ -655,7 +644,6 @@ func TestGoldenVerticalScroll(t *testing.T) {
 			row("row-2", "three", "four"),
 			row("row-3", "five", "six"),
 		}),
-		WithStyles(blankStyles()),
 		WithWidth(10),
 		WithHeight(4),
 	)
@@ -667,7 +655,7 @@ func TestGoldenVerticalScroll(t *testing.T) {
 }
 
 func TestGoldenLastColumnVariableWidth(t *testing.T) {
-	table := New(
+	table := newTestTable(
 		WithColumns([]Column{
 			{Title: "A", Width: 3},
 			{Title: "B", Width: 3},
@@ -675,7 +663,6 @@ func TestGoldenLastColumnVariableWidth(t *testing.T) {
 		WithRows([]Row{
 			row("row-1", "one", "this-is-long"),
 		}),
-		WithStyles(blankStyles()),
 		WithWidth(20),
 		WithHeight(3),
 	)
@@ -685,7 +672,7 @@ func TestGoldenLastColumnVariableWidth(t *testing.T) {
 }
 
 func TestGoldenSetSize(t *testing.T) {
-	table := New(
+	table := newTestTable(
 		WithColumns([]Column{
 			{Title: "A", Width: 3},
 			{Title: "B", Width: 3},
@@ -694,7 +681,6 @@ func TestGoldenSetSize(t *testing.T) {
 			row("row-1", "one", "two"),
 			row("row-2", "three", "four"),
 		}),
-		WithStyles(blankStyles()),
 		WithWidth(10),
 		WithHeight(4),
 	)
@@ -706,10 +692,9 @@ func TestGoldenSetSize(t *testing.T) {
 }
 
 func TestGoldenSetColumns(t *testing.T) {
-	table := New(
+	table := newTestTable(
 		WithColumns([]Column{{Title: "A", Width: 2}}),
 		WithRows([]Row{row("row-1", "x")}),
-		WithStyles(blankStyles()),
 		WithWidth(8),
 		WithHeight(3),
 	)
@@ -727,7 +712,7 @@ func TestGoldenSetColumns(t *testing.T) {
 func TestGoldenWidths(t *testing.T) {
 	for _, width := range []int{6, 10, 20} {
 		t.Run(fmt.Sprintf("width %d", width), func(t *testing.T) {
-			table := New(
+			table := newTestTable(
 				WithColumns([]Column{
 					{Title: "A", Width: 3},
 					{Title: "B", Width: 3},
@@ -736,7 +721,6 @@ func TestGoldenWidths(t *testing.T) {
 					row("row-1", "one", "two"),
 					row("row-2", "three", "four"),
 				}),
-				WithStyles(blankStyles()),
 				WithWidth(width),
 				WithHeight(4),
 			)
@@ -750,7 +734,7 @@ func TestGoldenWidths(t *testing.T) {
 func TestGoldenHeights(t *testing.T) {
 	for _, height := range []int{3, 4, 6} {
 		t.Run(fmt.Sprintf("height %d", height), func(t *testing.T) {
-			table := New(
+			table := newTestTable(
 				WithColumns([]Column{
 					{Title: "A", Width: 3},
 					{Title: "B", Width: 3},
@@ -760,7 +744,6 @@ func TestGoldenHeights(t *testing.T) {
 					row("row-2", "three", "four"),
 					row("row-3", "five", "six"),
 				}),
-				WithStyles(blankStyles()),
 				WithWidth(10),
 				WithHeight(height),
 			)

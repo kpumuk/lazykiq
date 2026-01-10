@@ -91,12 +91,8 @@ func (d *Dashboard) Update(msg tea.Msg) (View, tea.Cmd) {
 		if d.hasLastTotals {
 			deltaProcessed = msg.Data.Processed - d.lastProcessed
 			deltaFailed = msg.Data.Failed - d.lastFailed
-			if deltaProcessed < 0 {
-				deltaProcessed = 0
-			}
-			if deltaFailed < 0 {
-				deltaFailed = 0
-			}
+			deltaProcessed = max(deltaProcessed, 0)
+			deltaFailed = max(deltaFailed, 0)
 		}
 		d.lastProcessed = msg.Data.Processed
 		d.lastFailed = msg.Data.Failed

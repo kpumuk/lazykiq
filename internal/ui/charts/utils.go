@@ -54,9 +54,7 @@ func BuildValueYAxisLabels(maxVal int64, height int) map[int]string {
 	if height <= 0 {
 		return labels
 	}
-	if maxVal < 0 {
-		maxVal = 0
-	}
+	maxVal = max(maxVal, 0)
 	tickCount := min(4, height)
 	if tickCount < 2 {
 		labels[height-1] = format.ShortNumber(0)

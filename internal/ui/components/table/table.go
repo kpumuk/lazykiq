@@ -487,11 +487,7 @@ func (m *Model) ScrollToEnd() {
 
 // maxScrollOffset returns the maximum horizontal scroll offset.
 func (m *Model) maxScrollOffset() int {
-	maxScroll := m.maxRowWidth - m.contentWidth()
-	if maxScroll < 0 {
-		return 0
-	}
-	return maxScroll
+	return max(m.maxRowWidth-m.contentWidth(), 0)
 }
 
 // clampScroll ensures scroll offsets are within valid bounds.
@@ -630,10 +626,8 @@ func (m *Model) renderBody() string {
 	// First pass: find max width for each column (at least the defined width)
 	m.colWidths = baseWidths
 	for i, row := range m.rows {
-		if m.fullRows != nil {
-			if _, ok := m.fullRows[i]; ok {
-				continue
-			}
+		if _, ok := m.fullRows[i]; ok {
+			continue
 		}
 		for i, cell := range row.Cells {
 			cellWidth := lipgloss.Width(cell)
@@ -649,15 +643,13 @@ func (m *Model) renderBody() string {
 	rawRows := make([]string, 0, len(m.rows))
 	maxWidth := m.columnRowWidth(m.lastColWidth)
 	for i, row := range m.rows {
-		if m.fullRows != nil {
-			if fullRow, ok := m.fullRows[i]; ok {
-				rawRows = append(rawRows, fullRow)
-				rowWidth := lipgloss.Width(fullRow)
-				if rowWidth > maxWidth {
-					maxWidth = rowWidth
-				}
-				continue
+		if fullRow, ok := m.fullRows[i]; ok {
+			rawRows = append(rawRows, fullRow)
+			rowWidth := lipgloss.Width(fullRow)
+			if rowWidth > maxWidth {
+				maxWidth = rowWidth
 			}
+			continue
 		}
 		var cols []string
 		for i, cell := range row.Cells {
@@ -685,14 +677,8 @@ func (m *Model) renderBody() string {
 	// Third pass: apply scroll and styling
 	lines := make([]string, 0, len(rawRows))
 	for i, row := range rawRows {
-		isFullRow := false
-		if m.fullRows != nil {
-			_, isFullRow = m.fullRows[i]
-		}
-		span, hasSpan := SelectionSpan{}, false
-		if m.selectionSpans != nil {
-			span, hasSpan = m.selectionSpans[i]
-		}
+		_, isFullRow := m.fullRows[i]
+		span, hasSpan := m.selectionSpans[i]
 
 		// Pad row to max width for consistent selection highlight
 		rowWidth := lipgloss.Width(row)
@@ -729,9 +715,9 @@ func (m Model) getVisibleContent() []string {
 	lines := strings.Split(m.content, "\n")
 
 	// Clamp yOffset to valid range
-	yOffset := max(m.yOffset, 0)
-	if yOffset >= len(lines) {
-		yOffset = max(len(lines)-1, 0)
+	yOffset := 0
+	if len(lines) > 0 {
+		yOffset = mathutil.Clamp(m.yOffset, 0, len(lines)-1)
 	}
 
 	// Get visible slice
@@ -748,9 +734,7 @@ func applyHorizontalScroll(line string, offset, visibleWidth int) string {
 	if visibleWidth <= 0 {
 		return ""
 	}
-	if offset < 0 {
-		offset = 0
-	}
+	offset = max(offset, 0)
 
 	cut := ansi.Cut(line, offset, offset+visibleWidth)
 	cutWidth := lipgloss.Width(cut)
@@ -768,20 +752,15 @@ func applySelection(line string, span SelectionSpan, maxWidth, xOffset, visibleW
 
 	start := span.Start
 	end := span.End
-	if start < 0 {
-		start = 0
-	}
-	if end < 0 || end > maxWidth {
+	start = mathutil.Clamp(start, 0, maxWidth)
+	if end < 0 {
 		end = maxWidth
 	}
+	end = mathutil.Clamp(end, 0, maxWidth)
 	start -= xOffset
 	end -= xOffset
-	if start < 0 {
-		start = 0
-	}
-	if end > visibleWidth {
-		end = visibleWidth
-	}
+	start = mathutil.Clamp(start, 0, visibleWidth)
+	end = mathutil.Clamp(end, 0, visibleWidth)
 	if start >= end || start >= lineWidth {
 		return line
 	}
@@ -871,12 +850,8 @@ func (m Model) scrollbarLines() []string {
 		total = m.scrollbarTotal
 		offset = m.scrollbarOffset
 	}
-	if total < 0 {
-		total = 0
-	}
-	if offset < 0 {
-		offset = 0
-	}
+	total = mathutil.Clamp(total, 0, total)
+	offset = mathutil.Clamp(offset, 0, offset)
 
 	sb := m.scrollbar
 	sb.SetRange(total, m.viewportHeight, offset)

@@ -11,9 +11,7 @@ import (
 
 // Duration formats elapsed seconds as "2m3s", "1h30m", etc. (max 2 segments).
 func Duration(seconds int64) string {
-	if seconds < 0 {
-		seconds = 0
-	}
+	seconds = max(seconds, 0)
 
 	days := seconds / 86400
 	hours := (seconds % 86400) / 3600
