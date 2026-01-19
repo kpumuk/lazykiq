@@ -3,4 +3,4 @@
 source "https://rubygems.org"
 
 gem "bundle-audit", "~> 0.2"
-gem "standard", "~> 1.52"
+gem "standard", "~> 1.53"
