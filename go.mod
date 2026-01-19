@@ -7,11 +7,11 @@ require (
 	charm.land/bubbletea/v2 v2.0.0-rc.2
 	charm.land/lipgloss/v2 v2.0.0-beta.3.0.20251114164805-d267651963ad
 	github.com/NimbleMarkets/ntcharts/v2 v2.0.0-beta.5
-	github.com/alecthomas/chroma/v2 v2.22.0
+	github.com/alecthomas/chroma/v2 v2.23.0
 	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/atotto/clipboard v0.1.4
 	github.com/charmbracelet/fang v0.4.4
-	github.com/charmbracelet/x/ansi v0.11.3
+	github.com/charmbracelet/x/ansi v0.11.4
 	github.com/charmbracelet/x/exp/golden v0.0.0-20251215102626-e0db08df7383
 	github.com/redis/go-redis/v9 v9.17.2
 	github.com/spf13/cobra v1.10.2
@@ -27,7 +27,7 @@ require (
 	github.com/charmbracelet/x/term v0.2.2 // indirect
 	github.com/charmbracelet/x/termios v0.1.1 // indirect
 	github.com/charmbracelet/x/windows v0.2.2 // indirect
-	github.com/clipperhouse/displaywidth v0.6.2 // indirect
+	github.com/clipperhouse/displaywidth v0.7.0 // indirect
 	github.com/clipperhouse/stringish v0.1.1 // indirect
 	github.com/clipperhouse/uax29/v2 v2.3.0 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
