@@ -369,64 +369,28 @@ func (s *Scheduled) fetchWindow(
 	_ lazytable.CursorIntent,
 ) (lazytable.FetchResult, error) {
 	ctx = devtools.WithTracker(ctx, "scheduled.fetchWindow")
-
-	if s.filter != "" {
-		jobs, err := s.client.ScanScheduledJobs(ctx, s.filter)
-		if err != nil {
-			return lazytable.FetchResult{}, err
-		}
-		firstEntry, lastEntry := sortedEntryBounds(jobs)
-		return lazytable.FetchResult{
-			Rows:        s.buildRows(jobs),
-			Total:       int64(len(jobs)),
-			WindowStart: 0,
-			Payload: scheduledPayload{
-				jobs:       jobs,
-				firstEntry: firstEntry,
-				lastEntry:  lastEntry,
-			},
-		}, nil
-	}
-
-	if windowSize <= 0 {
-		windowSize = max(scheduledFallbackPageSize, 1) * scheduledWindowPages
-	}
-
-	jobs, totalSize, err := s.client.GetScheduledJobs(ctx, windowStart, windowSize)
+	result, err := fetchSortedWindow(ctx, sortedWindowConfig{
+		filter:           s.filter,
+		windowStart:      windowStart,
+		windowSize:       windowSize,
+		fallbackPageSize: scheduledFallbackPageSize,
+		windowPages:      scheduledWindowPages,
+		scan:             s.client.ScanScheduledJobs,
+		fetch:            s.client.GetScheduledJobs,
+		bounds:           s.client.GetScheduledBounds,
+	})
 	if err != nil {
 		return lazytable.FetchResult{}, err
 	}
 
-	if totalSize > 0 {
-		maxStart := max(int(totalSize)-windowSize, 0)
-		if windowStart > maxStart {
-			windowStart = maxStart
-			jobs, totalSize, err = s.client.GetScheduledJobs(ctx, windowStart, windowSize)
-			if err != nil {
-				return lazytable.FetchResult{}, err
-			}
-		}
-	} else {
-		windowStart = 0
-	}
-
-	var firstEntry *sidekiq.SortedEntry
-	var lastEntry *sidekiq.SortedEntry
-	if totalSize > 0 {
-		firstEntry, lastEntry, err = s.client.GetScheduledBounds(ctx)
-		if err != nil {
-			return lazytable.FetchResult{}, err
-		}
-	}
-
 	return lazytable.FetchResult{
-		Rows:        s.buildRows(jobs),
-		Total:       totalSize,
-		WindowStart: windowStart,
+		Rows:        s.buildRows(result.jobs),
+		Total:       result.total,
+		WindowStart: result.windowStart,
 		Payload: scheduledPayload{
-			jobs:       jobs,
-			firstEntry: firstEntry,
-			lastEntry:  lastEntry,
+			jobs:       result.jobs,
+			firstEntry: result.firstEntry,
+			lastEntry:  result.lastEntry,
 		},
 	}, nil
 }

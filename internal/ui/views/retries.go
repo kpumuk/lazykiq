@@ -396,64 +396,28 @@ func (r *Retries) fetchWindow(
 	_ lazytable.CursorIntent,
 ) (lazytable.FetchResult, error) {
 	ctx = devtools.WithTracker(ctx, "retries.fetchWindow")
-
-	if r.filter != "" {
-		jobs, err := r.client.ScanRetryJobs(ctx, r.filter)
-		if err != nil {
-			return lazytable.FetchResult{}, err
-		}
-		firstEntry, lastEntry := sortedEntryBounds(jobs)
-		return lazytable.FetchResult{
-			Rows:        r.buildRows(jobs),
-			Total:       int64(len(jobs)),
-			WindowStart: 0,
-			Payload: retriesPayload{
-				jobs:       jobs,
-				firstEntry: firstEntry,
-				lastEntry:  lastEntry,
-			},
-		}, nil
-	}
-
-	if windowSize <= 0 {
-		windowSize = max(retriesFallbackPageSize, 1) * retriesWindowPages
-	}
-
-	jobs, totalSize, err := r.client.GetRetryJobs(ctx, windowStart, windowSize)
+	result, err := fetchSortedWindow(ctx, sortedWindowConfig{
+		filter:           r.filter,
+		windowStart:      windowStart,
+		windowSize:       windowSize,
+		fallbackPageSize: retriesFallbackPageSize,
+		windowPages:      retriesWindowPages,
+		scan:             r.client.ScanRetryJobs,
+		fetch:            r.client.GetRetryJobs,
+		bounds:           r.client.GetRetryBounds,
+	})
 	if err != nil {
 		return lazytable.FetchResult{}, err
 	}
 
-	if totalSize > 0 {
-		maxStart := max(int(totalSize)-windowSize, 0)
-		if windowStart > maxStart {
-			windowStart = maxStart
-			jobs, totalSize, err = r.client.GetRetryJobs(ctx, windowStart, windowSize)
-			if err != nil {
-				return lazytable.FetchResult{}, err
-			}
-		}
-	} else {
-		windowStart = 0
-	}
-
-	var firstEntry *sidekiq.SortedEntry
-	var lastEntry *sidekiq.SortedEntry
-	if totalSize > 0 {
-		firstEntry, lastEntry, err = r.client.GetRetryBounds(ctx)
-		if err != nil {
-			return lazytable.FetchResult{}, err
-		}
-	}
-
 	return lazytable.FetchResult{
-		Rows:        r.buildRows(jobs),
-		Total:       totalSize,
-		WindowStart: windowStart,
+		Rows:        r.buildRows(result.jobs),
+		Total:       result.total,
+		WindowStart: result.windowStart,
 		Payload: retriesPayload{
-			jobs:       jobs,
-			firstEntry: firstEntry,
-			lastEntry:  lastEntry,
+			jobs:       result.jobs,
+			firstEntry: result.firstEntry,
+			lastEntry:  result.lastEntry,
 		},
 	}, nil
 }
