@@ -1,9 +1,12 @@
 package filter
 
 import (
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/exp/golden"
 
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 )
@@ -266,4 +269,47 @@ func TestFilterDialogWindowSizingMinWidth(t *testing.T) {
 	if got := m.input.Width(); got != 21 {
 		t.Fatalf("input width = %d, want %d", got, 21)
 	}
+}
+
+func TestFilterDialogViewDimensions(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		windowWidth  int
+		windowHeight int
+	}{
+		"normal window": {windowWidth: 80, windowHeight: 24},
+		"small window":  {windowWidth: 30, windowHeight: 10},
+		"narrow window": {windowWidth: 25, windowHeight: 8},
+		"short window":  {windowWidth: 50, windowHeight: 4},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			m := New(WithQuery("critical"))
+			m.Init()
+			m, _ = updateModel(t, m, tea.WindowSizeMsg{Width: tc.windowWidth, Height: tc.windowHeight})
+
+			output := ansi.Strip(m.View())
+			lines := strings.Split(output, "\n")
+			if len(lines) != m.height {
+				t.Fatalf("lines = %d, want %d", len(lines), m.height)
+			}
+			for i, line := range lines {
+				if w := ansi.StringWidth(line); w != m.width {
+					t.Fatalf("line %d width = %d, want %d", i, w, m.width)
+				}
+			}
+		})
+	}
+}
+
+func TestGoldenFilterDialog(t *testing.T) {
+	m := New(WithQuery("critical"))
+	m.Init()
+	m, _ = updateModel(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
+
+	output := ansi.Strip(m.View())
+	golden.RequireEqual(t, []byte(output))
 }
