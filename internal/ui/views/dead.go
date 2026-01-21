@@ -34,12 +34,6 @@ const (
 	deadJobActionRetryAll
 )
 
-type deadPayload struct {
-	jobs       []*sidekiq.SortedEntry
-	firstEntry *sidekiq.SortedEntry
-	lastEntry  *sidekiq.SortedEntry
-}
-
 // Dead shows dead/morgue jobs.
 type Dead struct {
 	client                  sidekiq.API
@@ -91,7 +85,7 @@ func (d *Dead) Update(msg tea.Msg) (View, tea.Cmd) {
 		if msg.RequestID != d.lazy.RequestID() {
 			return d, nil
 		}
-		if payload, ok := msg.Result.Payload.(deadPayload); ok {
+		if payload, ok := msg.Result.Payload.(sortedEntriesPayload); ok {
 			d.jobs = payload.jobs
 			d.firstEntry = payload.firstEntry
 			d.lastEntry = payload.lastEntry
@@ -352,8 +346,8 @@ func (d *Dead) fetchWindow(
 	windowSize int,
 	_ lazytable.CursorIntent,
 ) (lazytable.FetchResult, error) {
-	ctx = devtools.WithTracker(ctx, "dead.fetchWindow")
-	result, err := fetchSortedWindow(ctx, sortedWindowConfig{
+	return fetchSortedEntriesWindow(ctx, sortedEntriesFetchConfig{
+		tracker:          "dead.fetchWindow",
 		filter:           d.filter,
 		windowStart:      windowStart,
 		windowSize:       windowSize,
@@ -362,21 +356,8 @@ func (d *Dead) fetchWindow(
 		scan:             d.client.ScanDeadJobs,
 		fetch:            d.client.GetDeadJobs,
 		bounds:           d.client.GetDeadBounds,
+		buildRows:        d.buildRows,
 	})
-	if err != nil {
-		return lazytable.FetchResult{}, err
-	}
-
-	return lazytable.FetchResult{
-		Rows:        d.buildRows(result.jobs),
-		Total:       result.total,
-		WindowStart: result.windowStart,
-		Payload: deadPayload{
-			jobs:       result.jobs,
-			firstEntry: result.firstEntry,
-			lastEntry:  result.lastEntry,
-		},
-	}, nil
 }
 
 func (d *Dead) renderMessage(msg string) string {

@@ -20,12 +20,6 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/format"
 )
 
-type retriesPayload struct {
-	jobs       []*sidekiq.SortedEntry
-	firstEntry *sidekiq.SortedEntry
-	lastEntry  *sidekiq.SortedEntry
-}
-
 const (
 	retriesWindowPages      = 3
 	retriesFallbackPageSize = 25
@@ -94,7 +88,7 @@ func (r *Retries) Update(msg tea.Msg) (View, tea.Cmd) {
 		if msg.RequestID != r.lazy.RequestID() {
 			return r, nil
 		}
-		if payload, ok := msg.Result.Payload.(retriesPayload); ok {
+		if payload, ok := msg.Result.Payload.(sortedEntriesPayload); ok {
 			r.jobs = payload.jobs
 			r.firstEntry = payload.firstEntry
 			r.lastEntry = payload.lastEntry
@@ -375,8 +369,8 @@ func (r *Retries) fetchWindow(
 	windowSize int,
 	_ lazytable.CursorIntent,
 ) (lazytable.FetchResult, error) {
-	ctx = devtools.WithTracker(ctx, "retries.fetchWindow")
-	result, err := fetchSortedWindow(ctx, sortedWindowConfig{
+	return fetchSortedEntriesWindow(ctx, sortedEntriesFetchConfig{
+		tracker:          "retries.fetchWindow",
 		filter:           r.filter,
 		windowStart:      windowStart,
 		windowSize:       windowSize,
@@ -385,21 +379,8 @@ func (r *Retries) fetchWindow(
 		scan:             r.client.ScanRetryJobs,
 		fetch:            r.client.GetRetryJobs,
 		bounds:           r.client.GetRetryBounds,
+		buildRows:        r.buildRows,
 	})
-	if err != nil {
-		return lazytable.FetchResult{}, err
-	}
-
-	return lazytable.FetchResult{
-		Rows:        r.buildRows(result.jobs),
-		Total:       result.total,
-		WindowStart: result.windowStart,
-		Payload: retriesPayload{
-			jobs:       result.jobs,
-			firstEntry: result.firstEntry,
-			lastEntry:  result.lastEntry,
-		},
-	}, nil
 }
 
 func (r *Retries) renderMessage(msg string) string {

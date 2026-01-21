@@ -24,12 +24,6 @@ const (
 	scheduledFallbackPageSize = 25
 )
 
-type scheduledPayload struct {
-	jobs       []*sidekiq.SortedEntry
-	firstEntry *sidekiq.SortedEntry
-	lastEntry  *sidekiq.SortedEntry
-}
-
 type scheduledJobAction int
 
 const (
@@ -91,7 +85,7 @@ func (s *Scheduled) Update(msg tea.Msg) (View, tea.Cmd) {
 		if msg.RequestID != s.lazy.RequestID() {
 			return s, nil
 		}
-		if payload, ok := msg.Result.Payload.(scheduledPayload); ok {
+		if payload, ok := msg.Result.Payload.(sortedEntriesPayload); ok {
 			s.jobs = payload.jobs
 			s.firstEntry = payload.firstEntry
 			s.lastEntry = payload.lastEntry
@@ -352,8 +346,8 @@ func (s *Scheduled) fetchWindow(
 	windowSize int,
 	_ lazytable.CursorIntent,
 ) (lazytable.FetchResult, error) {
-	ctx = devtools.WithTracker(ctx, "scheduled.fetchWindow")
-	result, err := fetchSortedWindow(ctx, sortedWindowConfig{
+	return fetchSortedEntriesWindow(ctx, sortedEntriesFetchConfig{
+		tracker:          "scheduled.fetchWindow",
 		filter:           s.filter,
 		windowStart:      windowStart,
 		windowSize:       windowSize,
@@ -362,21 +356,8 @@ func (s *Scheduled) fetchWindow(
 		scan:             s.client.ScanScheduledJobs,
 		fetch:            s.client.GetScheduledJobs,
 		bounds:           s.client.GetScheduledBounds,
+		buildRows:        s.buildRows,
 	})
-	if err != nil {
-		return lazytable.FetchResult{}, err
-	}
-
-	return lazytable.FetchResult{
-		Rows:        s.buildRows(result.jobs),
-		Total:       result.total,
-		WindowStart: result.windowStart,
-		Payload: scheduledPayload{
-			jobs:       result.jobs,
-			firstEntry: result.firstEntry,
-			lastEntry:  result.lastEntry,
-		},
-	}, nil
 }
 
 func (s *Scheduled) renderMessage(msg string) string {
