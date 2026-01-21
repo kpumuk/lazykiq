@@ -394,6 +394,23 @@ func TestGoldenHintsMixed(t *testing.T) {
 	golden.RequireEqual(t, []byte(output))
 }
 
+func TestGoldenHintsDangerOverflow(t *testing.T) {
+	hints := []Hint{
+		{Binding: key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "filter"))},
+		{Binding: key.NewBinding(key.WithKeys("ctrl+u"), key.WithHelp("ctrl+u", "reset filter"))},
+		{Binding: key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "job detail"))},
+		{Binding: key.NewBinding(key.WithKeys("shift+d"), key.WithHelp("shift+d", "delete job")), Kind: HintDanger},
+		{Binding: key.NewBinding(key.WithKeys("shift+k"), key.WithHelp("shift+k", "kill job")), Kind: HintDanger},
+		{Binding: key.NewBinding(key.WithKeys("shift+r"), key.WithHelp("shift+r", "retry now")), Kind: HintDanger},
+		{Binding: key.NewBinding(key.WithKeys("ctrl+d"), key.WithHelp("ctrl+d", "delete all")), Kind: HintDanger},
+		{Binding: key.NewBinding(key.WithKeys("ctrl+k"), key.WithHelp("ctrl+k", "kill all")), Kind: HintDanger},
+	}
+
+	m := New(WithSize(80, 5), WithHints(hints))
+	output := ansi.Strip(m.View())
+	golden.RequireEqual(t, []byte(output))
+}
+
 func TestGoldenCombined(t *testing.T) {
 	items := []Item{
 		KeyValueItem{Label: "Next scheduled in", Value: "0s"},
