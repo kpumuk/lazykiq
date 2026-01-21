@@ -243,8 +243,7 @@ var errorsSummaryColumns = []table.Column{
 
 // updateTableSize updates the table dimensions based on current view size.
 func (e *ErrorsSummary) updateTableSize() {
-	tableHeight := max(e.height-2, 3)
-	tableWidth := e.width - 4
+	tableWidth, tableHeight := framedTableSize(e.width, e.height)
 	e.table.SetSize(tableWidth, tableHeight)
 }
 

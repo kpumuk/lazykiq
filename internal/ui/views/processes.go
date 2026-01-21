@@ -364,10 +364,7 @@ var processesListColumns = []table.Column{
 
 // updateTableSize updates the table dimensions based on current view size.
 func (p *ProcessesList) updateTableSize() {
-	// Calculate table height: total height - box borders
-	tableHeight := max(p.height-2, 3)
-	// Table width: view width - box borders - padding
-	tableWidth := p.width - 4
+	tableWidth, tableHeight := framedTableSize(p.width, p.height)
 	p.table.SetSize(tableWidth, tableHeight)
 }
 

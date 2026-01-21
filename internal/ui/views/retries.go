@@ -435,10 +435,7 @@ var retryJobColumns = []table.Column{
 
 // updateTableSize updates the table dimensions based on current view size.
 func (r *Retries) updateTableSize() {
-	// Calculate table height: total height - box borders
-	tableHeight := max(r.height-2, 3)
-	// Table width: view width - box borders - padding
-	tableWidth := r.width - 4
+	tableWidth, tableHeight := framedTableSize(r.width, r.height)
 	r.lazy.SetSize(tableWidth, tableHeight)
 }
 

@@ -351,10 +351,7 @@ var queuesListColumns = []table.Column{
 
 // updateTableSize updates the table dimensions based on current view size.
 func (q *QueuesList) updateTableSize() {
-	// Calculate table height: total height - box borders
-	tableHeight := max(q.height-2, 3)
-	// Table width: view width - box borders - padding
-	tableWidth := q.width - 4
+	tableWidth, tableHeight := framedTableSize(q.width, q.height)
 	q.table.SetSize(tableWidth, tableHeight)
 }
 

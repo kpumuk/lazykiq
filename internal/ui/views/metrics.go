@@ -386,8 +386,7 @@ func (m *Metrics) openFilterDialog() tea.Cmd {
 }
 
 func (m *Metrics) updateTableSize() {
-	tableWidth := m.width - 4
-	tableHeight := max(m.height-2, 3)
+	tableWidth, tableHeight := framedTableSize(m.width, m.height)
 	m.table.SetSize(tableWidth, tableHeight)
 }
 

@@ -351,10 +351,7 @@ var jobColumnsFlat = []table.Column{
 
 // updateTableSize updates the table dimensions based on current view size.
 func (b *Busy) updateTableSize() {
-	// Calculate table height: total height - box borders
-	tableHeight := max(b.height-2, 3)
-	// Table width: view width - box borders - padding
-	tableWidth := b.width - 4
+	tableWidth, tableHeight := framedTableSize(b.width, b.height)
 	b.table.SetSize(tableWidth, tableHeight)
 }
 

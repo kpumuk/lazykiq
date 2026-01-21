@@ -411,10 +411,7 @@ var deadJobColumns = []table.Column{
 
 // updateTableSize updates the table dimensions based on current view size.
 func (d *Dead) updateTableSize() {
-	// Calculate table height: total height - box borders
-	tableHeight := max(d.height-2, 3)
-	// Table width: view width - box borders - padding
-	tableWidth := d.width - 4
+	tableWidth, tableHeight := framedTableSize(d.width, d.height)
 	d.lazy.SetSize(tableWidth, tableHeight)
 }
 
