@@ -272,15 +272,7 @@ func (q *QueueDetails) Dispose() {
 func (q *QueueDetails) SetStyles(styles Styles) View {
 	q.styles = styles
 	q.lazy.SetSpinnerStyle(styles.Muted)
-	q.lazy.SetTableStyles(table.Styles{
-		Text:           styles.Text,
-		Muted:          styles.Muted,
-		Header:         styles.TableHeader,
-		Selected:       styles.TableSelected,
-		Separator:      styles.TableSeparator,
-		ScrollbarTrack: styles.ScrollbarTrack,
-		ScrollbarThumb: styles.ScrollbarThumb,
-	})
+	q.lazy.SetTableStyles(tableStylesFromTheme(styles))
 	return q
 }
 

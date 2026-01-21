@@ -261,37 +261,9 @@ func (p *ProcessesList) Dispose() {
 // SetStyles implements View.
 func (p *ProcessesList) SetStyles(styles Styles) View {
 	p.styles = styles
-	p.table.SetStyles(table.Styles{
-		Text:           styles.Text,
-		Muted:          styles.Muted,
-		Header:         styles.TableHeader,
-		Selected:       styles.TableSelected,
-		Separator:      styles.TableSeparator,
-		ScrollbarTrack: styles.ScrollbarTrack,
-		ScrollbarThumb: styles.ScrollbarThumb,
-	})
-	p.frameStyles = frame.Styles{
-		Focused: frame.StyleState{
-			Title:  styles.Title,
-			Muted:  styles.Muted,
-			Filter: styles.FilterFocused,
-			Border: styles.FocusBorder,
-		},
-		Blurred: frame.StyleState{
-			Title:  styles.Title,
-			Muted:  styles.Muted,
-			Filter: styles.FilterBlurred,
-			Border: styles.BorderStyle,
-		},
-	}
-	p.filterStyle = filterdialog.Styles{
-		Title:       styles.Title,
-		Border:      styles.FocusBorder,
-		Prompt:      styles.Text,
-		Text:        styles.Text,
-		Placeholder: styles.Muted,
-		Cursor:      styles.Text,
-	}
+	p.table.SetStyles(tableStylesFromTheme(styles))
+	p.frameStyles = frameStylesFromTheme(styles)
+	p.filterStyle = filterDialogStylesWithPrompt(styles)
 	return p
 }
 

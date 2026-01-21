@@ -222,36 +222,9 @@ func (e *ErrorsDetails) Dispose() {
 // SetStyles implements View.
 func (e *ErrorsDetails) SetStyles(styles Styles) View {
 	e.styles = styles
-	e.frameStyles = frame.Styles{
-		Focused: frame.StyleState{
-			Title:  styles.Title,
-			Muted:  styles.Muted,
-			Filter: styles.FilterFocused,
-			Border: styles.FocusBorder,
-		},
-		Blurred: frame.StyleState{
-			Title:  styles.Title,
-			Muted:  styles.Muted,
-			Filter: styles.FilterBlurred,
-			Border: styles.BorderStyle,
-		},
-	}
-	e.filterStyle = filterdialog.Styles{
-		Title:       styles.Title,
-		Border:      styles.FocusBorder,
-		Text:        styles.Text,
-		Placeholder: styles.Muted,
-		Cursor:      styles.Text,
-	}
-	e.table.SetStyles(table.Styles{
-		Text:           styles.Text,
-		Muted:          styles.Muted,
-		Header:         styles.TableHeader,
-		Selected:       styles.TableSelected,
-		Separator:      styles.TableSeparator,
-		ScrollbarTrack: styles.ScrollbarTrack,
-		ScrollbarThumb: styles.ScrollbarThumb,
-	})
+	e.frameStyles = frameStylesFromTheme(styles)
+	e.filterStyle = filterDialogStylesFromTheme(styles)
+	e.table.SetStyles(tableStylesFromTheme(styles))
 	return e
 }
 

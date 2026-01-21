@@ -382,37 +382,10 @@ func (r *Retries) Dispose() {
 // SetStyles implements View.
 func (r *Retries) SetStyles(styles Styles) View {
 	r.styles = styles
-	r.frameStyles = frame.Styles{
-		Focused: frame.StyleState{
-			Title:  styles.Title,
-			Muted:  styles.Muted,
-			Filter: styles.FilterFocused,
-			Border: styles.FocusBorder,
-		},
-		Blurred: frame.StyleState{
-			Title:  styles.Title,
-			Muted:  styles.Muted,
-			Filter: styles.FilterBlurred,
-			Border: styles.BorderStyle,
-		},
-	}
-	r.filterStyle = filterdialog.Styles{
-		Title:       styles.Title,
-		Border:      styles.FocusBorder,
-		Text:        styles.Text,
-		Placeholder: styles.Muted,
-		Cursor:      styles.Text,
-	}
+	r.frameStyles = frameStylesFromTheme(styles)
+	r.filterStyle = filterDialogStylesFromTheme(styles)
 	r.lazy.SetSpinnerStyle(styles.Muted)
-	r.lazy.SetTableStyles(table.Styles{
-		Text:           styles.Text,
-		Muted:          styles.Muted,
-		Header:         styles.TableHeader,
-		Selected:       styles.TableSelected,
-		Separator:      styles.TableSeparator,
-		ScrollbarTrack: styles.ScrollbarTrack,
-		ScrollbarThumb: styles.ScrollbarThumb,
-	})
+	r.lazy.SetTableStyles(tableStylesFromTheme(styles))
 	return r
 }
 
