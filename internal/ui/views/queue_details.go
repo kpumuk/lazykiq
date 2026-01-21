@@ -10,7 +10,6 @@ import (
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 
 	"github.com/kpumuk/lazykiq/internal/devtools"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
@@ -588,15 +587,7 @@ func (q *QueueDetails) renderJobsBox() string {
 }
 
 func (q *QueueDetails) renderMessage(msg string) string {
-	// Header: "No queues" placeholder
-	header := q.styles.BoxPadding.Render(q.styles.Muted.Render("No queues"))
-	headerHeight := lipgloss.Height(header)
-
-	// Bordered box with centered message
-	boxHeight := q.height - headerHeight
-	box := renderStatusMessage("Jobs", msg, q.styles, q.width, boxHeight)
-
-	return header + "\n" + box
+	return renderStatusMessage("Jobs", msg, q.styles, q.width, q.height)
 }
 
 // renderJobDetail renders the job detail view.
