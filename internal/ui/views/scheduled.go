@@ -56,9 +56,7 @@ type Scheduled struct {
 	dangerousActionsEnabled bool
 	frameStyles             frame.Styles
 	filterStyle             filterdialog.Styles
-	pendingJobAction        scheduledJobAction
-	pendingJobEntry         *sidekiq.SortedEntry
-	pendingJobTarget        string
+	pendingConfirm          pendingConfirm[scheduledJobAction]
 }
 
 // NewScheduled creates a new Scheduled view.
@@ -120,13 +118,8 @@ func (s *Scheduled) Update(msg tea.Msg) (View, tea.Cmd) {
 		return s, s.lazy.RequestWindow(0, lazytable.CursorStart)
 
 	case confirmdialog.ActionMsg:
-		if !s.dangerousActionsEnabled || s.pendingJobAction == scheduledJobActionNone || (s.pendingJobTarget != "" && msg.Target != s.pendingJobTarget) {
-			return s, nil
-		}
-		action := s.pendingJobAction
-		entry := s.pendingJobEntry
-		s.clearPendingAction()
-		if !msg.Confirmed {
+		action, entry, ok := s.pendingConfirm.Confirm(msg, s.dangerousActionsEnabled, scheduledJobActionNone)
+		if !ok {
 			return s, nil
 		}
 		switch action {
@@ -194,29 +187,21 @@ func (s *Scheduled) Update(msg tea.Msg) (View, tea.Cmd) {
 			switch msg.String() {
 			case "D":
 				if entry, ok := s.selectedEntry(); ok {
-					s.pendingJobAction = scheduledJobActionDelete
-					s.pendingJobEntry = entry
-					s.pendingJobTarget = entry.JID()
+					s.pendingConfirm.SetForEntry(scheduledJobActionDelete, entry)
 					return s, s.openDeleteConfirm(entry)
 				}
 				return s, nil
 			case "R":
 				if entry, ok := s.selectedEntry(); ok {
-					s.pendingJobAction = scheduledJobActionAddToQueue
-					s.pendingJobEntry = entry
-					s.pendingJobTarget = entry.JID()
+					s.pendingConfirm.SetForEntry(scheduledJobActionAddToQueue, entry)
 					return s, s.openAddToQueueConfirm(entry)
 				}
 				return s, nil
 			case "ctrl+d":
-				s.pendingJobAction = scheduledJobActionDeleteAll
-				s.pendingJobEntry = nil
-				s.pendingJobTarget = "scheduled.delete_all"
+				s.pendingConfirm.Set(scheduledJobActionDeleteAll, nil, "scheduled.delete_all")
 				return s, s.openDeleteAllConfirm()
 			case "ctrl+r":
-				s.pendingJobAction = scheduledJobActionAddAllToQueue
-				s.pendingJobEntry = nil
-				s.pendingJobTarget = "scheduled.add_all"
+				s.pendingConfirm.Set(scheduledJobActionAddAllToQueue, nil, "scheduled.add_all")
 				return s, s.openAddAllToQueueConfirm()
 			}
 		}
@@ -592,12 +577,6 @@ func (s *Scheduled) addAllToQueueCmd() tea.Cmd {
 		}
 		return RefreshMsg{}
 	}
-}
-
-func (s *Scheduled) clearPendingAction() {
-	s.pendingJobAction = scheduledJobActionNone
-	s.pendingJobEntry = nil
-	s.pendingJobTarget = ""
 }
 
 // renderJobsBox renders the bordered box containing the jobs table.

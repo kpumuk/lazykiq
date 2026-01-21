@@ -56,9 +56,7 @@ type Dead struct {
 	dangerousActionsEnabled bool
 	frameStyles             frame.Styles
 	filterStyle             filterdialog.Styles
-	pendingJobAction        deadJobAction
-	pendingJobEntry         *sidekiq.SortedEntry
-	pendingJobTarget        string
+	pendingConfirm          pendingConfirm[deadJobAction]
 }
 
 // NewDead creates a new Dead view.
@@ -120,13 +118,8 @@ func (d *Dead) Update(msg tea.Msg) (View, tea.Cmd) {
 		return d, d.lazy.RequestWindow(0, lazytable.CursorStart)
 
 	case confirmdialog.ActionMsg:
-		if !d.dangerousActionsEnabled || d.pendingJobAction == deadJobActionNone || (d.pendingJobTarget != "" && msg.Target != d.pendingJobTarget) {
-			return d, nil
-		}
-		action := d.pendingJobAction
-		entry := d.pendingJobEntry
-		d.clearPendingAction()
-		if !msg.Confirmed {
+		action, entry, ok := d.pendingConfirm.Confirm(msg, d.dangerousActionsEnabled, deadJobActionNone)
+		if !ok {
 			return d, nil
 		}
 		switch action {
@@ -194,29 +187,21 @@ func (d *Dead) Update(msg tea.Msg) (View, tea.Cmd) {
 			switch msg.String() {
 			case "D":
 				if entry, ok := d.selectedEntry(); ok {
-					d.pendingJobAction = deadJobActionDelete
-					d.pendingJobEntry = entry
-					d.pendingJobTarget = entry.JID()
+					d.pendingConfirm.SetForEntry(deadJobActionDelete, entry)
 					return d, d.openDeleteConfirm(entry)
 				}
 				return d, nil
 			case "R":
 				if entry, ok := d.selectedEntry(); ok {
-					d.pendingJobAction = deadJobActionRetry
-					d.pendingJobEntry = entry
-					d.pendingJobTarget = entry.JID()
+					d.pendingConfirm.SetForEntry(deadJobActionRetry, entry)
 					return d, d.openRetryNowConfirm(entry)
 				}
 				return d, nil
 			case "ctrl+d":
-				d.pendingJobAction = deadJobActionDeleteAll
-				d.pendingJobEntry = nil
-				d.pendingJobTarget = "dead.delete_all"
+				d.pendingConfirm.Set(deadJobActionDeleteAll, nil, "dead.delete_all")
 				return d, d.openDeleteAllConfirm()
 			case "ctrl+r":
-				d.pendingJobAction = deadJobActionRetryAll
-				d.pendingJobEntry = nil
-				d.pendingJobTarget = "dead.retry_all"
+				d.pendingConfirm.Set(deadJobActionRetryAll, nil, "dead.retry_all")
 				return d, d.openRetryAllConfirm()
 			}
 		}
@@ -587,12 +572,6 @@ func (d *Dead) retryAllCmd() tea.Cmd {
 		}
 		return RefreshMsg{}
 	}
-}
-
-func (d *Dead) clearPendingAction() {
-	d.pendingJobAction = deadJobActionNone
-	d.pendingJobEntry = nil
-	d.pendingJobTarget = ""
 }
 
 func (d *Dead) rowsMeta() string {

@@ -59,9 +59,7 @@ type Retries struct {
 	dangerousActionsEnabled bool
 	frameStyles             frame.Styles
 	filterStyle             filterdialog.Styles
-	pendingJobAction        retriesJobAction
-	pendingJobEntry         *sidekiq.SortedEntry
-	pendingJobTarget        string
+	pendingConfirm          pendingConfirm[retriesJobAction]
 }
 
 // NewRetries creates a new Retries view.
@@ -123,13 +121,8 @@ func (r *Retries) Update(msg tea.Msg) (View, tea.Cmd) {
 		return r, r.lazy.RequestWindow(0, lazytable.CursorStart)
 
 	case confirmdialog.ActionMsg:
-		if !r.dangerousActionsEnabled || r.pendingJobAction == retriesJobActionNone || (r.pendingJobTarget != "" && msg.Target != r.pendingJobTarget) {
-			return r, nil
-		}
-		action := r.pendingJobAction
-		entry := r.pendingJobEntry
-		r.clearPendingAction()
-		if !msg.Confirmed {
+		action, entry, ok := r.pendingConfirm.Confirm(msg, r.dangerousActionsEnabled, retriesJobActionNone)
+		if !ok {
 			return r, nil
 		}
 		switch action {
@@ -204,42 +197,30 @@ func (r *Retries) Update(msg tea.Msg) (View, tea.Cmd) {
 			switch msg.String() {
 			case "D":
 				if entry, ok := r.selectedEntry(); ok {
-					r.pendingJobAction = retriesJobActionDelete
-					r.pendingJobEntry = entry
-					r.pendingJobTarget = entry.JID()
+					r.pendingConfirm.SetForEntry(retriesJobActionDelete, entry)
 					return r, r.openDeleteConfirm(entry)
 				}
 				return r, nil
 			case "K":
 				if entry, ok := r.selectedEntry(); ok {
-					r.pendingJobAction = retriesJobActionKill
-					r.pendingJobEntry = entry
-					r.pendingJobTarget = entry.JID()
+					r.pendingConfirm.SetForEntry(retriesJobActionKill, entry)
 					return r, r.openKillConfirm(entry)
 				}
 				return r, nil
 			case "R":
 				if entry, ok := r.selectedEntry(); ok {
-					r.pendingJobAction = retriesJobActionRetry
-					r.pendingJobEntry = entry
-					r.pendingJobTarget = entry.JID()
+					r.pendingConfirm.SetForEntry(retriesJobActionRetry, entry)
 					return r, r.openRetryNowConfirm(entry)
 				}
 				return r, nil
 			case "ctrl+d":
-				r.pendingJobAction = retriesJobActionDeleteAll
-				r.pendingJobEntry = nil
-				r.pendingJobTarget = "retries.delete_all"
+				r.pendingConfirm.Set(retriesJobActionDeleteAll, nil, "retries.delete_all")
 				return r, r.openDeleteAllConfirm()
 			case "ctrl+k":
-				r.pendingJobAction = retriesJobActionKillAll
-				r.pendingJobEntry = nil
-				r.pendingJobTarget = "retries.kill_all"
+				r.pendingConfirm.Set(retriesJobActionKillAll, nil, "retries.kill_all")
 				return r, r.openKillAllConfirm()
 			case "ctrl+r":
-				r.pendingJobAction = retriesJobActionRetryAll
-				r.pendingJobEntry = nil
-				r.pendingJobTarget = "retries.retry_all"
+				r.pendingConfirm.Set(retriesJobActionRetryAll, nil, "retries.retry_all")
 				return r, r.openRetryAllConfirm()
 			}
 		}
@@ -685,12 +666,6 @@ func (r *Retries) retryNowJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
 		}
 		return RefreshMsg{}
 	}
-}
-
-func (r *Retries) clearPendingAction() {
-	r.pendingJobAction = retriesJobActionNone
-	r.pendingJobEntry = nil
-	r.pendingJobTarget = ""
 }
 
 // renderJobsBox renders the bordered box containing the jobs table.
