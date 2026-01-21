@@ -251,7 +251,7 @@ func (m Model) renderLines(layout layoutResult, innerWidth int, barStyle lipglos
 		var line string
 		if layout.rightWidth > 0 {
 			left := getLine(layout.leftLines, i)
-			right := strings.TrimLeft(getLine(layout.rightLines, i), " ")
+			right := getLine(layout.rightLines, i)
 			line = padRight(left, layout.leftWidth) + strings.Repeat(" ", layout.gap) + right
 			if w := layout.leftWidth + layout.gap + ansi.StringWidth(right); w < innerWidth {
 				line = padRight(line, innerWidth)

@@ -13,7 +13,10 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-const sortedSetScanCount int64 = 100
+const (
+	sortedSetScanCount int64 = 100
+	sortedSetPopBatch  int64 = 100
+)
 
 const (
 	retrySetKey    = "retry"
@@ -241,30 +244,7 @@ func (c *Client) moveSortedEntryToQueue(ctx context.Context, key string, entry *
 		return errors.New("sorted entry payload is empty")
 	}
 
-	payload := make(map[string]any)
-	if err := safeParseJSON([]byte(rawValue), &payload); err != nil {
-		return err
-	}
-
-	queueName, ok := payload["queue"].(string)
-	if !ok || strings.TrimSpace(queueName) == "" {
-		return errors.New("job payload missing queue")
-	}
-
-	format := detectTimestampFormat(payload, c.DetectVersion(ctx))
-	if decrementRetryCount {
-		decrementRetryCountField(payload)
-	}
-
-	// Ensure we always enqueue immediately.
-	delete(payload, "at")
-
-	if payload["created_at"] == nil {
-		payload["created_at"] = nowTimestamp(format)
-	}
-	payload["enqueued_at"] = nowTimestamp(format)
-
-	encoded, err := json.Marshal(payload)
+	queueName, encoded, err := buildQueuePayload(rawValue, decrementRetryCount, c.DetectVersion(ctx))
 	if err != nil {
 		return err
 	}
@@ -285,14 +265,49 @@ func (c *Client) moveSortedEntryToQueue(ctx context.Context, key string, entry *
 	return err
 }
 
+// DeleteAllRetryJobs removes all jobs from the retry set.
+func (c *Client) DeleteAllRetryJobs(ctx context.Context) error {
+	return c.clearSortedSet(ctx, retrySetKey)
+}
+
+// RetryAllRetryJobs moves all retry jobs to their queues immediately.
+func (c *Client) RetryAllRetryJobs(ctx context.Context) error {
+	return c.moveAllSortedEntriesToQueue(ctx, retrySetKey, true)
+}
+
+// KillAllRetryJobs moves all retry jobs into the dead set.
+func (c *Client) KillAllRetryJobs(ctx context.Context) error {
+	return c.moveAllSortedEntriesToDead(ctx, retrySetKey)
+}
+
 // DeleteScheduledJob removes a job from the scheduled set.
 func (c *Client) DeleteScheduledJob(ctx context.Context, entry *SortedEntry) error {
 	return c.deleteSortedEntry(ctx, scheduleSetKey, entry)
 }
 
+// DeleteAllScheduledJobs removes all jobs from the scheduled set.
+func (c *Client) DeleteAllScheduledJobs(ctx context.Context) error {
+	return c.clearSortedSet(ctx, scheduleSetKey)
+}
+
+// AddAllScheduledJobsToQueue moves all scheduled jobs to their queues immediately.
+func (c *Client) AddAllScheduledJobsToQueue(ctx context.Context) error {
+	return c.moveAllSortedEntriesToQueue(ctx, scheduleSetKey, false)
+}
+
 // DeleteDeadJob removes a job from the dead set.
 func (c *Client) DeleteDeadJob(ctx context.Context, entry *SortedEntry) error {
 	return c.deleteSortedEntry(ctx, deadSetKey, entry)
+}
+
+// DeleteAllDeadJobs removes all jobs from the dead set.
+func (c *Client) DeleteAllDeadJobs(ctx context.Context) error {
+	return c.clearSortedSet(ctx, deadSetKey)
+}
+
+// RetryAllDeadJobs moves all dead jobs to their queues immediately.
+func (c *Client) RetryAllDeadJobs(ctx context.Context) error {
+	return c.moveAllSortedEntriesToQueue(ctx, deadSetKey, true)
 }
 
 func (c *Client) deleteSortedEntry(ctx context.Context, key string, entry *SortedEntry) error {
@@ -309,6 +324,122 @@ func (c *Client) deleteSortedEntry(ctx context.Context, key string, entry *Sorte
 		return err
 	}
 	return nil
+}
+
+func (c *Client) clearSortedSet(ctx context.Context, key string) error {
+	_, err := c.redis.Unlink(ctx, key).Result()
+	if err != nil && !errors.Is(err, redis.Nil) {
+		return err
+	}
+	return nil
+}
+
+type queuePayload struct {
+	queue string
+	body  []byte
+}
+
+func buildQueuePayload(rawValue string, decrementRetryCount bool, version Version) (string, []byte, error) {
+	if rawValue == "" {
+		return "", nil, errors.New("sorted entry payload is empty")
+	}
+
+	payload := make(map[string]any)
+	if err := safeParseJSON([]byte(rawValue), &payload); err != nil {
+		return "", nil, err
+	}
+
+	queueName, ok := payload["queue"].(string)
+	if !ok || strings.TrimSpace(queueName) == "" {
+		return "", nil, errors.New("job payload missing queue")
+	}
+
+	format := detectTimestampFormat(payload, version)
+	if decrementRetryCount {
+		decrementRetryCountField(payload)
+	}
+
+	// Ensure we always enqueue immediately.
+	delete(payload, "at")
+
+	if payload["created_at"] == nil {
+		payload["created_at"] = nowTimestamp(format)
+	}
+	payload["enqueued_at"] = nowTimestamp(format)
+
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return "", nil, err
+	}
+
+	return queueName, encoded, nil
+}
+
+func (c *Client) moveAllSortedEntriesToQueue(ctx context.Context, key string, decrementRetryCount bool) error {
+	version := c.DetectVersion(ctx)
+	for {
+		entries, err := c.redis.ZPopMin(ctx, key, sortedSetPopBatch).Result()
+		if err != nil && !errors.Is(err, redis.Nil) {
+			return err
+		}
+		if len(entries) == 0 {
+			return nil
+		}
+
+		payloads := make([]queuePayload, 0, len(entries))
+		for _, entry := range entries {
+			rawValue, _ := entry.Member.(string)
+			queueName, encoded, err := buildQueuePayload(rawValue, decrementRetryCount, version)
+			if err != nil {
+				return err
+			}
+			payloads = append(payloads, queuePayload{
+				queue: queueName,
+				body:  encoded,
+			})
+		}
+
+		_, err = c.redis.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+			for _, payload := range payloads {
+				pipe.SAdd(ctx, queueSetKey, payload.queue)
+				pipe.LPush(ctx, queuePrefixKey+payload.queue, payload.body)
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+	}
+}
+
+func (c *Client) moveAllSortedEntriesToDead(ctx context.Context, key string) error {
+	for {
+		entries, err := c.redis.ZPopMin(ctx, key, sortedSetPopBatch).Result()
+		if err != nil && !errors.Is(err, redis.Nil) {
+			return err
+		}
+		if len(entries) == 0 {
+			return nil
+		}
+
+		_, err = c.redis.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+			for _, entry := range entries {
+				rawValue, _ := entry.Member.(string)
+				if rawValue == "" {
+					continue
+				}
+				now := time.Now().Truncate(time.Microsecond)
+				pipe.ZAdd(ctx, deadSetKey, redis.Z{
+					Score:  float64(now.UnixNano()) / float64(time.Second),
+					Member: rawValue,
+				})
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+	}
 }
 
 var nowFuncSidekiq = time.Now

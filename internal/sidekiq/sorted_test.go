@@ -748,3 +748,249 @@ func TestDeleteDeadJob_RemovesOnly(t *testing.T) {
 		t.Fatalf("dead size = %d, want 0", size)
 	}
 }
+
+func TestDeleteAllRetryJobs(t *testing.T) {
+	mr, client := setupTestRedis(t)
+	ctx := context.Background()
+
+	_, _ = mr.ZAdd("retry", testScoreA, `{"jid":"retry_all_delete1","class":"MyJob","queue":"default"}`)
+	_, _ = mr.ZAdd("retry", testScoreB, `{"jid":"retry_all_delete2","class":"MyJob","queue":"critical"}`)
+
+	if err := client.DeleteAllRetryJobs(ctx); err != nil {
+		t.Fatalf("DeleteAllRetryJobs failed: %v", err)
+	}
+
+	if size, _ := client.redis.ZCard(ctx, "retry").Result(); size != 0 {
+		t.Fatalf("retry size = %d, want 0", size)
+	}
+}
+
+func TestRetryAllRetryJobs(t *testing.T) {
+	mr, client := setupTestRedis(t)
+	ctx := context.Background()
+
+	originalNow := nowFuncSidekiq
+	nowFuncSidekiq = func() time.Time {
+		return time.Unix(1700000000, 123456000)
+	}
+	t.Cleanup(func() { nowFuncSidekiq = originalNow })
+
+	_, _ = mr.ZAdd("retry", testScoreA, `{"jid":"retry_all1","class":"MyJob","queue":"default","retry_count":2,"created_at":1700000000.5}`)
+	_, _ = mr.ZAdd("retry", testScoreB, `{"jid":"retry_all2","class":"MyJob","queue":"critical","retry_count":1,"created_at":1700000000.5}`)
+
+	if err := client.RetryAllRetryJobs(ctx); err != nil {
+		t.Fatalf("RetryAllRetryJobs failed: %v", err)
+	}
+
+	if size, _ := client.redis.ZCard(ctx, "retry").Result(); size != 0 {
+		t.Fatalf("retry size = %d, want 0", size)
+	}
+
+	if ok, _ := client.redis.SIsMember(ctx, "queues", "default").Result(); !ok {
+		t.Fatalf("queue set missing default queue")
+	}
+	if ok, _ := client.redis.SIsMember(ctx, "queues", "critical").Result(); !ok {
+		t.Fatalf("queue set missing critical queue")
+	}
+
+	values, err := client.redis.LRange(ctx, "queue:default", 0, -1).Result()
+	if err != nil {
+		t.Fatalf("queue default lrange failed: %v", err)
+	}
+	if len(values) != 1 {
+		t.Fatalf("queue default size = %d, want 1", len(values))
+	}
+
+	var payload map[string]any
+	if err := safeParseJSON([]byte(values[0]), &payload); err != nil {
+		t.Fatalf("safeParseJSON queued payload: %v", err)
+	}
+	retryCount, ok := payload["retry_count"].(json.Number)
+	if !ok || retryCount.String() != "1" {
+		t.Fatalf("retry_count = %v, want 1", payload["retry_count"])
+	}
+	enqueuedAt, ok := payload["enqueued_at"].(json.Number)
+	if !ok || enqueuedAt.String() != "1700000000.123456" {
+		t.Fatalf("enqueued_at = %v, want 1700000000.123456", payload["enqueued_at"])
+	}
+
+	values, err = client.redis.LRange(ctx, "queue:critical", 0, -1).Result()
+	if err != nil {
+		t.Fatalf("queue critical lrange failed: %v", err)
+	}
+	if len(values) != 1 {
+		t.Fatalf("queue critical size = %d, want 1", len(values))
+	}
+
+	if err := safeParseJSON([]byte(values[0]), &payload); err != nil {
+		t.Fatalf("safeParseJSON queued payload: %v", err)
+	}
+	retryCount, ok = payload["retry_count"].(json.Number)
+	if !ok || retryCount.String() != "0" {
+		t.Fatalf("retry_count = %v, want 0", payload["retry_count"])
+	}
+}
+
+func TestKillAllRetryJobs(t *testing.T) {
+	mr, client := setupTestRedis(t)
+	ctx := context.Background()
+
+	job1 := `{"jid":"retry_kill1","class":"MyJob","queue":"default"}`
+	job2 := `{"jid":"retry_kill2","class":"MyJob","queue":"critical"}`
+	_, _ = mr.ZAdd("retry", testScoreA, job1)
+	_, _ = mr.ZAdd("retry", testScoreB, job2)
+
+	start := time.Now()
+	if err := client.KillAllRetryJobs(ctx); err != nil {
+		t.Fatalf("KillAllRetryJobs failed: %v", err)
+	}
+	end := time.Now()
+
+	if size, _ := client.redis.ZCard(ctx, "retry").Result(); size != 0 {
+		t.Fatalf("retry size = %d, want 0", size)
+	}
+	results, err := client.redis.ZRangeWithScores(ctx, "dead", 0, -1).Result()
+	if err != nil {
+		t.Fatalf("dead zrange failed: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("dead entries = %d, want 2", len(results))
+	}
+
+	windowStart := start.Add(-2 * time.Millisecond)
+	windowEnd := end.Add(2 * time.Millisecond)
+	for _, entry := range results {
+		value, _ := entry.Member.(string)
+		if value != job1 && value != job2 {
+			t.Fatalf("unexpected dead payload: %v", value)
+		}
+		deadAt := timeFromScore(entry.Score)
+		if deadAt.Before(windowStart) || deadAt.After(windowEnd) {
+			t.Fatalf("dead score time = %v, want between %v and %v", deadAt, windowStart, windowEnd)
+		}
+	}
+}
+
+func TestDeleteAllScheduledJobs(t *testing.T) {
+	mr, client := setupTestRedis(t)
+	ctx := context.Background()
+
+	_, _ = mr.ZAdd("schedule", testScoreA, `{"jid":"sched_all_delete1","class":"MyJob","queue":"default"}`)
+	_, _ = mr.ZAdd("schedule", testScoreB, `{"jid":"sched_all_delete2","class":"MyJob","queue":"critical"}`)
+
+	if err := client.DeleteAllScheduledJobs(ctx); err != nil {
+		t.Fatalf("DeleteAllScheduledJobs failed: %v", err)
+	}
+
+	if size, _ := client.redis.ZCard(ctx, "schedule").Result(); size != 0 {
+		t.Fatalf("schedule size = %d, want 0", size)
+	}
+}
+
+func TestAddAllScheduledJobsToQueue(t *testing.T) {
+	mr, client := setupTestRedis(t)
+	ctx := context.Background()
+
+	originalNow := nowFuncSidekiq
+	nowFuncSidekiq = func() time.Time {
+		return time.Unix(1700000000, 0)
+	}
+	t.Cleanup(func() { nowFuncSidekiq = originalNow })
+
+	_, _ = mr.ZAdd("schedule", testScoreA, `{"jid":"sched_all1","class":"MyJob","queue":"default","created_at":1700000000.0,"at":1700000100.0}`)
+	_, _ = mr.ZAdd("schedule", testScoreB, `{"jid":"sched_all2","class":"MyJob","queue":"critical","created_at":1700000000.0,"at":1700000200.0}`)
+
+	if err := client.AddAllScheduledJobsToQueue(ctx); err != nil {
+		t.Fatalf("AddAllScheduledJobsToQueue failed: %v", err)
+	}
+
+	if size, _ := client.redis.ZCard(ctx, "schedule").Result(); size != 0 {
+		t.Fatalf("schedule size = %d, want 0", size)
+	}
+
+	values, err := client.redis.LRange(ctx, "queue:default", 0, -1).Result()
+	if err != nil {
+		t.Fatalf("queue default lrange failed: %v", err)
+	}
+	if len(values) != 1 {
+		t.Fatalf("queue default size = %d, want 1", len(values))
+	}
+
+	var payload map[string]any
+	if err := safeParseJSON([]byte(values[0]), &payload); err != nil {
+		t.Fatalf("safeParseJSON queued payload: %v", err)
+	}
+	if _, ok := payload["at"]; ok {
+		t.Fatalf("expected \"at\" to be removed")
+	}
+	if _, ok := payload["enqueued_at"]; !ok {
+		t.Fatalf("expected enqueued_at to be set")
+	}
+
+	values, err = client.redis.LRange(ctx, "queue:critical", 0, -1).Result()
+	if err != nil {
+		t.Fatalf("queue critical lrange failed: %v", err)
+	}
+	if len(values) != 1 {
+		t.Fatalf("queue critical size = %d, want 1", len(values))
+	}
+}
+
+func TestDeleteAllDeadJobs(t *testing.T) {
+	mr, client := setupTestRedis(t)
+	ctx := context.Background()
+
+	_, _ = mr.ZAdd("dead", testScoreA, `{"jid":"dead_all_delete1","class":"MyJob","queue":"default"}`)
+	_, _ = mr.ZAdd("dead", testScoreB, `{"jid":"dead_all_delete2","class":"MyJob","queue":"critical"}`)
+
+	if err := client.DeleteAllDeadJobs(ctx); err != nil {
+		t.Fatalf("DeleteAllDeadJobs failed: %v", err)
+	}
+
+	if size, _ := client.redis.ZCard(ctx, "dead").Result(); size != 0 {
+		t.Fatalf("dead size = %d, want 0", size)
+	}
+}
+
+func TestRetryAllDeadJobs(t *testing.T) {
+	mr, client := setupTestRedis(t)
+	ctx := context.Background()
+
+	originalNow := nowFuncSidekiq
+	nowFuncSidekiq = func() time.Time {
+		return time.Unix(1700000000, 123456000)
+	}
+	t.Cleanup(func() { nowFuncSidekiq = originalNow })
+
+	_, _ = mr.ZAdd("dead", testScoreA, `{"jid":"dead_retry1","class":"MyJob","queue":"default","retry_count":1,"created_at":1700000000.5}`)
+	_, _ = mr.ZAdd("dead", testScoreB, `{"jid":"dead_retry2","class":"MyJob","queue":"critical","retry_count":2,"created_at":1700000000.5}`)
+
+	if err := client.RetryAllDeadJobs(ctx); err != nil {
+		t.Fatalf("RetryAllDeadJobs failed: %v", err)
+	}
+
+	if size, _ := client.redis.ZCard(ctx, "dead").Result(); size != 0 {
+		t.Fatalf("dead size = %d, want 0", size)
+	}
+
+	values, err := client.redis.LRange(ctx, "queue:default", 0, -1).Result()
+	if err != nil {
+		t.Fatalf("queue default lrange failed: %v", err)
+	}
+	if len(values) != 1 {
+		t.Fatalf("queue default size = %d, want 1", len(values))
+	}
+
+	var payload map[string]any
+	if err := safeParseJSON([]byte(values[0]), &payload); err != nil {
+		t.Fatalf("safeParseJSON queued payload: %v", err)
+	}
+	retryCount, ok := payload["retry_count"].(json.Number)
+	if !ok || retryCount.String() != "0" {
+		t.Fatalf("retry_count = %v, want 0", payload["retry_count"])
+	}
+	enqueuedAt, ok := payload["enqueued_at"].(json.Number)
+	if !ok || enqueuedAt.String() != "1700000000.123456" {
+		t.Fatalf("enqueued_at = %v, want 1700000000.123456", payload["enqueued_at"])
+	}
+}

@@ -3,7 +3,7 @@ title: "Scheduled"
 description: "Inspect jobs scheduled to run in the future."
 summary: "Inspect jobs scheduled to run in the future."
 date: 2025-12-30T00:00:00Z
-lastmod: 2026-01-10T00:00:00Z
+lastmod: 2026-01-20T00:00:00Z
 draft: false
 weight: 80
 toc: true
@@ -28,6 +28,8 @@ Scheduled jobs are queued to run at a specific time.
 | `g` / `G`    | Jump to start or end.                                     |
 | `D`          | Delete job (requires `--danger`).                         |
 | `R`          | Add job to queue now (requires `--danger`).               |
+| `Ctrl+D`     | Delete all scheduled jobs (requires `--danger`).          |
+| `Ctrl+R`     | Add all scheduled jobs to the queue (requires `--danger`).|
 | `q`          | Quit.                                                     |
 
 ## Job Details

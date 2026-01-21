@@ -31,6 +31,8 @@ const (
 	deadJobActionNone deadJobAction = iota
 	deadJobActionDelete
 	deadJobActionRetry
+	deadJobActionDeleteAll
+	deadJobActionRetryAll
 )
 
 type deadPayload struct {
@@ -118,14 +120,12 @@ func (d *Dead) Update(msg tea.Msg) (View, tea.Cmd) {
 		return d, d.lazy.RequestWindow(0, lazytable.CursorStart)
 
 	case confirmdialog.ActionMsg:
-		if !d.dangerousActionsEnabled || d.pendingJobEntry == nil || (d.pendingJobTarget != "" && msg.Target != d.pendingJobTarget) {
+		if !d.dangerousActionsEnabled || d.pendingJobAction == deadJobActionNone || (d.pendingJobTarget != "" && msg.Target != d.pendingJobTarget) {
 			return d, nil
 		}
 		action := d.pendingJobAction
 		entry := d.pendingJobEntry
-		d.pendingJobAction = deadJobActionNone
-		d.pendingJobEntry = nil
-		d.pendingJobTarget = ""
+		d.clearPendingAction()
 		if !msg.Confirmed {
 			return d, nil
 		}
@@ -133,9 +133,19 @@ func (d *Dead) Update(msg tea.Msg) (View, tea.Cmd) {
 		case deadJobActionNone:
 			return d, nil
 		case deadJobActionDelete:
+			if entry == nil {
+				return d, nil
+			}
 			return d, d.deleteJobCmd(entry)
 		case deadJobActionRetry:
+			if entry == nil {
+				return d, nil
+			}
 			return d, d.retryNowJobCmd(entry)
+		case deadJobActionDeleteAll:
+			return d, d.deleteAllCmd()
+		case deadJobActionRetryAll:
+			return d, d.retryAllCmd()
 		}
 
 	case tea.KeyMsg:
@@ -198,6 +208,16 @@ func (d *Dead) Update(msg tea.Msg) (View, tea.Cmd) {
 					return d, d.openRetryNowConfirm(entry)
 				}
 				return d, nil
+			case "ctrl+d":
+				d.pendingJobAction = deadJobActionDeleteAll
+				d.pendingJobEntry = nil
+				d.pendingJobTarget = "dead.delete_all"
+				return d, d.openDeleteAllConfirm()
+			case "ctrl+r":
+				d.pendingJobAction = deadJobActionRetryAll
+				d.pendingJobEntry = nil
+				d.pendingJobTarget = "dead.retry_all"
+				return d, d.openRetryAllConfirm()
 			}
 		}
 
@@ -270,6 +290,8 @@ func (d *Dead) MutationBindings() []key.Binding {
 	return []key.Binding{
 		helpBinding([]string{"D"}, "shift+d", "delete job"),
 		helpBinding([]string{"R"}, "shift+r", "retry now"),
+		helpBinding([]string{"ctrl+d"}, "ctrl+d", "delete all"),
+		helpBinding([]string{"ctrl+r"}, "ctrl+r", "retry all"),
 	}
 }
 
@@ -296,6 +318,8 @@ func (d *Dead) HelpSections() []HelpSection {
 			Bindings: []key.Binding{
 				helpBinding([]string{"D"}, "shift+d", "delete job"),
 				helpBinding([]string{"R"}, "shift+r", "retry now"),
+				helpBinding([]string{"ctrl+d"}, "ctrl+d", "delete all"),
+				helpBinding([]string{"ctrl+r"}, "ctrl+r", "retry all"),
 			},
 		})
 	}
@@ -560,10 +584,48 @@ func (d *Dead) openRetryNowConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
 	}
 }
 
+func (d *Dead) openDeleteAllConfirm() tea.Cmd {
+	return func() tea.Msg {
+		return dialogs.OpenDialogMsg{
+			Model: newConfirmDialog(
+				d.styles,
+				"Delete all dead",
+				"Are you sure you want to delete all dead jobs?\n\nThis action is not recoverable.",
+				"dead.delete_all",
+				d.styles.DangerAction,
+			),
+		}
+	}
+}
+
+func (d *Dead) openRetryAllConfirm() tea.Cmd {
+	return func() tea.Msg {
+		return dialogs.OpenDialogMsg{
+			Model: newConfirmDialog(
+				d.styles,
+				"Retry all dead",
+				"Retry all dead jobs now?\n\nThis will enqueue them immediately.",
+				"dead.retry_all",
+				d.styles.DangerAction,
+			),
+		}
+	}
+}
+
 func (d *Dead) deleteJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
 	return func() tea.Msg {
 		ctx := devtools.WithTracker(context.Background(), "dead.deleteJobCmd")
 		if err := d.client.DeleteDeadJob(ctx, entry); err != nil {
+			return ConnectionErrorMsg{Err: err}
+		}
+		return RefreshMsg{}
+	}
+}
+
+func (d *Dead) deleteAllCmd() tea.Cmd {
+	return func() tea.Msg {
+		ctx := devtools.WithTracker(context.Background(), "dead.deleteAllCmd")
+		if err := d.client.DeleteAllDeadJobs(ctx); err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}
 		return RefreshMsg{}
@@ -578,6 +640,22 @@ func (d *Dead) retryNowJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
 		}
 		return RefreshMsg{}
 	}
+}
+
+func (d *Dead) retryAllCmd() tea.Cmd {
+	return func() tea.Msg {
+		ctx := devtools.WithTracker(context.Background(), "dead.retryAllCmd")
+		if err := d.client.RetryAllDeadJobs(ctx); err != nil {
+			return ConnectionErrorMsg{Err: err}
+		}
+		return RefreshMsg{}
+	}
+}
+
+func (d *Dead) clearPendingAction() {
+	d.pendingJobAction = deadJobActionNone
+	d.pendingJobEntry = nil
+	d.pendingJobTarget = ""
 }
 
 func (d *Dead) rowsMeta() string {

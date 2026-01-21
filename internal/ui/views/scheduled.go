@@ -37,6 +37,8 @@ const (
 	scheduledJobActionNone scheduledJobAction = iota
 	scheduledJobActionDelete
 	scheduledJobActionAddToQueue
+	scheduledJobActionDeleteAll
+	scheduledJobActionAddAllToQueue
 )
 
 // Scheduled shows jobs scheduled for future execution.
@@ -118,14 +120,12 @@ func (s *Scheduled) Update(msg tea.Msg) (View, tea.Cmd) {
 		return s, s.lazy.RequestWindow(0, lazytable.CursorStart)
 
 	case confirmdialog.ActionMsg:
-		if !s.dangerousActionsEnabled || s.pendingJobEntry == nil || (s.pendingJobTarget != "" && msg.Target != s.pendingJobTarget) {
+		if !s.dangerousActionsEnabled || s.pendingJobAction == scheduledJobActionNone || (s.pendingJobTarget != "" && msg.Target != s.pendingJobTarget) {
 			return s, nil
 		}
 		action := s.pendingJobAction
 		entry := s.pendingJobEntry
-		s.pendingJobAction = scheduledJobActionNone
-		s.pendingJobEntry = nil
-		s.pendingJobTarget = ""
+		s.clearPendingAction()
 		if !msg.Confirmed {
 			return s, nil
 		}
@@ -133,9 +133,19 @@ func (s *Scheduled) Update(msg tea.Msg) (View, tea.Cmd) {
 		case scheduledJobActionNone:
 			return s, nil
 		case scheduledJobActionDelete:
+			if entry == nil {
+				return s, nil
+			}
 			return s, s.deleteJobCmd(entry)
 		case scheduledJobActionAddToQueue:
+			if entry == nil {
+				return s, nil
+			}
 			return s, s.addToQueueJobCmd(entry)
+		case scheduledJobActionDeleteAll:
+			return s, s.deleteAllCmd()
+		case scheduledJobActionAddAllToQueue:
+			return s, s.addAllToQueueCmd()
 		}
 
 	case tea.KeyMsg:
@@ -198,6 +208,16 @@ func (s *Scheduled) Update(msg tea.Msg) (View, tea.Cmd) {
 					return s, s.openAddToQueueConfirm(entry)
 				}
 				return s, nil
+			case "ctrl+d":
+				s.pendingJobAction = scheduledJobActionDeleteAll
+				s.pendingJobEntry = nil
+				s.pendingJobTarget = "scheduled.delete_all"
+				return s, s.openDeleteAllConfirm()
+			case "ctrl+r":
+				s.pendingJobAction = scheduledJobActionAddAllToQueue
+				s.pendingJobEntry = nil
+				s.pendingJobTarget = "scheduled.add_all"
+				return s, s.openAddAllToQueueConfirm()
 			}
 		}
 
@@ -270,6 +290,8 @@ func (s *Scheduled) MutationBindings() []key.Binding {
 	return []key.Binding{
 		helpBinding([]string{"D"}, "shift+d", "delete job"),
 		helpBinding([]string{"R"}, "shift+r", "add to queue"),
+		helpBinding([]string{"ctrl+d"}, "ctrl+d", "delete all"),
+		helpBinding([]string{"ctrl+r"}, "ctrl+r", "add all to queue"),
 	}
 }
 
@@ -296,6 +318,8 @@ func (s *Scheduled) HelpSections() []HelpSection {
 			Bindings: []key.Binding{
 				helpBinding([]string{"D"}, "shift+d", "delete job"),
 				helpBinding([]string{"R"}, "shift+r", "add to queue"),
+				helpBinding([]string{"ctrl+d"}, "ctrl+d", "delete all"),
+				helpBinding([]string{"ctrl+r"}, "ctrl+r", "add all to queue"),
 			},
 		})
 	}
@@ -565,10 +589,48 @@ func (s *Scheduled) openAddToQueueConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
 	}
 }
 
+func (s *Scheduled) openDeleteAllConfirm() tea.Cmd {
+	return func() tea.Msg {
+		return dialogs.OpenDialogMsg{
+			Model: newConfirmDialog(
+				s.styles,
+				"Delete all scheduled",
+				"Are you sure you want to delete all scheduled jobs?\n\nThis action is not recoverable.",
+				"scheduled.delete_all",
+				s.styles.DangerAction,
+			),
+		}
+	}
+}
+
+func (s *Scheduled) openAddAllToQueueConfirm() tea.Cmd {
+	return func() tea.Msg {
+		return dialogs.OpenDialogMsg{
+			Model: newConfirmDialog(
+				s.styles,
+				"Add all to queue",
+				"Add all scheduled jobs to the queue now?\n\nThis will enqueue them immediately.",
+				"scheduled.add_all",
+				s.styles.DangerAction,
+			),
+		}
+	}
+}
+
 func (s *Scheduled) deleteJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
 	return func() tea.Msg {
 		ctx := devtools.WithTracker(context.Background(), "scheduled.deleteJobCmd")
 		if err := s.client.DeleteScheduledJob(ctx, entry); err != nil {
+			return ConnectionErrorMsg{Err: err}
+		}
+		return RefreshMsg{}
+	}
+}
+
+func (s *Scheduled) deleteAllCmd() tea.Cmd {
+	return func() tea.Msg {
+		ctx := devtools.WithTracker(context.Background(), "scheduled.deleteAllCmd")
+		if err := s.client.DeleteAllScheduledJobs(ctx); err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}
 		return RefreshMsg{}
@@ -583,6 +645,22 @@ func (s *Scheduled) addToQueueJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
 		}
 		return RefreshMsg{}
 	}
+}
+
+func (s *Scheduled) addAllToQueueCmd() tea.Cmd {
+	return func() tea.Msg {
+		ctx := devtools.WithTracker(context.Background(), "scheduled.addAllToQueueCmd")
+		if err := s.client.AddAllScheduledJobsToQueue(ctx); err != nil {
+			return ConnectionErrorMsg{Err: err}
+		}
+		return RefreshMsg{}
+	}
+}
+
+func (s *Scheduled) clearPendingAction() {
+	s.pendingJobAction = scheduledJobActionNone
+	s.pendingJobEntry = nil
+	s.pendingJobTarget = ""
 }
 
 // renderJobsBox renders the bordered box containing the jobs table.

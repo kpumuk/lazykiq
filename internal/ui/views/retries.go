@@ -39,6 +39,9 @@ const (
 	retriesJobActionDelete
 	retriesJobActionKill
 	retriesJobActionRetry
+	retriesJobActionDeleteAll
+	retriesJobActionKillAll
+	retriesJobActionRetryAll
 )
 
 // Retries shows failed jobs pending retry.
@@ -120,14 +123,12 @@ func (r *Retries) Update(msg tea.Msg) (View, tea.Cmd) {
 		return r, r.lazy.RequestWindow(0, lazytable.CursorStart)
 
 	case confirmdialog.ActionMsg:
-		if !r.dangerousActionsEnabled || r.pendingJobEntry == nil || (r.pendingJobTarget != "" && msg.Target != r.pendingJobTarget) {
+		if !r.dangerousActionsEnabled || r.pendingJobAction == retriesJobActionNone || (r.pendingJobTarget != "" && msg.Target != r.pendingJobTarget) {
 			return r, nil
 		}
 		action := r.pendingJobAction
 		entry := r.pendingJobEntry
-		r.pendingJobAction = retriesJobActionNone
-		r.pendingJobEntry = nil
-		r.pendingJobTarget = ""
+		r.clearPendingAction()
 		if !msg.Confirmed {
 			return r, nil
 		}
@@ -135,11 +136,26 @@ func (r *Retries) Update(msg tea.Msg) (View, tea.Cmd) {
 		case retriesJobActionNone:
 			return r, nil
 		case retriesJobActionDelete:
+			if entry == nil {
+				return r, nil
+			}
 			return r, r.deleteJobCmd(entry)
 		case retriesJobActionKill:
+			if entry == nil {
+				return r, nil
+			}
 			return r, r.killJobCmd(entry)
 		case retriesJobActionRetry:
+			if entry == nil {
+				return r, nil
+			}
 			return r, r.retryNowJobCmd(entry)
+		case retriesJobActionDeleteAll:
+			return r, r.deleteAllCmd()
+		case retriesJobActionKillAll:
+			return r, r.killAllCmd()
+		case retriesJobActionRetryAll:
+			return r, r.retryAllCmd()
 		}
 
 	case tea.KeyMsg:
@@ -210,6 +226,21 @@ func (r *Retries) Update(msg tea.Msg) (View, tea.Cmd) {
 					return r, r.openRetryNowConfirm(entry)
 				}
 				return r, nil
+			case "ctrl+d":
+				r.pendingJobAction = retriesJobActionDeleteAll
+				r.pendingJobEntry = nil
+				r.pendingJobTarget = "retries.delete_all"
+				return r, r.openDeleteAllConfirm()
+			case "ctrl+k":
+				r.pendingJobAction = retriesJobActionKillAll
+				r.pendingJobEntry = nil
+				r.pendingJobTarget = "retries.kill_all"
+				return r, r.openKillAllConfirm()
+			case "ctrl+r":
+				r.pendingJobAction = retriesJobActionRetryAll
+				r.pendingJobEntry = nil
+				r.pendingJobTarget = "retries.retry_all"
+				return r, r.openRetryAllConfirm()
 			}
 		}
 
@@ -283,6 +314,9 @@ func (r *Retries) MutationBindings() []key.Binding {
 		helpBinding([]string{"D"}, "shift+d", "delete job"),
 		helpBinding([]string{"K"}, "shift+k", "kill job"),
 		helpBinding([]string{"R"}, "shift+r", "retry now"),
+		helpBinding([]string{"ctrl+d"}, "ctrl+d", "delete all"),
+		helpBinding([]string{"ctrl+k"}, "ctrl+k", "kill all"),
+		helpBinding([]string{"ctrl+r"}, "ctrl+r", "retry all"),
 	}
 }
 
@@ -310,6 +344,9 @@ func (r *Retries) HelpSections() []HelpSection {
 				helpBinding([]string{"D"}, "shift+d", "delete job"),
 				helpBinding([]string{"K"}, "shift+k", "kill job"),
 				helpBinding([]string{"R"}, "shift+r", "retry now"),
+				helpBinding([]string{"ctrl+d"}, "ctrl+d", "delete all"),
+				helpBinding([]string{"ctrl+k"}, "ctrl+k", "kill all"),
+				helpBinding([]string{"ctrl+r"}, "ctrl+r", "retry all"),
 			},
 		})
 	}
@@ -611,10 +648,82 @@ func (r *Retries) openRetryNowConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
 	}
 }
 
+func (r *Retries) openDeleteAllConfirm() tea.Cmd {
+	return func() tea.Msg {
+		return dialogs.OpenDialogMsg{
+			Model: newConfirmDialog(
+				r.styles,
+				"Delete all retries",
+				"Are you sure you want to delete all retry jobs?\n\nThis action is not recoverable.",
+				"retries.delete_all",
+				r.styles.DangerAction,
+			),
+		}
+	}
+}
+
+func (r *Retries) openKillAllConfirm() tea.Cmd {
+	return func() tea.Msg {
+		return dialogs.OpenDialogMsg{
+			Model: newConfirmDialog(
+				r.styles,
+				"Kill all retries",
+				"Are you sure you want to kill all retry jobs?\n\nThis will move them to the dead queue.",
+				"retries.kill_all",
+				r.styles.DangerAction,
+			),
+		}
+	}
+}
+
+func (r *Retries) openRetryAllConfirm() tea.Cmd {
+	return func() tea.Msg {
+		return dialogs.OpenDialogMsg{
+			Model: newConfirmDialog(
+				r.styles,
+				"Retry all retries",
+				"Retry all retry jobs now?\n\nThis will enqueue them immediately.",
+				"retries.retry_all",
+				r.styles.DangerAction,
+			),
+		}
+	}
+}
+
 func (r *Retries) deleteJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
 	return func() tea.Msg {
 		ctx := devtools.WithTracker(context.Background(), "retries.deleteJobCmd")
 		if err := r.client.DeleteRetryJob(ctx, entry); err != nil {
+			return ConnectionErrorMsg{Err: err}
+		}
+		return RefreshMsg{}
+	}
+}
+
+func (r *Retries) deleteAllCmd() tea.Cmd {
+	return func() tea.Msg {
+		ctx := devtools.WithTracker(context.Background(), "retries.deleteAllCmd")
+		if err := r.client.DeleteAllRetryJobs(ctx); err != nil {
+			return ConnectionErrorMsg{Err: err}
+		}
+		return RefreshMsg{}
+	}
+}
+
+func (r *Retries) killAllCmd() tea.Cmd {
+	return func() tea.Msg {
+		ctx := devtools.WithTracker(context.Background(), "retries.killAllCmd")
+		if err := r.client.KillAllRetryJobs(ctx); err != nil {
+			return ConnectionErrorMsg{Err: err}
+		}
+		return RefreshMsg{}
+	}
+}
+
+func (r *Retries) retryAllCmd() tea.Cmd {
+	return func() tea.Msg {
+		ctx := devtools.WithTracker(context.Background(), "retries.retryAllCmd")
+		if err := r.client.RetryAllRetryJobs(ctx); err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}
 		return RefreshMsg{}
@@ -639,6 +748,12 @@ func (r *Retries) retryNowJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
 		}
 		return RefreshMsg{}
 	}
+}
+
+func (r *Retries) clearPendingAction() {
+	r.pendingJobAction = retriesJobActionNone
+	r.pendingJobEntry = nil
+	r.pendingJobTarget = ""
 }
 
 // renderJobsBox renders the bordered box containing the jobs table.

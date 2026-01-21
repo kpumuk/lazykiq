@@ -84,17 +84,38 @@ type API interface {
 	// RetryNowRetryJob moves a retry job to its queue immediately.
 	RetryNowRetryJob(ctx context.Context, entry *SortedEntry) error
 
+	// DeleteAllRetryJobs removes all jobs from the retry set.
+	DeleteAllRetryJobs(ctx context.Context) error
+
+	// RetryAllRetryJobs moves all retry jobs to their queues immediately.
+	RetryAllRetryJobs(ctx context.Context) error
+
+	// KillAllRetryJobs moves all retry jobs into the dead set.
+	KillAllRetryJobs(ctx context.Context) error
+
 	// AddScheduledJobToQueue moves a scheduled job to its queue immediately.
 	AddScheduledJobToQueue(ctx context.Context, entry *SortedEntry) error
 
 	// DeleteScheduledJob removes a scheduled job from the scheduled set.
 	DeleteScheduledJob(ctx context.Context, entry *SortedEntry) error
 
+	// DeleteAllScheduledJobs removes all jobs from the scheduled set.
+	DeleteAllScheduledJobs(ctx context.Context) error
+
+	// AddAllScheduledJobsToQueue moves all scheduled jobs to their queues immediately.
+	AddAllScheduledJobsToQueue(ctx context.Context) error
+
 	// RetryNowDeadJob moves a dead job to its queue immediately.
 	RetryNowDeadJob(ctx context.Context, entry *SortedEntry) error
 
 	// DeleteDeadJob removes a dead job from the dead set.
 	DeleteDeadJob(ctx context.Context, entry *SortedEntry) error
+
+	// DeleteAllDeadJobs removes all jobs from the dead set.
+	DeleteAllDeadJobs(ctx context.Context) error
+
+	// RetryAllDeadJobs moves all dead jobs to their queues immediately.
+	RetryAllDeadJobs(ctx context.Context) error
 
 	// Do executes a raw Redis command.
 	Do(ctx context.Context, args ...any) (any, error)

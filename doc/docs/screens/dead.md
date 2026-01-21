@@ -3,7 +3,7 @@ title: "Dead"
 description: "Inspect jobs that have exhausted retries."
 summary: "Inspect jobs that have exhausted retries."
 date: 2025-12-30T00:00:00Z
-lastmod: 2026-01-10T00:00:00Z
+lastmod: 2026-01-20T00:00:00Z
 draft: false
 weight: 90
 toc: true
@@ -28,6 +28,8 @@ Dead jobs have failed permanently and need intervention.
 | `g` / `G`    | Jump to start or end.                                     |
 | `D`          | Delete job (requires `--danger`).                         |
 | `R`          | Retry job now (requires `--danger`).                      |
+| `Ctrl+D`     | Delete all dead jobs (requires `--danger`).               |
+| `Ctrl+R`     | Retry all dead jobs now (requires `--danger`).            |
 | `q`          | Quit.                                                     |
 
 ## Job Details
