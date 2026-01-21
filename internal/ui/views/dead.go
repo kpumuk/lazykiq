@@ -12,7 +12,6 @@ import (
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
 	"github.com/kpumuk/lazykiq/internal/ui/components/lazytable"
-	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 	confirmdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/confirm"
@@ -381,11 +380,7 @@ func (d *Dead) fetchWindow(
 }
 
 func (d *Dead) renderMessage(msg string) string {
-	return messagebox.Render(messagebox.Styles{
-		Title:  d.styles.Title,
-		Muted:  d.styles.Muted,
-		Border: d.styles.FocusBorder,
-	}, "Dead Jobs", msg, d.width, d.height)
+	return renderStatusMessage("Dead Jobs", msg, d.styles, d.width, d.height)
 }
 
 func (d *Dead) reset() {

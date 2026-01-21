@@ -13,7 +13,6 @@ import (
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
 	"github.com/kpumuk/lazykiq/internal/ui/components/lazytable"
-	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 	confirmdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/confirm"
@@ -404,11 +403,7 @@ func (r *Retries) fetchWindow(
 }
 
 func (r *Retries) renderMessage(msg string) string {
-	return messagebox.Render(messagebox.Styles{
-		Title:  r.styles.Title,
-		Muted:  r.styles.Muted,
-		Border: r.styles.FocusBorder,
-	}, "Retries", msg, r.width, r.height)
+	return renderStatusMessage("Retries", msg, r.styles, r.width, r.height)
 }
 
 func (r *Retries) reset() {

@@ -9,7 +9,6 @@ import (
 	"github.com/kpumuk/lazykiq/internal/devtools"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
-	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
@@ -222,11 +221,7 @@ func (e *ErrorsSummary) fetchDataCmd() tea.Cmd {
 }
 
 func (e *ErrorsSummary) renderMessage(msg string) string {
-	return messagebox.Render(messagebox.Styles{
-		Title:  e.styles.Title,
-		Muted:  e.styles.Muted,
-		Border: e.styles.FocusBorder,
-	}, "Errors", msg, e.width, e.height)
+	return renderStatusMessage("Errors", msg, e.styles, e.width, e.height)
 }
 
 func (e *ErrorsSummary) reset() {

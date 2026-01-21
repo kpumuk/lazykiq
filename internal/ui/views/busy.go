@@ -15,7 +15,6 @@ import (
 	"github.com/kpumuk/lazykiq/internal/devtools"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
-	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
@@ -551,15 +550,7 @@ func (b *Busy) renderJobsBox() string {
 }
 
 func (b *Busy) renderMessage(msg string) string {
-	// Bordered box with centered message
-	boxHeight := b.height
-	box := messagebox.Render(messagebox.Styles{
-		Title:  b.styles.Title,
-		Muted:  b.styles.Muted,
-		Border: b.styles.FocusBorder,
-	}, "Active Jobs", msg, b.width, boxHeight)
-
-	return box
+	return renderStatusMessage("Active Jobs", msg, b.styles, b.width, b.height)
 }
 
 func formatPID(pid int) string {

@@ -12,7 +12,6 @@ import (
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
 	"github.com/kpumuk/lazykiq/internal/ui/components/lazytable"
-	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 	confirmdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/confirm"
@@ -381,11 +380,7 @@ func (s *Scheduled) fetchWindow(
 }
 
 func (s *Scheduled) renderMessage(msg string) string {
-	return messagebox.Render(messagebox.Styles{
-		Title:  s.styles.Title,
-		Muted:  s.styles.Muted,
-		Border: s.styles.FocusBorder,
-	}, "Scheduled", msg, s.width, s.height)
+	return renderStatusMessage("Scheduled", msg, s.styles, s.width, s.height)
 }
 
 func (s *Scheduled) reset() {

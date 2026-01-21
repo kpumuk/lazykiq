@@ -16,7 +16,6 @@ import (
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
 	"github.com/kpumuk/lazykiq/internal/ui/components/lazytable"
-	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 	"github.com/kpumuk/lazykiq/internal/ui/format"
 )
@@ -595,11 +594,7 @@ func (q *QueueDetails) renderMessage(msg string) string {
 
 	// Bordered box with centered message
 	boxHeight := q.height - headerHeight
-	box := messagebox.Render(messagebox.Styles{
-		Title:  q.styles.Title,
-		Muted:  q.styles.Muted,
-		Border: q.styles.FocusBorder,
-	}, "Jobs", msg, q.width, boxHeight)
+	box := renderStatusMessage("Jobs", msg, q.styles, q.width, boxHeight)
 
 	return header + "\n" + box
 }

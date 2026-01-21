@@ -12,7 +12,6 @@ import (
 	"github.com/kpumuk/lazykiq/internal/devtools"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
-	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
@@ -426,11 +425,5 @@ func (p *ProcessesList) renderProcessesBox() string {
 }
 
 func (p *ProcessesList) renderMessage(msg string) string {
-	box := messagebox.Render(messagebox.Styles{
-		Title:  p.styles.Title,
-		Muted:  p.styles.Muted,
-		Border: p.styles.FocusBorder,
-	}, "Select process", msg, p.width, p.height)
-
-	return box
+	return renderStatusMessage("Select process", msg, p.styles, p.width, p.height)
 }

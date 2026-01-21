@@ -14,7 +14,6 @@ import (
 	"github.com/kpumuk/lazykiq/internal/devtools"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
-	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 	confirmdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/confirm"
@@ -420,11 +419,5 @@ func (q *QueuesList) renderQueuesBox() string {
 }
 
 func (q *QueuesList) renderMessage(msg string) string {
-	box := messagebox.Render(messagebox.Styles{
-		Title:  q.styles.Title,
-		Muted:  q.styles.Muted,
-		Border: q.styles.FocusBorder,
-	}, "Select queue", msg, q.width, q.height)
-
-	return box
+	return renderStatusMessage("Select queue", msg, q.styles, q.width, q.height)
 }
