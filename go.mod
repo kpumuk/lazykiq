@@ -7,13 +7,13 @@ require (
 	charm.land/bubbletea/v2 v2.0.0-rc.2
 	charm.land/lipgloss/v2 v2.0.0-beta.3.0.20251114164805-d267651963ad
 	github.com/NimbleMarkets/ntcharts/v2 v2.0.0-beta.5
-	github.com/alecthomas/chroma/v2 v2.23.0
-	github.com/alicebob/miniredis/v2 v2.35.0
+	github.com/alecthomas/chroma/v2 v2.23.1
+	github.com/alicebob/miniredis/v2 v2.36.1
 	github.com/atotto/clipboard v0.1.4
 	github.com/charmbracelet/fang v0.4.4
 	github.com/charmbracelet/x/ansi v0.11.4
 	github.com/charmbracelet/x/exp/golden v0.0.0-20251215102626-e0db08df7383
-	github.com/redis/go-redis/v9 v9.17.2
+	github.com/redis/go-redis/v9 v9.17.3
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 )
