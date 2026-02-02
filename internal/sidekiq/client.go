@@ -129,46 +129,46 @@ func (c *Client) DetectVersion(ctx context.Context) Version {
 	// We can distinguish by the date portion length after "j|"
 	// If both formats exist (during upgrade), prefer Version8
 
-	// Iterate SCAN until we have at least 10 keys or reach cursor 0
-	var allKeys []string
+	const sampleLimit = 10
+
 	cursor := uint64(0)
+	found7 := false
+	processed := 0
+
 	for {
-		// It is possible that Redis will return 0 key and an interator to the next scan
+		// Redis can return zero keys and a cursor for the next scan.
 		keys, nextCursor, err := c.redis.Scan(ctx, cursor, "j|*", 100).Result()
 		if err != nil {
 			return VersionUnknown
 		}
-		allKeys = append(allKeys, keys...)
-		cursor = nextCursor
 
-		// Stop if we've collected enough keys or completed the scan
-		if len(allKeys) >= 10 || cursor == 0 {
+		for _, key := range keys {
+			processed++
+			switch metricsKeyVersion(key) {
+			case Version8:
+				c.version = Version8
+				return c.version
+			case Version7:
+				found7 = true
+			case VersionUnknown:
+			}
+		}
+
+		cursor = nextCursor
+		if processed >= sampleLimit || cursor == 0 {
 			break
 		}
 	}
 
-	if len(allKeys) == 0 {
+	if processed == 0 {
 		return VersionUnknown
 	}
-
-	// Check all keys, prefer Version8 over Version7
-	detected := VersionUnknown
-	for _, key := range allKeys {
-		if len(key) < 4 {
-			continue
-		}
-		// Key format: j|DATE|H:M - find second pipe to get date length
-		pipeIdx := strings.IndexRune(key[2:], '|')
-		if pipeIdx == 6 {
-			c.version = Version8
-			return c.version
-		}
-		if pipeIdx == 8 && detected == VersionUnknown {
-			detected = Version7
-		}
+	if found7 {
+		c.version = Version7
+		return c.version
 	}
 
-	c.version = detected
+	c.version = VersionUnknown
 	return c.version
 }
 
@@ -180,4 +180,21 @@ func (c *Client) MetricsPeriodOrder(ctx context.Context) []string {
 		return MetricsPeriodOrderSidekiq7
 	}
 	return MetricsPeriodOrder
+}
+
+func metricsKeyVersion(key string) Version {
+	if len(key) < 4 {
+		return VersionUnknown
+	}
+
+	// Key format: j|DATE|H:M - find second pipe to get date length.
+	pipeIdx := strings.IndexRune(key[2:], '|')
+	switch pipeIdx {
+	case 6:
+		return Version8
+	case 8:
+		return Version7
+	default:
+		return VersionUnknown
+	}
 }
