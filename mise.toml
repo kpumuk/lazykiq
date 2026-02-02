@@ -1,5 +1,5 @@
 [tools]
-golang = "1.25.5"
+golang = "1.25.6"
 golangci-lint = "2.7.2"
 hugo-extended = "0.152.2"
 lefthook = "2.0.13"
