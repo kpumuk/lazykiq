@@ -3,8 +3,8 @@ package views
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
-	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/key"
@@ -23,7 +23,9 @@ import (
 
 // metricsListMsg carries list metrics data.
 type metricsListMsg struct {
-	result sidekiq.MetricsTopJobsResult
+	result  sidekiq.MetricsTopJobsResult
+	periods []string
+	period  string
 }
 
 type metricsRow struct {
@@ -53,7 +55,7 @@ type Metrics struct {
 
 // NewMetrics creates a new Metrics view.
 func NewMetrics(client sidekiq.API) *Metrics {
-	m := &Metrics{
+	return &Metrics{
 		client:  client,
 		periods: sidekiq.MetricsPeriodOrder,
 		period:  sidekiq.MetricsPeriodOrder[0],
@@ -62,8 +64,6 @@ func NewMetrics(client sidekiq.API) *Metrics {
 			table.WithEmptyMessage("No recent metrics"),
 		),
 	}
-
-	return m
 }
 
 // Init implements View.
@@ -78,6 +78,7 @@ func (m *Metrics) Init() tea.Cmd {
 func (m *Metrics) Update(msg tea.Msg) (View, tea.Cmd) {
 	switch msg := msg.(type) {
 	case metricsListMsg:
+		m.applyPeriodState(msg.periods, msg.period)
 		m.result = msg.result
 		m.ready = true
 		m.buildListRows()
@@ -91,38 +92,26 @@ func (m *Metrics) Update(msg tea.Msg) (View, tea.Cmd) {
 		return m, m.fetchListCmd()
 
 	case filterdialog.ActionMsg:
-		if msg.Action == filterdialog.ActionNone {
+		if msg.Action == filterdialog.ActionNone || msg.Query == m.filter {
 			return m, nil
 		}
-		if msg.Query == m.filter {
-			return m, nil
-		}
-		m.filter = msg.Query
-		m.resetScroll = true
-		m.table.GotoTop()
-		return m, m.fetchListCmd()
+		return m, m.setFilterAndReload(msg.Query)
 
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "/":
 			return m, m.openFilterDialog()
 		case "ctrl+u":
-			if m.filter != "" {
-				m.filter = ""
-				m.resetScroll = true
-				m.table.GotoTop()
-				return m, m.fetchListCmd()
+			if m.filter == "" {
+				return m, nil
 			}
-			return m, nil
+			return m, m.setFilterAndReload("")
 		case "alt+left", "[":
 			m.movePage(-1)
 			return m, nil
 		case "alt+right", "]":
 			m.movePage(1)
 			return m, nil
-		}
-
-		switch msg.String() {
 		case "enter":
 			if selected, ok := m.selectedRow(); ok {
 				return m, func() tea.Msg {
@@ -272,26 +261,67 @@ var metricsColumns = []table.Column{
 func (m *Metrics) fetchListCmd() tea.Cmd {
 	period := m.period
 	filter := m.filter
+	client := m.client
 	return func() tea.Msg {
 		ctx := devtools.WithTracker(context.Background(), "metrics.fetchListCmd")
 
-		// Update periods based on detected Sidekiq version
-		m.periods = m.client.MetricsPeriodOrder(ctx)
-		if m.periodIdx >= len(m.periods) {
-			m.periodIdx = len(m.periods) - 1
-			m.period = m.periods[m.periodIdx]
+		periods := normalizeMetricsPeriods(client.MetricsPeriodOrder(ctx))
+		queryPeriod := period
+		if !slices.Contains(periods, queryPeriod) {
+			queryPeriod = periods[0]
 		}
 
-		params, ok := sidekiq.MetricsPeriods[period]
-		if !ok {
-			params = sidekiq.MetricsPeriods[m.periods[0]]
-		}
-		result, err := m.client.GetMetricsTopJobs(ctx, params, filter)
+		params := sidekiq.MetricsPeriods[queryPeriod]
+		result, err := client.GetMetricsTopJobs(ctx, params, filter)
 		if err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}
-		return metricsListMsg{result: result}
+		return metricsListMsg{
+			result:  result,
+			periods: periods,
+			period:  queryPeriod,
+		}
 	}
+}
+
+func (m *Metrics) applyPeriodState(periods []string, selected string) {
+	m.periods = normalizeMetricsPeriods(periods)
+
+	idx := slices.Index(m.periods, selected)
+	if idx < 0 {
+		idx = slices.Index(m.periods, m.period)
+	}
+	if idx < 0 {
+		idx = 0
+	}
+
+	m.periodIdx = idx
+	m.period = m.periods[idx]
+}
+
+func normalizeMetricsPeriods(periods []string) []string {
+	if len(periods) == 0 {
+		return append([]string(nil), sidekiq.MetricsPeriodOrder...)
+	}
+
+	normalized := make([]string, 0, len(periods))
+	seen := make(map[string]struct{}, len(periods))
+	for _, period := range periods {
+		if _, ok := sidekiq.MetricsPeriods[period]; !ok {
+			continue
+		}
+		if _, ok := seen[period]; ok {
+			continue
+		}
+		seen[period] = struct{}{}
+		normalized = append(normalized, period)
+	}
+
+	if len(normalized) == 0 {
+		return append([]string(nil), sidekiq.MetricsPeriodOrder...)
+	}
+
+	return normalized
 }
 
 func (m *Metrics) adjustPeriod(delta int) (View, tea.Cmd) {
@@ -317,11 +347,6 @@ func (m *Metrics) buildListRows() {
 	})
 
 	m.rows = rows
-	if len(rows) == 0 {
-		m.updateTableRows()
-		return
-	}
-
 	m.updateTableRows()
 }
 
@@ -385,18 +410,23 @@ func (m *Metrics) openFilterDialog() tea.Cmd {
 	}
 }
 
+func (m *Metrics) setFilterAndReload(filter string) tea.Cmd {
+	m.filter = filter
+	m.resetScroll = true
+	m.table.GotoTop()
+	return m.fetchListCmd()
+}
+
 func (m *Metrics) updateTableSize() {
 	tableWidth, tableHeight := framedTableSize(m.width, m.height)
 	m.table.SetSize(tableWidth, tableHeight)
 }
 
 func (m *Metrics) listMeta() string {
-	sep := m.styles.Muted.Render(" • ")
-	entries := []string{}
-	if m.period != "" {
-		entries = append(entries, m.styles.MetricLabel.Render("period: ")+m.styles.MetricValue.Render(m.period))
+	if m.period == "" {
+		return ""
 	}
-	return strings.Join(entries, sep)
+	return m.styles.MetricLabel.Render("period: ") + m.styles.MetricValue.Render(m.period)
 }
 
 func (m *Metrics) aggregateTotals() (int64, int64, int64) {
