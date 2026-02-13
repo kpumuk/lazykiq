@@ -14,7 +14,7 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
-	"github.com/kpumuk/lazykiq/internal/ui/format"
+	"github.com/kpumuk/lazykiq/internal/ui/display"
 )
 
 // errorsDetailsDataMsg carries error detail data internally.
@@ -274,7 +274,7 @@ func (e *ErrorsDetails) updateTableRows() {
 		if job.entry == nil {
 			continue
 		}
-		when := format.Duration(int64(now.Sub(job.entry.At()).Seconds()))
+		when := display.Duration(int64(now.Sub(job.entry.At()).Seconds()))
 		queue := job.entry.Queue()
 		if queue == "" {
 			queue = "unknown"
@@ -288,7 +288,7 @@ func (e *ErrorsDetails) updateTableRows() {
 				when,
 				queue,
 				job.entry.DisplayClass(),
-				format.Args(job.entry.DisplayArgs()),
+				display.Args(job.entry.DisplayArgs()),
 				message,
 			},
 		})

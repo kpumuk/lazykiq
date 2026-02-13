@@ -32,13 +32,14 @@ func noopFetcher(_ context.Context, _, _ int, _ CursorIntent) (FetchResult, erro
 }
 
 func newTestModel(tableOpts ...table.Option) Model {
-	opts := []table.Option{
+	opts := make([]table.Option, 0, 2+len(tableOpts))
+	opts = append(opts,
 		table.WithColumns([]table.Column{
 			{Title: "A", Width: 3},
 			{Title: "B", Width: 3},
 		}),
 		table.WithStyles(blankTableStyles()),
-	}
+	)
 	opts = append(opts, tableOpts...)
 	return New(
 		WithTableOptions(opts...),

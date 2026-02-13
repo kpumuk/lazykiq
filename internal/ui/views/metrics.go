@@ -18,7 +18,7 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
-	"github.com/kpumuk/lazykiq/internal/ui/format"
+	"github.com/kpumuk/lazykiq/internal/ui/display"
 )
 
 // metricsListMsg carries list metrics data.
@@ -196,9 +196,9 @@ func (m *Metrics) ContextItems() []ContextItem {
 			rangeText = value
 		}
 		jobs, succeeded, failed := m.aggregateTotals()
-		jobsText = format.Number(jobs)
-		succeededText = format.Number(succeeded)
-		failedText = format.Number(failed)
+		jobsText = display.Number(jobs)
+		succeededText = display.Number(succeeded)
+		failedText = display.Number(failed)
 	}
 
 	return []ContextItem{
@@ -344,10 +344,10 @@ func (m *Metrics) updateTableRows() {
 			ID: row.class,
 			Cells: []string{
 				row.class,
-				format.Number(row.totals.Success()),
-				format.Number(row.totals.Failed),
-				format.Float(row.totals.Seconds, 2),
-				format.Float(row.totals.AvgSeconds(), 2),
+				display.Number(row.totals.Success()),
+				display.Number(row.totals.Failed),
+				display.Float(row.totals.Seconds, 2),
+				display.Float(row.totals.AvgSeconds(), 2),
 				"",
 			},
 		}

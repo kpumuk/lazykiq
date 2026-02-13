@@ -14,9 +14,9 @@ import (
 	"github.com/kpumuk/lazykiq/internal/devtools"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
-	"github.com/kpumuk/lazykiq/internal/ui/components/metrics"
+	"github.com/kpumuk/lazykiq/internal/ui/components/stats"
 	"github.com/kpumuk/lazykiq/internal/ui/components/timeseries"
-	"github.com/kpumuk/lazykiq/internal/ui/format"
+	"github.com/kpumuk/lazykiq/internal/ui/display"
 )
 
 const (
@@ -84,7 +84,7 @@ func (d *Dashboard) Init() tea.Cmd {
 // Update implements View.
 func (d *Dashboard) Update(msg tea.Msg) (View, tea.Cmd) {
 	switch msg := msg.(type) {
-	case metrics.UpdateMsg:
+	case stats.UpdateMsg:
 		// Use stats from the shared metrics update (already fetched by app)
 		var deltaProcessed int64
 		var deltaFailed int64
@@ -125,7 +125,7 @@ func (d *Dashboard) Update(msg tea.Msg) (View, tea.Cmd) {
 		return d, nil
 
 	case RefreshMsg:
-		// Fetch Redis info on refresh (stats come via metrics.UpdateMsg)
+		// Fetch Redis info on refresh (stats come via stats.UpdateMsg)
 		return d, d.fetchRedisInfoCmd()
 
 	case tea.KeyMsg:
@@ -185,7 +185,7 @@ func (d *Dashboard) ContextItems() []ContextItem {
 	return []ContextItem{
 		{Label: "Redis", Value: redisValue},
 		{Label: "Uptime", Value: fmt.Sprintf("%d days", d.redisInfo.UptimeDays)},
-		{Label: "Connections", Value: format.ShortNumber(d.redisInfo.Connections)},
+		{Label: "Connections", Value: display.ShortNumber(d.redisInfo.Connections)},
 		{Label: "Memory", Value: orNA(d.redisInfo.UsedMemory)},
 		{Label: "Peak", Value: orNA(d.redisInfo.UsedMemoryPeak)},
 	}
@@ -415,8 +415,8 @@ func (d *Dashboard) renderHistoryContent(contentHeight int) string {
 
 func (d *Dashboard) renderRealtimeLegend(width int) string {
 	sep := d.styles.Muted.Render(" | ")
-	processed := d.styles.MetricLabel.Render("Processed: ") + d.styles.MetricValue.Render(format.ShortNumber(d.lastDeltaP))
-	failed := d.styles.MetricLabel.Render("Failed: ") + d.styles.MetricValue.Render(format.ShortNumber(d.lastDeltaF))
+	processed := d.styles.MetricLabel.Render("Processed: ") + d.styles.MetricValue.Render(display.ShortNumber(d.lastDeltaP))
+	failed := d.styles.MetricLabel.Render("Failed: ") + d.styles.MetricValue.Render(display.ShortNumber(d.lastDeltaF))
 	timestamp := d.styles.Muted.Render(d.lastPollAt.Format("15:04:05"))
 	line := processed + sep + failed + sep + timestamp
 	return ansi.Cut(line, 0, width)
@@ -424,8 +424,8 @@ func (d *Dashboard) renderRealtimeLegend(width int) string {
 
 func (d *Dashboard) renderHistoryLegend(width int) string {
 	sep := d.styles.Muted.Render(" | ")
-	processed := d.styles.MetricLabel.Render("Processed: ") + d.styles.MetricValue.Render(format.ShortNumber(sumSeries(d.historyProcessed)))
-	failed := d.styles.MetricLabel.Render("Failed: ") + d.styles.MetricValue.Render(format.ShortNumber(sumSeries(d.historyFailed)))
+	processed := d.styles.MetricLabel.Render("Processed: ") + d.styles.MetricValue.Render(display.ShortNumber(sumSeries(d.historyProcessed)))
+	failed := d.styles.MetricLabel.Render("Failed: ") + d.styles.MetricValue.Render(display.ShortNumber(sumSeries(d.historyFailed)))
 	rangeLabel := d.styles.Muted.Render(d.historyDateRangeLabel())
 	line := processed + sep + failed + sep + rangeLabel
 	return ansi.Cut(line, 0, width)
@@ -536,7 +536,7 @@ func (d *Dashboard) seedRealtimeSeries() {
 
 func shortYLabelFormatter() func(int, float64) string {
 	return func(_ int, v float64) string {
-		return format.CompactNumber(int64(v + 0.5))
+		return display.CompactNumber(int64(v + 0.5))
 	}
 }
 

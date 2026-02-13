@@ -16,7 +16,7 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
 	"github.com/kpumuk/lazykiq/internal/ui/components/lazytable"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
-	"github.com/kpumuk/lazykiq/internal/ui/format"
+	"github.com/kpumuk/lazykiq/internal/ui/display"
 )
 
 // QueueInfo holds pre-fetched queue information for display.
@@ -211,9 +211,9 @@ func (q *QueueDetails) ContextItems() []ContextItem {
 			Label: "Rows",
 			Value: fmt.Sprintf(
 				"%s-%s/%s",
-				format.Number(int64(start)),
-				format.Number(int64(end)),
-				format.Number(total),
+				display.Number(int64(start)),
+				display.Number(int64(end)),
+				display.Number(total),
 			),
 		})
 	}
@@ -473,7 +473,7 @@ func formatLatency(seconds float64) string {
 	if seconds < 1 {
 		return fmt.Sprintf("%.0fms", seconds*1000)
 	}
-	return format.Duration(int64(seconds))
+	return display.Duration(int64(seconds))
 }
 
 // Table columns for queue job list.
@@ -501,7 +501,7 @@ func (q *QueueDetails) buildRows(jobs []*sidekiq.PositionedEntry) []table.Row {
 			Cells: []string{
 				strconv.Itoa(job.Position),
 				job.DisplayClass(),
-				format.Args(job.DisplayArgs()),
+				display.Args(job.DisplayArgs()),
 				formatContext(job.Context()),
 			},
 		})
@@ -511,15 +511,15 @@ func (q *QueueDetails) buildRows(jobs []*sidekiq.PositionedEntry) []table.Row {
 
 func (q *QueueDetails) rowsMeta() string {
 	start, end, total := q.lazy.Range()
-	totalLabel := format.Number(total)
+	totalLabel := display.Number(total)
 	if total == 0 || len(q.jobs) == 0 {
 		return q.styles.MetricLabel.Render("rows: ") + q.styles.MetricValue.Render("0/0")
 	}
 
 	rangeLabel := fmt.Sprintf(
 		"%s-%s/%s",
-		format.Number(int64(start)),
-		format.Number(int64(end)),
+		display.Number(int64(start)),
+		display.Number(int64(end)),
 		totalLabel,
 	)
 	return q.styles.MetricLabel.Render("rows: ") + q.styles.MetricValue.Render(rangeLabel)
@@ -550,7 +550,7 @@ func (q *QueueDetails) renderJobsBox() string {
 
 	// Build meta: SIZE and PAGE info
 	sep := q.styles.Muted.Render(" • ")
-	sizeInfo := q.styles.MetricLabel.Render("SIZE: ") + q.styles.MetricValue.Render(format.ShortNumber(queueSize))
+	sizeInfo := q.styles.MetricLabel.Render("SIZE: ") + q.styles.MetricValue.Render(display.ShortNumber(queueSize))
 	meta := sizeInfo + sep + q.rowsMeta()
 
 	// Calculate box height

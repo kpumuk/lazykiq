@@ -16,7 +16,7 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 	confirmdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/confirm"
 	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
-	"github.com/kpumuk/lazykiq/internal/ui/format"
+	"github.com/kpumuk/lazykiq/internal/ui/display"
 )
 
 const (
@@ -236,16 +236,16 @@ func (d *Dead) ContextItems() []ContextItem {
 	lastFailed := "-"
 	oldestFailed := "-"
 	if d.lastEntry != nil {
-		lastFailed = format.Duration(int64(now.Sub(d.lastEntry.At()).Seconds()))
+		lastFailed = display.Duration(int64(now.Sub(d.lastEntry.At()).Seconds()))
 	}
 	if d.firstEntry != nil {
-		oldestFailed = format.Duration(int64(now.Sub(d.firstEntry.At()).Seconds()))
+		oldestFailed = display.Duration(int64(now.Sub(d.firstEntry.At()).Seconds()))
 	}
 
 	items := []ContextItem{
 		{Label: "Last failed", Value: lastFailed},
 		{Label: "Oldest failed", Value: oldestFailed},
-		{Label: "Total items", Value: format.Number(d.lazy.Total())},
+		{Label: "Total items", Value: display.Number(d.lazy.Total())},
 	}
 	return items
 }
@@ -408,7 +408,7 @@ func (d *Dead) buildRows(jobs []*sidekiq.SortedEntry) []table.Row {
 	rows := make([]table.Row, 0, len(jobs))
 	now := time.Now()
 	for _, job := range jobs {
-		lastRetry := format.Duration(int64(now.Sub(job.At()).Seconds()))
+		lastRetry := display.Duration(int64(now.Sub(job.At()).Seconds()))
 
 		errorStr := ""
 		if job.HasError() {
@@ -424,7 +424,7 @@ func (d *Dead) buildRows(jobs []*sidekiq.SortedEntry) []table.Row {
 				lastRetry,
 				d.styles.QueueText.Render(job.Queue()),
 				job.DisplayClass(),
-				format.Args(job.DisplayArgs()),
+				display.Args(job.DisplayArgs()),
 				errorStr,
 			},
 		})
@@ -556,9 +556,9 @@ func (d *Dead) rowsMeta() string {
 
 	rangeLabel := fmt.Sprintf(
 		"%s-%s/%s",
-		format.Number(int64(start)),
-		format.Number(int64(end)),
-		format.Number(total),
+		display.Number(int64(start)),
+		display.Number(int64(end)),
+		display.Number(total),
 	)
 	return label + d.styles.MetricValue.Render(rangeLabel)
 }

@@ -18,7 +18,7 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
-	"github.com/kpumuk/lazykiq/internal/ui/format"
+	"github.com/kpumuk/lazykiq/internal/ui/display"
 )
 
 // busyDataMsg carries busy data from the fetch command to the Busy view.
@@ -414,9 +414,9 @@ func (b *Busy) updateTableRowsTree() {
 					treeCell,
 					job.JID(),
 					b.styles.QueueText.Render(job.Queue()),
-					format.DurationSince(job.RunAt),
+					display.DurationSince(job.RunAt),
 					job.DisplayClass(),
-					format.Args(job.DisplayArgs()),
+					display.Args(job.DisplayArgs()),
 				},
 			})
 			selectionSpans[len(rows)-1] = table.SelectionSpan{
@@ -455,9 +455,9 @@ func (b *Busy) updateTableRowsFlat() {
 				job.ThreadID,
 				job.JID(),
 				b.styles.QueueText.Render(job.Queue()),
-				format.DurationSince(job.RunAt),
+				display.DurationSince(job.RunAt),
 				job.DisplayClass(),
-				format.Args(job.DisplayArgs()),
+				display.Args(job.DisplayArgs()),
 			},
 		})
 		rowJobIndex = append(rowJobIndex, jobIndex)
@@ -503,7 +503,7 @@ func (b *Busy) renderJobsBox() string {
 	sep := b.styles.Muted.Render(" • ")
 	meta := b.styles.MetricLabel.Render("PRC: ") + b.styles.MetricValue.Render(strconv.Itoa(processCount)) +
 		sep + b.styles.MetricLabel.Render("THR: ") + b.styles.MetricValue.Render(fmt.Sprintf("%d/%d (%d%%)", busyThreads, totalThreads, percentage)) +
-		sep + b.styles.MetricLabel.Render("RSS: ") + b.styles.MetricValue.Render(format.Bytes(totalRSS))
+		sep + b.styles.MetricLabel.Render("RSS: ") + b.styles.MetricValue.Render(display.Bytes(totalRSS))
 
 	// Calculate box height
 	boxHeight := b.height
@@ -603,7 +603,7 @@ func (b *Busy) processListLines() []string {
 	maxStartedLen := 0
 	for _, proc := range b.data.Processes {
 		busy := fmt.Sprintf("%d/%d", proc.Busy, proc.Concurrency)
-		started := format.DurationSince(proc.StartedAt)
+		started := display.DurationSince(proc.StartedAt)
 		if len(busy) > maxBusyLen {
 			maxBusyLen = len(busy)
 		}
@@ -628,7 +628,7 @@ func (b *Busy) processListLines() []string {
 		name = hotkey + nameStyle.Render(name)
 
 		busy := fmt.Sprintf("%d/%d", proc.Busy, proc.Concurrency)
-		started := format.DurationSince(proc.StartedAt)
+		started := display.DurationSince(proc.StartedAt)
 		stats := b.styles.Muted.Render(fmt.Sprintf("  %*s  %*s", maxBusyLen, busy, maxStartedLen, started))
 
 		lines = append(lines, name+stats)
@@ -643,8 +643,8 @@ func (b *Busy) renderProcessRow(proc sidekiq.Process, maxBusyLen, maxStartedLen,
 		name += b.styles.Text.Render(" [" + proc.Tag + "]")
 	}
 	busy := fmt.Sprintf("%d/%d", proc.Busy, proc.Concurrency)
-	started := format.DurationSince(proc.StartedAt)
-	rss := format.Bytes(proc.RSS)
+	started := display.DurationSince(proc.StartedAt)
+	rss := display.Bytes(proc.RSS)
 	stats := b.styles.Muted.Render(fmt.Sprintf("  %*s  %*s  %*s", maxBusyLen, busy, maxStartedLen, started, maxRSSLen, rss))
 
 	queues := formatProcessCapsules(proc, b.styles.QueueText, b.styles.QueueWeight, b.styles.Muted)
@@ -756,8 +756,8 @@ func (b *Busy) processStatWidths(selectedIdentity string) (int, int, int) {
 			continue
 		}
 		busy := fmt.Sprintf("%d/%d", proc.Busy, proc.Concurrency)
-		started := format.DurationSince(proc.StartedAt)
-		rss := format.Bytes(proc.RSS)
+		started := display.DurationSince(proc.StartedAt)
+		rss := display.Bytes(proc.RSS)
 
 		if len(busy) > maxBusyLen {
 			maxBusyLen = len(busy)

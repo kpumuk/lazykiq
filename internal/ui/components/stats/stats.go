@@ -1,5 +1,5 @@
-// Package metrics renders the top metrics bar.
-package metrics
+// Package stats renders the top metrics bar.
+package stats
 
 import (
 	"strings"
@@ -9,7 +9,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/kpumuk/lazykiq/internal/ui/format"
+	"github.com/kpumuk/lazykiq/internal/ui/display"
 )
 
 // Data holds the Sidekiq metrics values.
@@ -140,13 +140,13 @@ func (m Model) View() string {
 	barStyle := m.styles.Bar.Width(m.width)
 
 	baseMetrics := []string{
-		m.styles.Label.Render("Processed: ") + m.styles.Value.Render(format.ShortNumber(m.data.Processed)),
-		m.styles.Label.Render("Failed: ") + m.styles.Value.Render(format.ShortNumber(m.data.Failed)),
-		m.styles.Label.Render("Busy: ") + m.styles.Value.Render(format.ShortNumber(m.data.Busy)),
-		m.styles.Label.Render("Enqueued: ") + m.styles.Value.Render(format.ShortNumber(m.data.Enqueued)),
-		m.styles.Label.Render("Retries: ") + m.styles.Value.Render(format.ShortNumber(m.data.Retries)),
-		m.styles.Label.Render("Scheduled: ") + m.styles.Value.Render(format.ShortNumber(m.data.Scheduled)),
-		m.styles.Label.Render("Dead: ") + m.styles.Value.Render(format.ShortNumber(m.data.Dead)),
+		m.styles.Label.Render("Processed: ") + m.styles.Value.Render(display.ShortNumber(m.data.Processed)),
+		m.styles.Label.Render("Failed: ") + m.styles.Value.Render(display.ShortNumber(m.data.Failed)),
+		m.styles.Label.Render("Busy: ") + m.styles.Value.Render(display.ShortNumber(m.data.Busy)),
+		m.styles.Label.Render("Enqueued: ") + m.styles.Value.Render(display.ShortNumber(m.data.Enqueued)),
+		m.styles.Label.Render("Retries: ") + m.styles.Value.Render(display.ShortNumber(m.data.Retries)),
+		m.styles.Label.Render("Scheduled: ") + m.styles.Value.Render(display.ShortNumber(m.data.Scheduled)),
+		m.styles.Label.Render("Dead: ") + m.styles.Value.Render(display.ShortNumber(m.data.Dead)),
 	}
 
 	if m.width <= 0 || len(baseMetrics) == 0 {

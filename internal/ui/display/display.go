@@ -1,5 +1,5 @@
-// Package format provides UI formatting helpers.
-package format
+// Package display provides UI formatting helpers.
+package display
 
 import (
 	"encoding/json"

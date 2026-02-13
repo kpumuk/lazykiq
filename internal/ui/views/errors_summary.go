@@ -12,7 +12,7 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
-	"github.com/kpumuk/lazykiq/internal/ui/format"
+	"github.com/kpumuk/lazykiq/internal/ui/display"
 )
 
 // errorsSummaryDataMsg carries error summary data internally.
@@ -266,7 +266,7 @@ func (e *ErrorsSummary) updateTableRows() {
 				row.displayClass,
 				row.errorClass,
 				e.styles.QueueText.Render(row.queue),
-				format.Number(row.count),
+				display.Number(row.count),
 				row.errorMessage,
 			},
 		})

@@ -15,7 +15,7 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
-	"github.com/kpumuk/lazykiq/internal/ui/format"
+	"github.com/kpumuk/lazykiq/internal/ui/display"
 )
 
 // processesListDataMsg carries processes list data internally.
@@ -180,14 +180,14 @@ func (p *ProcessesList) ContextItems() []ContextItem {
 
 	oldestAge := "-"
 	if !oldestStart.IsZero() {
-		oldestAge = format.DurationSince(oldestStart)
+		oldestAge = display.DurationSince(oldestStart)
 	}
 
 	return []ContextItem{
 		{Label: "Processes", Value: strconv.Itoa(processCount)},
 		{Label: "Capacity", Value: strconv.Itoa(totalThreads)},
 		{Label: "Busy", Value: strconv.Itoa(busyThreads) + " (" + strconv.Itoa(percentage) + "%)"},
-		{Label: "RSS", Value: format.Bytes(totalRSS)},
+		{Label: "RSS", Value: display.Bytes(totalRSS)},
 		{Label: "Oldest", Value: oldestAge},
 	}
 }
@@ -387,8 +387,8 @@ func (p *ProcessesList) updateTableRows() {
 			ID: process.Identity,
 			Cells: []string{
 				name,
-				format.DurationSince(process.StartedAt),
-				format.Bytes(process.RSS),
+				display.DurationSince(process.StartedAt),
+				display.Bytes(process.RSS),
 				strconv.Itoa(process.Concurrency),
 				strconv.Itoa(process.Busy),
 				process.Status,

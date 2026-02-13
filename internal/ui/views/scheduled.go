@@ -16,7 +16,7 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 	confirmdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/confirm"
 	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
-	"github.com/kpumuk/lazykiq/internal/ui/format"
+	"github.com/kpumuk/lazykiq/internal/ui/display"
 )
 
 const (
@@ -236,16 +236,16 @@ func (s *Scheduled) ContextItems() []ContextItem {
 	nextScheduled := "-"
 	latestScheduled := "-"
 	if s.firstEntry != nil {
-		nextScheduled = format.Duration(int64(s.firstEntry.At().Sub(now).Seconds()))
+		nextScheduled = display.Duration(int64(s.firstEntry.At().Sub(now).Seconds()))
 	}
 	if s.lastEntry != nil {
-		latestScheduled = format.Duration(int64(s.lastEntry.At().Sub(now).Seconds()))
+		latestScheduled = display.Duration(int64(s.lastEntry.At().Sub(now).Seconds()))
 	}
 
 	items := []ContextItem{
 		{Label: "Next scheduled in", Value: nextScheduled},
 		{Label: "Latest scheduled in", Value: latestScheduled},
-		{Label: "Total items", Value: format.Number(s.lazy.Total())},
+		{Label: "Total items", Value: display.Number(s.lazy.Total())},
 	}
 	return items
 }
@@ -407,14 +407,14 @@ func (s *Scheduled) buildRows(jobs []*sidekiq.SortedEntry) []table.Row {
 	rows := make([]table.Row, 0, len(jobs))
 	now := time.Now()
 	for _, job := range jobs {
-		when := format.Duration(int64(job.At().Sub(now).Seconds()))
+		when := display.Duration(int64(job.At().Sub(now).Seconds()))
 		rows = append(rows, table.Row{
 			ID: job.JID(),
 			Cells: []string{
 				when,
 				s.styles.QueueText.Render(job.Queue()),
 				job.DisplayClass(),
-				format.Args(job.DisplayArgs()),
+				display.Args(job.DisplayArgs()),
 			},
 		})
 	}
@@ -430,9 +430,9 @@ func (s *Scheduled) rowsMeta() string {
 
 	rangeLabel := fmt.Sprintf(
 		"%s-%s/%s",
-		format.Number(int64(start)),
-		format.Number(int64(end)),
-		format.Number(total),
+		display.Number(int64(start)),
+		display.Number(int64(end)),
+		display.Number(total),
 	)
 	return label + s.styles.MetricValue.Render(rangeLabel)
 }

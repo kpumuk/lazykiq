@@ -18,7 +18,7 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
 	"github.com/kpumuk/lazykiq/internal/ui/components/jsonview"
 	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
-	"github.com/kpumuk/lazykiq/internal/ui/format"
+	"github.com/kpumuk/lazykiq/internal/ui/display"
 )
 
 // KeyMap defines keybindings for the job detail view.
@@ -264,7 +264,7 @@ func (j *JobDetail) ContextItems() []ContextItem {
 
 	latency := "-"
 	if value := j.job.Latency(); value > 0 {
-		latency = format.Duration(int64(math.Round(value)))
+		latency = display.Duration(int64(math.Round(value)))
 	}
 
 	return []ContextItem{
@@ -478,7 +478,7 @@ func (j *JobDetail) extractProperties() {
 	if latency := j.job.Latency(); latency > 0 {
 		j.properties = append(j.properties, PropertyRow{
 			Label: "Latency",
-			Value: format.Duration(int64(math.Round(latency))),
+			Value: display.Duration(int64(math.Round(latency))),
 		})
 	}
 	if tags := j.job.Tags(); len(tags) > 0 {
@@ -523,7 +523,7 @@ func (j *JobDetail) extractProperties() {
 	if len(displayArgs) > 0 {
 		j.properties = append(j.properties, PropertyRow{
 			Label: "Args",
-			Value: format.Args(displayArgs),
+			Value: display.Args(displayArgs),
 		})
 	}
 }
@@ -664,7 +664,7 @@ func formatTimestamp(ts time.Time) string {
 	if ts.IsZero() {
 		return "-"
 	}
-	return fmt.Sprintf("%s (%s ago)", ts.Format("2006-01-02 15:04:05"), format.DurationSince(ts))
+	return fmt.Sprintf("%s (%s ago)", ts.Format("2006-01-02 15:04:05"), display.DurationSince(ts))
 }
 
 // wrapText wraps text to fit within the specified width.

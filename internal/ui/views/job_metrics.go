@@ -17,7 +17,7 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/components/histogram"
 	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/scatter"
-	"github.com/kpumuk/lazykiq/internal/ui/format"
+	"github.com/kpumuk/lazykiq/internal/ui/display"
 )
 
 // jobMetricsDataMsg carries job metrics data.
@@ -229,9 +229,9 @@ func (j *JobMetrics) ContextItems() []ContextItem {
 	avg := "-"
 	rangeText := "-"
 	if j.processed != nil && len(j.processed.SortedBuckets) > 0 {
-		success = format.Number(j.result.Totals.Success())
-		failed = format.Number(j.result.Totals.Failed)
-		avg = format.Float(j.result.Totals.AvgSeconds(), 2) + "s"
+		success = display.Number(j.result.Totals.Success())
+		failed = display.Number(j.result.Totals.Failed)
+		avg = display.Float(j.result.Totals.AvgSeconds(), 2) + "s"
 		if value := formatMetricsRange(j.result.StartsAt, j.result.EndsAt); value != "" {
 			rangeText = value
 		}

@@ -9,7 +9,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/kpumuk/lazykiq/internal/ui/format"
+	"github.com/kpumuk/lazykiq/internal/ui/display"
 )
 
 // AxisMap creates a mapping from source indices to target indices.
@@ -57,13 +57,13 @@ func BuildValueYAxisLabels(maxVal int64, height int) map[int]string {
 	maxVal = max(maxVal, 0)
 	tickCount := min(4, height)
 	if tickCount < 2 {
-		labels[height-1] = format.ShortNumber(0)
+		labels[height-1] = display.ShortNumber(0)
 		return labels
 	}
 	for i := range tickCount {
 		row := int(math.Round(float64(i) * float64(height-1) / float64(tickCount-1)))
 		val := maxVal * int64(tickCount-1-i) / int64(tickCount-1)
-		labels[row] = format.ShortNumber(val)
+		labels[row] = display.ShortNumber(val)
 	}
 	return labels
 }

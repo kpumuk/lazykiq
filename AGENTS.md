@@ -2,7 +2,7 @@
 
 ## What
 
-Bubble Tea TUI for Sidekiq monitoring. Go 1.25.
+Bubble Tea TUI for Sidekiq monitoring. Go 1.26.
 
 ## Code Quality
 
@@ -75,12 +75,14 @@ internal/
 Use **hybrid approach**: property tests (behavior) + golden tests (visual regression).
 
 ### Property Tests
+
 - Test behaviors using table-driven tests: `map[string]struct{ ... }`
 - Check: dimensions respected, content present, edge cases (zero dimensions, disabled items, truncation)
 - Use `strings.Contains()` for presence checks, avoid brittle position assertions
 
 ### Golden Tests
-- Prefix with `TestGolden*` 
+
+- Prefix with `TestGolden*`
 - Capture exact visual output to catch misalignment/spacing changes
 - Strip ANSI before comparison: `output := ansi.Strip(m.View()); golden.RequireEqual(t, []byte(output))`
 - Update after intentional visual changes: `go test ./path -update`
@@ -184,14 +186,14 @@ Always update the documentation website under `doc/` with any new shortcuts adde
 
 ## Dependencies
 
-* charm.land/bubbletea/v2
-* charm.land/lipgloss/v2
-* charm.land/bubbles/v2
-* github.com/charmbracelet/x/ansi
-* go-redis/v9
-* cobra/fang
-* ntcharts
-* chroma
+- charm.land/bubbletea/v2
+- charm.land/lipgloss/v2
+- charm.land/bubbles/v2
+- github.com/charmbracelet/x/ansi
+- go-redis/v9
+- cobra/fang
+- ntcharts
+- chroma
 
 ## Gotchas
 

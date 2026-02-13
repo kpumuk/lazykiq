@@ -17,7 +17,7 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 	confirmdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/confirm"
 	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
-	"github.com/kpumuk/lazykiq/internal/ui/format"
+	"github.com/kpumuk/lazykiq/internal/ui/display"
 )
 
 const (
@@ -255,16 +255,16 @@ func (r *Retries) ContextItems() []ContextItem {
 	nextRetry := "-"
 	latestRetry := "-"
 	if r.firstEntry != nil {
-		nextRetry = format.Duration(int64(r.firstEntry.At().Sub(now).Seconds()))
+		nextRetry = display.Duration(int64(r.firstEntry.At().Sub(now).Seconds()))
 	}
 	if r.lastEntry != nil {
-		latestRetry = format.Duration(int64(r.lastEntry.At().Sub(now).Seconds()))
+		latestRetry = display.Duration(int64(r.lastEntry.At().Sub(now).Seconds()))
 	}
 
 	items := []ContextItem{
 		{Label: "Next retry in", Value: nextRetry},
 		{Label: "Latest retry in", Value: latestRetry},
-		{Label: "Total items", Value: format.Number(r.lazy.Total())},
+		{Label: "Total items", Value: display.Number(r.lazy.Total())},
 	}
 	return items
 }
@@ -432,7 +432,7 @@ func (r *Retries) buildRows(jobs []*sidekiq.SortedEntry) []table.Row {
 	rows := make([]table.Row, 0, len(jobs))
 	now := time.Now()
 	for _, job := range jobs {
-		nextRetry := format.Duration(int64(now.Sub(job.At()).Seconds()))
+		nextRetry := display.Duration(int64(now.Sub(job.At()).Seconds()))
 		retryCount := strconv.Itoa(job.RetryCount())
 
 		errorStr := ""
@@ -450,7 +450,7 @@ func (r *Retries) buildRows(jobs []*sidekiq.SortedEntry) []table.Row {
 				retryCount,
 				r.styles.QueueText.Render(job.Queue()),
 				job.DisplayClass(),
-				format.Args(job.DisplayArgs()),
+				display.Args(job.DisplayArgs()),
 				errorStr,
 			},
 		})
@@ -467,9 +467,9 @@ func (r *Retries) rowsMeta() string {
 
 	rangeLabel := fmt.Sprintf(
 		"%s-%s/%s",
-		format.Number(int64(start)),
-		format.Number(int64(end)),
-		format.Number(total),
+		display.Number(int64(start)),
+		display.Number(int64(end)),
+		display.Number(total),
 	)
 	return label + r.styles.MetricValue.Render(rangeLabel)
 }

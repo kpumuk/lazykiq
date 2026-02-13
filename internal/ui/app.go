@@ -13,9 +13,9 @@ import (
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/contextbar"
 	"github.com/kpumuk/lazykiq/internal/ui/components/errorpopup"
-	"github.com/kpumuk/lazykiq/internal/ui/components/metrics"
 	"github.com/kpumuk/lazykiq/internal/ui/components/navbar"
 	"github.com/kpumuk/lazykiq/internal/ui/components/stackbar"
+	"github.com/kpumuk/lazykiq/internal/ui/components/stats"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 	devtoolsdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/devtools"
 	helpdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/help"
@@ -60,7 +60,7 @@ type App struct {
 	viewStack               []viewID
 	viewOrder               []viewID
 	viewRegistry            map[viewID]views.View
-	metrics                 metrics.Model
+	metrics                 stats.Model
 	contextbar              contextbar.Model
 	stackbar                stackbar.Model
 	navbar                  navbar.Model
@@ -169,8 +169,8 @@ func New(client sidekiq.API, version string, dangerousActionsEnabled bool, devTr
 		viewStack:    []viewID{viewDashboard},
 		viewOrder:    viewOrder,
 		viewRegistry: viewRegistry,
-		metrics: metrics.New(
-			metrics.WithStyles(metrics.Styles{
+		metrics: stats.New(
+			stats.WithStyles(stats.Styles{
 				Bar:   styles.MetricsBar,
 				Fill:  styles.MetricsFill,
 				Label: styles.MetricsLabel,
@@ -388,7 +388,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 		dialogUpdated = true
 
-	case metrics.UpdateMsg:
+	case stats.UpdateMsg:
 		// Clear connection error on successful metrics update
 		a.connectionError = nil
 
@@ -755,24 +755,24 @@ func filterMiniHelpBindings(bindings []key.Binding) []key.Binding {
 	return result
 }
 
-// fetchStatsCmd fetches Sidekiq stats and returns a metrics.UpdateMsg or connectionErrorMsg.
+// fetchStatsCmd fetches Sidekiq stats and returns a stats.UpdateMsg or connectionErrorMsg.
 func (a App) fetchStatsCmd() tea.Msg {
 	ctx := context.Background()
-	stats, err := a.sidekiq.GetStats(ctx)
+	sidekiqStats, err := a.sidekiq.GetStats(ctx)
 	if err != nil {
 		// Return connection error message
 		return connectionErrorMsg{err: err}
 	}
 
-	return metrics.UpdateMsg{
-		Data: metrics.Data{
-			Processed: stats.Processed,
-			Failed:    stats.Failed,
-			Busy:      stats.Busy,
-			Enqueued:  stats.Enqueued,
-			Retries:   stats.Retries,
-			Scheduled: stats.Scheduled,
-			Dead:      stats.Dead,
+	return stats.UpdateMsg{
+		Data: stats.Data{
+			Processed: sidekiqStats.Processed,
+			Failed:    sidekiqStats.Failed,
+			Busy:      sidekiqStats.Busy,
+			Enqueued:  sidekiqStats.Enqueued,
+			Retries:   sidekiqStats.Retries,
+			Scheduled: sidekiqStats.Scheduled,
+			Dead:      sidekiqStats.Dead,
 			UpdatedAt: time.Now(),
 		},
 	}

@@ -18,7 +18,7 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 	confirmdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/confirm"
 	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
-	"github.com/kpumuk/lazykiq/internal/ui/format"
+	"github.com/kpumuk/lazykiq/internal/ui/display"
 )
 
 // QueuesListInfo holds queue information for the list view.
@@ -200,7 +200,7 @@ func (q *QueuesList) ContextItems() []ContextItem {
 		}
 	}
 
-	items = append(items, ContextItem{Label: "Total Items", Value: format.Number(totalItems)})
+	items = append(items, ContextItem{Label: "Total Items", Value: display.Number(totalItems)})
 	items = append(items, ContextItem{Label: "Highest Latency", Value: formatLatency(highestLatency)})
 	if !oldestJob.IsZero() {
 		items = append(items, ContextItem{Label: "Oldest Job", Value: oldestJob.Format("2006-01-02 15:04:05")})
@@ -368,7 +368,7 @@ func (q *QueuesList) updateTableRows() {
 			ID: queue.Name,
 			Cells: []string{
 				q.styles.QueueText.Render(queue.Name),
-				format.Number(queue.Size),
+				display.Number(queue.Size),
 				formatLatency(queue.Latency),
 				oldestJobStr,
 			},

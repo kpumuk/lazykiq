@@ -68,7 +68,7 @@ func (d dialogCmp) Init() tea.Cmd {
 func (d dialogCmp) Update(msg tea.Msg) (DialogCmp, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		var cmds []tea.Cmd
+		cmds := make([]tea.Cmd, 0, len(d.dialogs))
 		d.width = msg.Width
 		d.height = msg.Height
 		for i := range d.dialogs {
@@ -157,7 +157,7 @@ func (d dialogCmp) handleOpen(msg OpenDialogMsg) (DialogCmp, tea.Cmd) {
 	d.idMap[msg.Model.ID()] = len(d.dialogs)
 	d.dialogs = append(d.dialogs, msg.Model)
 
-	var cmds []tea.Cmd
+	cmds := make([]tea.Cmd, 0, 2)
 	cmds = append(cmds, msg.Model.Init())
 	_, cmd := msg.Model.Update(tea.WindowSizeMsg{
 		Width:  d.width,
