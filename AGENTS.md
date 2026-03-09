@@ -189,9 +189,10 @@ Always update the documentation website under `doc/` with any new shortcuts adde
 - charm.land/bubbletea/v2
 - charm.land/lipgloss/v2
 - charm.land/bubbles/v2
+- charm.land/fang/v2
 - github.com/charmbracelet/x/ansi
 - go-redis/v9
-- cobra/fang
+- cobra
 - ntcharts
 - chroma
 

@@ -200,7 +200,7 @@ func TestUpdate_KeyHandling(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		msg        tea.KeyMsg
+		msg        tea.KeyPressMsg
 		setup      func(*Model)
 		wantCursor int
 		wantX      int

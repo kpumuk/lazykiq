@@ -134,7 +134,7 @@ func (s *Scheduled) Update(msg tea.Msg) (View, tea.Cmd) {
 			return s, s.addAllToQueueCmd()
 		}
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "/":
 			return s, s.openFilterDialog()

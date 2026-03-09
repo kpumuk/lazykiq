@@ -128,7 +128,7 @@ func (d *Dashboard) Update(msg tea.Msg) (View, tea.Cmd) {
 		// Fetch Redis info on refresh (stats come via stats.UpdateMsg)
 		return d, d.fetchRedisInfoCmd()
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "tab":
 			if d.focusedPane == dashboardPaneRealtime {

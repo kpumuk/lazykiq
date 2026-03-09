@@ -317,7 +317,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		cmds = append(cmds, a.popAndRefresh(viewBusy))
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if a.dialogs.HasDialogs() {
 			if key.Matches(msg, a.keys.Quit) {
 				return a, tea.Quit
@@ -417,7 +417,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // View implements tea.Model.
 func (a App) View() tea.View {
-	var v tea.View
+	v := tea.NewView("")
 	v.AltScreen = true
 
 	if !a.ready {
@@ -464,8 +464,7 @@ func (a App) View() tea.View {
 			layers = append(layers, a.dialogs.GetLayers()...)
 		}
 
-		canvas := lipgloss.NewCanvas(layers...)
-		v.SetContent(canvas.Render())
+		v.SetContent(lipgloss.NewCompositor(layers...).Render())
 		return v
 	}
 	// Build the layout: metrics (top) + content (middle) + navbar (bottom)

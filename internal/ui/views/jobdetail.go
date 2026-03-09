@@ -154,7 +154,7 @@ func (j *JobDetail) Init() tea.Cmd {
 // Update implements View.
 func (j *JobDetail) Update(msg tea.Msg) (View, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch {
 		case key.Matches(msg, j.KeyMap.SwitchPanel):
 			j.focusRight = !j.focusRight

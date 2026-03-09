@@ -71,7 +71,7 @@ func (j *JobMetrics) Update(msg tea.Msg) (View, tea.Cmd) {
 	case RefreshMsg:
 		return j, j.fetchCmd()
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "tab", "shift+tab":
 			_, bottom := splitJobMetricsHeights(j.height)

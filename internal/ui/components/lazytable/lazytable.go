@@ -226,7 +226,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if handled, cmd := m.handleJump(msg); handled {
 			return m, cmd
 		}
@@ -323,7 +323,7 @@ func (m Model) Range() (int, int, int64) {
 	return start, end, m.totalSize
 }
 
-func (m *Model) handleJump(msg tea.KeyMsg) (bool, tea.Cmd) {
+func (m *Model) handleJump(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 	if key.Matches(msg, m.table.KeyMap.GotoTop) {
 		return true, m.jumpToStart()
 	}

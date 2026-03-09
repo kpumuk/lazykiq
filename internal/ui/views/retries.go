@@ -144,7 +144,7 @@ func (r *Retries) Update(msg tea.Msg) (View, tea.Cmd) {
 			return r, r.retryAllCmd()
 		}
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "/":
 			return r, r.openFilterDialog()

@@ -107,7 +107,7 @@ func (q *QueueDetails) Update(msg tea.Msg) (View, tea.Cmd) {
 		}
 		return q, q.lazy.RequestWindow(q.lazy.WindowStart(), lazytable.CursorKeep)
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "s":
 			// Switch to queues list view

@@ -97,7 +97,7 @@ func (m *Metrics) Update(msg tea.Msg) (View, tea.Cmd) {
 		}
 		return m, m.setFilterAndReload(msg.Query)
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "/":
 			return m, m.openFilterDialog()

@@ -143,7 +143,7 @@ func (m *Model) Update(msg tea.Msg) (dialogs.DialogModel, tea.Cmd) {
 	case commandResultMsg:
 		m.appendResult(msg.output, msg.err)
 		return m, nil
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "f12", "~", "esc":
 			return m, func() tea.Msg { return dialogs.CloseDialogMsg{} }

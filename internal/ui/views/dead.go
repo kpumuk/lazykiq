@@ -134,7 +134,7 @@ func (d *Dead) Update(msg tea.Msg) (View, tea.Cmd) {
 			return d, d.retryAllCmd()
 		}
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "/":
 			return d, d.openFilterDialog()

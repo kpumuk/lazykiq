@@ -111,7 +111,7 @@ func (m *Model) Update(msg tea.Msg) (dialogs.DialogModel, tea.Cmd) {
 		m.windowHeight = msg.Height
 		m.applySize()
 		return m, nil
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "?", "esc":
 			return m, func() tea.Msg { return dialogs.CloseDialogMsg{} }

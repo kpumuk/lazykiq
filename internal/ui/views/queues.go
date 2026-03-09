@@ -102,7 +102,7 @@ func (q *QueuesList) Update(msg tea.Msg) (View, tea.Cmd) {
 		}
 		return q, q.deleteQueueCmd(msg.Target)
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "/":
 			return q, func() tea.Msg {

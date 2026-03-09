@@ -11,7 +11,7 @@ import (
 	"runtime/pprof"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/fang"
+	"charm.land/fang/v2"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 

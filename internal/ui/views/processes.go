@@ -78,7 +78,7 @@ func (p *ProcessesList) Update(msg tea.Msg) (View, tea.Cmd) {
 		p.table.SetCursor(0)
 		return p, p.fetchDataCmd()
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "/":
 			return p, func() tea.Msg {

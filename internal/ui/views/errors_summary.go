@@ -80,7 +80,7 @@ func (e *ErrorsSummary) Update(msg tea.Msg) (View, tea.Cmd) {
 		e.table.SetCursor(0)
 		return e, e.fetchDataCmd()
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "/":
 			return e, e.openFilterDialog()

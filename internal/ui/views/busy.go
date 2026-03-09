@@ -87,7 +87,7 @@ func (b *Busy) Update(msg tea.Msg) (View, tea.Cmd) {
 		b.table.SetCursor(0)
 		return b, b.fetchDataCmd()
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		key := msg.String()
 		switch key {
 		case "/":

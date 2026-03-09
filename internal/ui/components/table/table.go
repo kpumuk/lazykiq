@@ -395,7 +395,7 @@ func (m Model) RowCount() int {
 // Update handles key messages for navigation and scrolling.
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch {
 		case key.Matches(msg, m.KeyMap.LineUp):
 			m.MoveUp(1)

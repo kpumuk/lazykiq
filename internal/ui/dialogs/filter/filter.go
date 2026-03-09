@@ -52,6 +52,7 @@ func DefaultStyles() Styles {
 type Model struct {
 	styles       Styles
 	input        textinput.Model
+	inputBox     lipgloss.Style
 	query        string
 	width        int
 	height       int
@@ -128,7 +129,7 @@ func (m *Model) Update(msg tea.Msg) (dialogs.DialogModel, tea.Cmd) {
 		m.windowHeight = msg.Height
 		m.applySize()
 		return m, nil
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "enter":
 			next := strings.TrimSpace(m.input.Value())
@@ -162,8 +163,7 @@ func (m *Model) Update(msg tea.Msg) (dialogs.DialogModel, tea.Cmd) {
 
 // View renders the filter dialog.
 func (m *Model) View() string {
-	contentWidth := max(m.width-2-(m.padding*2), 1)
-	content := lipgloss.NewStyle().Width(contentWidth).MaxWidth(contentWidth).Render(m.input.View())
+	content := m.inputBox.Render(m.input.View())
 	box := frame.New(
 		frame.WithStyles(frame.Styles{
 			Focused: frame.StyleState{
@@ -208,7 +208,7 @@ func (m *Model) applyStyles() {
 	styles.Blurred.Prompt = m.styles.Prompt
 	styles.Blurred.Text = m.styles.Text
 	styles.Blurred.Placeholder = m.styles.Placeholder
-	if cursorColor := m.styles.Cursor.GetForeground(); cursorColor != nil {
+	if cursorColor := m.styles.Cursor.GetForeground(); !isNoColor(cursorColor) {
 		styles.Cursor.Color = cursorColor
 	}
 	m.input.SetStyles(styles)
@@ -236,6 +236,7 @@ func (m *Model) applySize() {
 	m.col = max((m.windowWidth-dialogWidth)/2, 0)
 
 	contentWidth := max(dialogWidth-2-(m.padding*2), 1)
+	m.inputBox = lipgloss.NewStyle().Width(contentWidth).MaxWidth(contentWidth)
 	promptWidth := lipgloss.Width(m.input.Prompt)
 	// textinput renders a virtual cursor that adds one extra column.
 	m.input.SetWidth(max(contentWidth-promptWidth-1, 1))
@@ -250,4 +251,9 @@ func (m *Model) syncPlaceholder() {
 	default:
 		m.input.Placeholder = ""
 	}
+}
+
+func isNoColor(c any) bool {
+	_, ok := c.(lipgloss.NoColor)
+	return ok
 }
