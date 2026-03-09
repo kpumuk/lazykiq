@@ -1,6 +1,6 @@
 [tools]
-golang = "1.26.0"
-golangci-lint = "2.9.0"
+golang = "1.26.1"
+golangci-lint = "2.11.2"
 hugo-extended = "0.152.2"
 lefthook = "2.0.13"
 

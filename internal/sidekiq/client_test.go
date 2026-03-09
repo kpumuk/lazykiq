@@ -2,6 +2,7 @@ package sidekiq
 
 import (
 	"context"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -12,6 +13,23 @@ import (
 func testContext(t *testing.T) context.Context {
 	t.Helper()
 	return context.Background()
+}
+
+func redisTestURL(user, pass string) string {
+	u := &url.URL{
+		Scheme: "redis",
+		Host:   "localhost:6379",
+		Path:   "/0",
+	}
+	switch {
+	case user != "" && pass != "":
+		u.User = url.UserPassword(user, pass)
+	case user != "":
+		u.User = url.User(user)
+	case pass != "":
+		u.User = url.UserPassword("", pass)
+	}
+	return u.String()
 }
 
 func TestSanitizeRedisURL(t *testing.T) {
@@ -29,12 +47,12 @@ func TestSanitizeRedisURL(t *testing.T) {
 		},
 		{
 			name:     "user with password",
-			input:    "redis://user:secret@localhost:6379/0",
+			input:    redisTestURL("user", "credential"),
 			expected: "redis://user@localhost:6379/0",
 		},
 		{
 			name:     "password only",
-			input:    "redis://:secret@localhost:6379/0",
+			input:    redisTestURL("", "credential"),
 			expected: "redis://localhost:6379/0",
 		},
 		{
@@ -57,7 +75,7 @@ func TestSanitizeRedisURL(t *testing.T) {
 			if got != test.expected {
 				t.Fatalf("sanitizeRedisURL(%q) = %q, want %q", test.input, got, test.expected)
 			}
-			if strings.Contains(got, "secret") || strings.Contains(got, "password=") || strings.Contains(got, "pass=") {
+			if strings.Contains(got, "credential") || strings.Contains(got, "password=") || strings.Contains(got, "pass=") {
 				t.Fatalf("sanitizeRedisURL(%q) leaked credentials: %q", test.input, got)
 			}
 		})
