@@ -5,10 +5,10 @@ go 1.26.1
 require (
 	charm.land/bubbles/v2 v2.0.0
 	charm.land/bubbletea/v2 v2.0.2
-	charm.land/fang/v2 v2.0.0
-	charm.land/lipgloss/v2 v2.0.1
+	charm.land/fang/v2 v2.0.1
+	charm.land/lipgloss/v2 v2.0.2
 	github.com/NimbleMarkets/ntcharts/v2 v2.0.0
-	github.com/alicebob/miniredis/v2 v2.36.1
+	github.com/alicebob/miniredis/v2 v2.37.0
 	github.com/atotto/clipboard v0.1.4
 	github.com/charmbracelet/x/ansi v0.11.6
 	github.com/charmbracelet/x/exp/golden v0.0.0-20251215102626-e0db08df7383
