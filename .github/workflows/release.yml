@@ -24,6 +24,10 @@ jobs:
         uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
         with:
           go-version-file: ./go.mod
+      - name: Install Syft
+        uses: anchore/sbom-action/download-syft@57aae528053a48a3f6235f2d9461b05fbcb7366d # v0.23.1
+        with:
+          syft-version: v1.42.2
       - name: Configure SSH for AUR
         run: |
           if [ -z "${{ secrets.AUR_KNOWN_HOSTS }}" ]; then
