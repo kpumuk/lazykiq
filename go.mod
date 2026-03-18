@@ -8,7 +8,6 @@ require (
 	charm.land/fang/v2 v2.0.0
 	charm.land/lipgloss/v2 v2.0.1
 	github.com/NimbleMarkets/ntcharts/v2 v2.0.0
-	github.com/alecthomas/chroma/v2 v2.23.1
 	github.com/alicebob/miniredis/v2 v2.36.1
 	github.com/atotto/clipboard v0.1.4
 	github.com/charmbracelet/x/ansi v0.11.6
@@ -30,7 +29,6 @@ require (
 	github.com/clipperhouse/displaywidth v0.11.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
-	github.com/dlclark/regexp2 v1.11.5 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/lrstanley/bubblezone/v2 v2.0.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.3.0 // indirect

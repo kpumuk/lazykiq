@@ -6,8 +6,6 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
-	"github.com/alecthomas/chroma/v2"
-	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/kpumuk/lazykiq/internal/mathutil"
@@ -46,8 +44,25 @@ type Model struct {
 	height int
 
 	lines    []string
-	tokens   [][]chroma.Token
+	tokens   [][]token
 	maxWidth int
+}
+
+type tokenKind uint8
+
+const (
+	tokenText tokenKind = iota
+	tokenKey
+	tokenString
+	tokenNumber
+	tokenBool
+	tokenNull
+	tokenPunctuation
+)
+
+type token struct {
+	kind  tokenKind
+	value string
 }
 
 // Option is used to set options in New.
@@ -158,7 +173,7 @@ func (m Model) RenderLine(index, offset, width int) string {
 	return m.styles.Text.Render(line)
 }
 
-func (m Model) renderTokens(tokens []chroma.Token, offset, width int) string {
+func (m Model) renderTokens(tokens []token, offset, width int) string {
 	if width <= 0 {
 		return ""
 	}
@@ -169,11 +184,7 @@ func (m Model) renderTokens(tokens []chroma.Token, offset, width int) string {
 	col := 0
 
 	for _, token := range tokens {
-		if token.Type == chroma.EOFType {
-			break
-		}
-
-		tokenWidth := lipgloss.Width(token.Value)
+		tokenWidth := lipgloss.Width(token.value)
 		if tokenWidth == 0 {
 			continue
 		}
@@ -184,7 +195,7 @@ func (m Model) renderTokens(tokens []chroma.Token, offset, width int) string {
 		if tokenEnd > offset && tokenStart < end {
 			start := mathutil.Clamp(offset-tokenStart, 0, tokenWidth)
 			stop := mathutil.Clamp(end-tokenStart, 0, tokenWidth)
-			segment := ansi.Cut(token.Value, start, stop)
+			segment := ansi.Cut(token.value, start, stop)
 			if segment != "" {
 				builder.WriteString(m.styleForToken(token).Render(segment))
 			}
@@ -203,22 +214,21 @@ func (m Model) renderTokens(tokens []chroma.Token, offset, width int) string {
 	return rendered
 }
 
-func (m Model) styleForToken(token chroma.Token) lipgloss.Style {
-	switch {
-	case token.Type == chroma.NameTag:
+func (m Model) styleForToken(token token) lipgloss.Style {
+	switch token.kind {
+	case tokenText:
+		return m.styles.Text
+	case tokenKey:
 		return m.styles.Key
-	case token.Type.InSubCategory(chroma.LiteralString):
+	case tokenString:
 		return m.styles.String
-	case token.Type.InSubCategory(chroma.LiteralNumber):
+	case tokenNumber:
 		return m.styles.Number
-	case token.Type.InCategory(chroma.Keyword):
-		if token.Value == "null" {
-			return m.styles.Null
-		}
+	case tokenBool:
 		return m.styles.Bool
-	case token.Type.InCategory(chroma.Comment):
-		return m.styles.Muted
-	case token.Type == chroma.Punctuation:
+	case tokenNull:
+		return m.styles.Null
+	case tokenPunctuation:
 		return m.styles.Punctuation
 	default:
 		return m.styles.Text
@@ -239,44 +249,146 @@ func applyHorizontalScroll(line string, offset, visibleWidth int) string {
 	return cut
 }
 
-func tokenizeJSONLines(jsonText string) [][]chroma.Token {
-	if jsonLexer == nil {
+func tokenizeJSONLines(jsonText string) [][]token {
+	if jsonText == "" {
 		return nil
 	}
 
-	iterator, err := jsonLexer.Tokenise(nil, jsonText)
-	if err != nil {
-		return nil
+	lines := [][]token{{}}
+	appendToken := func(kind tokenKind, value string) {
+		if value == "" {
+			return
+		}
+		lines[len(lines)-1] = append(lines[len(lines)-1], token{kind: kind, value: value})
 	}
 
-	lines := [][]chroma.Token{{}}
-	for _, token := range iterator.Tokens() {
-		if token.Type == chroma.EOFType {
-			break
-		}
-		if token.Value == "" {
-			continue
-		}
-
-		parts := strings.Split(token.Value, "\n")
-		for i, part := range parts {
-			if i > 0 {
-				lines = append(lines, []chroma.Token{})
+	for i := 0; i < len(jsonText); {
+		switch jsonText[i] {
+		case '\n':
+			lines = append(lines, []token{})
+			i++
+		case ' ', '\t', '\r':
+			start := i
+			for i < len(jsonText) && jsonText[i] != '\n' && isInlineWhitespace(jsonText[i]) {
+				i++
 			}
-			if part == "" {
+			appendToken(tokenText, jsonText[start:i])
+		case '{', '}', '[', ']', ':', ',':
+			appendToken(tokenPunctuation, jsonText[i:i+1])
+			i++
+		case '"':
+			start := i
+			i = parseJSONString(jsonText, i)
+			appendToken(classifyStringToken(jsonText, i), jsonText[start:i])
+		case 't':
+			if strings.HasPrefix(jsonText[i:], "true") {
+				appendToken(tokenBool, "true")
+				i += len("true")
 				continue
 			}
-			lines[len(lines)-1] = append(lines[len(lines)-1], chroma.Token{Type: token.Type, Value: part})
+			appendToken(tokenText, jsonText[i:i+1])
+			i++
+		case 'f':
+			if strings.HasPrefix(jsonText[i:], "false") {
+				appendToken(tokenBool, "false")
+				i += len("false")
+				continue
+			}
+			appendToken(tokenText, jsonText[i:i+1])
+			i++
+		case 'n':
+			if strings.HasPrefix(jsonText[i:], "null") {
+				appendToken(tokenNull, "null")
+				i += len("null")
+				continue
+			}
+			appendToken(tokenText, jsonText[i:i+1])
+			i++
+		default:
+			if isNumberStart(jsonText[i]) {
+				start := i
+				i = parseJSONNumber(jsonText, i)
+				appendToken(tokenNumber, jsonText[start:i])
+				continue
+			}
+			appendToken(tokenText, jsonText[i:i+1])
+			i++
 		}
 	}
 
 	return lines
 }
 
-var jsonLexer = func() chroma.Lexer {
-	lexer := lexers.Get("json")
-	if lexer == nil {
-		return nil
+func classifyStringToken(jsonText string, end int) tokenKind {
+	for i := end; i < len(jsonText); i++ {
+		switch jsonText[i] {
+		case ' ', '\t', '\r':
+			continue
+		case ':':
+			return tokenKey
+		default:
+			return tokenString
+		}
 	}
-	return chroma.Coalesce(lexer)
-}()
+	return tokenString
+}
+
+func parseJSONString(jsonText string, start int) int {
+	for i := start + 1; i < len(jsonText); i++ {
+		switch jsonText[i] {
+		case '\\':
+			if i+1 < len(jsonText) {
+				i++
+			}
+		case '"':
+			return i + 1
+		}
+	}
+	return len(jsonText)
+}
+
+func parseJSONNumber(jsonText string, start int) int {
+	i := start
+	if jsonText[i] == '-' {
+		i++
+	}
+
+	if i < len(jsonText) && jsonText[i] == '0' {
+		i++
+	} else {
+		for i < len(jsonText) && isDigit(jsonText[i]) {
+			i++
+		}
+	}
+
+	if i < len(jsonText) && jsonText[i] == '.' {
+		i++
+		for i < len(jsonText) && isDigit(jsonText[i]) {
+			i++
+		}
+	}
+
+	if i < len(jsonText) && (jsonText[i] == 'e' || jsonText[i] == 'E') {
+		i++
+		if i < len(jsonText) && (jsonText[i] == '+' || jsonText[i] == '-') {
+			i++
+		}
+		for i < len(jsonText) && isDigit(jsonText[i]) {
+			i++
+		}
+	}
+
+	return i
+}
+
+func isInlineWhitespace(b byte) bool {
+	return b == ' ' || b == '\t' || b == '\r'
+}
+
+func isNumberStart(b byte) bool {
+	return b == '-' || isDigit(b)
+}
+
+func isDigit(b byte) bool {
+	return b >= '0' && b <= '9'
+}

@@ -17,6 +17,7 @@ builds:
     env:
       - CGO_ENABLED=0
     flags:
+      - -trimpath
       - -tags=nodbus
     goos:
       - linux

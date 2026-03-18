@@ -70,6 +70,18 @@ Run all CI tasks with:
 mise run ci
 ```
 
+Build the app locally with:
+
+```bash
+mise run build
+```
+
+Build a smaller release binary with:
+
+```bash
+mise run build-release
+```
+
 To update all dependencies:
 
 ```bash

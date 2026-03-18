@@ -1,6 +1,7 @@
 package jsonview
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -24,6 +25,35 @@ func renderAll(m Model, offset, width int) string {
 		lines[i] = m.RenderLine(i, offset, width)
 	}
 	return strings.Join(lines, "\n")
+}
+
+func describeTokens(tokens []token) []string {
+	descriptions := make([]string, len(tokens))
+	for i, token := range tokens {
+		descriptions[i] = fmt.Sprintf("%s:%q", tokenKindName(token.kind), token.value)
+	}
+	return descriptions
+}
+
+func tokenKindName(kind tokenKind) string {
+	switch kind {
+	case tokenText:
+		return "text"
+	case tokenKey:
+		return "key"
+	case tokenString:
+		return "string"
+	case tokenNumber:
+		return "number"
+	case tokenBool:
+		return "bool"
+	case tokenNull:
+		return "null"
+	case tokenPunctuation:
+		return "punct"
+	default:
+		return "unknown"
+	}
 }
 
 func TestSetValueNil(t *testing.T) {
@@ -81,6 +111,79 @@ func TestRenderLineDimensions(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTokenizeJSONLinesClassifiesJSONTokens(t *testing.T) {
+	lines := tokenizeJSONLines("{\n  \"name\": \"job \\\"1\\\"\",\n  \"count\": -12.5e+2,\n  \"active\": true,\n  \"note\": null\n}")
+
+	tests := map[string]struct {
+		line int
+		want []string
+	}{
+		"string value": {
+			line: 1,
+			want: []string{
+				`text:"  "`,
+				`key:"\"name\""`,
+				`punct:":"`,
+				`text:" "`,
+				`string:"\"job \\\"1\\\"\""`,
+				`punct:","`,
+			},
+		},
+		"number value": {
+			line: 2,
+			want: []string{
+				`text:"  "`,
+				`key:"\"count\""`,
+				`punct:":"`,
+				`text:" "`,
+				`number:"-12.5e+2"`,
+				`punct:","`,
+			},
+		},
+		"bool value": {
+			line: 3,
+			want: []string{
+				`text:"  "`,
+				`key:"\"active\""`,
+				`punct:":"`,
+				`text:" "`,
+				`bool:"true"`,
+				`punct:","`,
+			},
+		},
+		"null value": {
+			line: 4,
+			want: []string{
+				`text:"  "`,
+				`key:"\"note\""`,
+				`punct:":"`,
+				`text:" "`,
+				`null:"null"`,
+			},
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := describeTokens(lines[tc.line]); !equalStrings(got, tc.want) {
+				t.Fatalf("unexpected tokens:\nwant: %v\ngot:  %v", tc.want, got)
+			}
+		})
+	}
+}
+
+func equalStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func TestGoldenJSONView(t *testing.T) {
