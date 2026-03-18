@@ -45,6 +45,18 @@ archives:
         formats: [zip]
 sboms:
   - artifacts: archive
+
+signs:
+  - cmd: cosign
+    signature: "${artifact}.sigstore.json"
+    args:
+      - sign-blob
+      - "--bundle=${signature}"
+      - "${artifact}"
+      - "--yes"
+    artifacts: checksum
+    output: true
+
 checksum:
   name_template: "checksums.txt"
 snapshot:
