@@ -82,6 +82,14 @@ Build a smaller release binary with:
 mise run build-release
 ```
 
+### Release Process
+
+Releases are published from signed `v*` tags through the GitHub Actions release workflow.
+
+- Only release tags matching `v*` should be used to trigger a release.
+- Release artifacts are built by GoReleaser, include SBOMs, and ship with signed checksums plus GitHub artifact attestations.
+- The maintainer is responsible for creating release tags and for reviewing release-environment secrets and publishing configuration before a release.
+
 To update all dependencies:
 
 ```bash
