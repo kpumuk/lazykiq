@@ -13,10 +13,6 @@ updates:
     commit-message:
       prefix: "chore"
       include: "scope"
-    groups:
-      all:
-        patterns:
-          - "*"
 
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -30,10 +26,6 @@ updates:
     commit-message:
       prefix: "chore"
       include: "scope"
-    groups:
-      all:
-        patterns:
-          - "*"
 
   - package-ecosystem: "bundler"
     directory: "/demo"
@@ -47,7 +39,3 @@ updates:
     commit-message:
       prefix: "chore"
       include: "scope"
-    groups:
-      all:
-        patterns:
-          - "*"
