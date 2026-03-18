@@ -1,5 +1,6 @@
 # Build files
 .gocache
+/bin
 /dist
 /lazykiq
 

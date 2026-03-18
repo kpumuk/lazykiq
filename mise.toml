@@ -8,6 +8,14 @@ lefthook = "2.0.13"
 description = "Format code and run all CI checks"
 depends = ["format", "lint", "test"]
 
+[tasks.build]
+description = "Build lazykiq"
+run = "mkdir -p bin && go build -o bin/lazykiq ./cmd/lazykiq"
+
+[tasks.build-release]
+description = "Build a smaller release binary"
+run = "mkdir -p bin && CGO_ENABLED=0 go build -trimpath -tags=nodbus -ldflags='-s -w' -o bin/lazykiq ./cmd/lazykiq"
+
 [tasks.lint]
 description = "Run golangci-lint"
 run = "golangci-lint run"
