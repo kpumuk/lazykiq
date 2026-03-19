@@ -300,8 +300,8 @@ func (p *Process) refreshFromFields(fields []any) {
 		}
 	}
 
-	if busyCount, ok := parseOptionalInt64(fieldAt(fields, 1)); ok {
-		p.Busy = int(busyCount)
+	if busyCount, ok := parseOptionalInt(fieldAt(fields, 1)); ok {
+		p.Busy = busyCount
 	}
 
 	if beat, ok := parseOptionalFloat64(fieldAt(fields, 2)); ok {
