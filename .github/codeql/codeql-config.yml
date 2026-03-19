@@ -1,5 +1,5 @@
 name: "CodeQL Config"
 
 paths-ignore:
-  # Hugo template with Go templating delimiters, not standalone JavaScript.
+  # Hugo template file with Go templating delimiters, not standalone JavaScript.
   - website/assets/js/flexsearch.js
