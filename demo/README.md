@@ -7,10 +7,18 @@ The current profile is intentionally lightweight: older Sidekiq versions stay co
 ## Quick Start
 
 ```bash
-docker-compose up --build
+mise run demo
+mise run demo-sidekiq73
+mise run demo-sidekiq80
+mise run demo-sidekiq81
 ```
 
-Web UI: http://localhost:9292
+`mise run demo` starts the latest Sidekiq demo (8.1) on `http://localhost:9292` with `redis://localhost:6379/0`.
+`mise run demo-sidekiq73` starts Sidekiq 7.3 on `http://localhost:9294` with `redis://localhost:6379/2`.
+`mise run demo-sidekiq80` starts Sidekiq 8.0 on `http://localhost:9293` with `redis://localhost:6379/1`.
+`mise run demo-sidekiq81` starts Sidekiq 8.1 on `http://localhost:9292` with `redis://localhost:6379/0`.
+
+The three tasks can run in parallel because each demo stand uses its own Redis database and dashboard port.
 
 ## Structure
 

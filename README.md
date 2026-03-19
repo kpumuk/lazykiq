@@ -111,24 +111,30 @@ This will ensure we do not push any dependencies with known vulnerabilities, and
 There is a test environment prepared in the `demo/` directory. Simply start it with:
 
 ```bash
-docker-compose up --build
+mise run demo
+mise run demo-sidekiq73
+mise run demo-sidekiq80
+mise run demo-sidekiq81
 ```
 
 This will:
 
 - Start a Redis server
-- Start Sidekiq servers for different Sidekiq versions with some demo jobs (with Web interface)
+- Start one Sidekiq demo stack for the selected version, with demo jobs and the Web interface
 
-| Sidekiq   | Redis URL                  | Web Dashboard         |
-| --------- | -------------------------- | --------------------- |
-| **7.3.x** | `redis://localhost:6379/0` | http://localhost:9292 |
-| **8.0.0** | `redis://localhost:6379/1` | http://localhost:9293 |
-| **8.1.0** | `redis://localhost:6379/2` | http://localhost:9294 |
+| Command                   | Sidekiq   | Redis URL                  | Web Dashboard         |
+| ------------------------- | --------- | -------------------------- | --------------------- |
+| `mise run demo`           | **8.1.0** | `redis://localhost:6379/0` | http://localhost:9292 |
+| `mise run demo-sidekiq73` | **7.3.x** | `redis://localhost:6379/2` | http://localhost:9294 |
+| `mise run demo-sidekiq80` | **8.0.0** | `redis://localhost:6379/1` | http://localhost:9293 |
+| `mise run demo-sidekiq81` | **8.1.0** | `redis://localhost:6379/0` | http://localhost:9292 |
+
+The version-specific tasks can run in parallel because each demo stand uses its own Redis database and dashboard port.
 
 You can connect to a specific Sidekiq version using:
 
 ```bash
-go run ./cmd/lazykiq --redis redis://localhost:6379/2
+go run ./cmd/lazykiq --redis redis://localhost:6379/1
 ```
 
 ### Website
