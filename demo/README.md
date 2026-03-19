@@ -2,6 +2,8 @@
 
 A demo environment for testing Sidekiq TUI tools. Generates continuous job traffic across multiple queues with realistic failure scenarios.
 
+The current profile is intentionally lightweight: older Sidekiq versions stay compact, while the 8.1 demo uses five thin worker processes to stretch the process-oriented UI without bringing back the original CPU load.
+
 ## Quick Start
 
 ```bash
@@ -29,7 +31,7 @@ Web UI: http://localhost:9292
 
 **5 Queues** (by priority): critical, default, mailers, batch, low
 
-**Limits**: 10k jobs/queue, 20k retry queue max
+**Limits**: 1.5k jobs/queue, 1k retry queue max, 500 scheduled max
 
 **Extra cases**:
 - ActiveJob-wrapped jobs with GlobalID-serialized arguments
@@ -37,7 +39,7 @@ Web UI: http://localhost:9292
 - Tagged jobs sharing the same 5 tags (intersection)
 - **DataSyncJob** uses `Sidekiq::IterableJob` to process entity IDs one at a time:
   - Iterates over 1-10 entity IDs per job
-  - Random sleep duration per iteration (0.2-5s)
+  - Random sleep duration per iteration (0.2-1.0s)
   - 8% failure rate per iteration for realistic retry behavior
   - Demonstrates job interruption and resumption on worker restart
 

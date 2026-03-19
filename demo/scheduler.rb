@@ -6,12 +6,14 @@ require "time"
 
 class JobScheduler
   QUEUES = %w[critical default mailers batch low unsafe unprocessed_1 unprocessed_2 unprocessed_3 unprocessed_4 unprocessed_5].freeze
-  MAX_JOBS_PER_QUEUE = 10_000
-  MAX_UNSAFE_JOBS = 42
-  MAX_UNPROCESSED_JOBS = 5
-  MAX_RETRY_QUEUE = 20_000
-  MAX_SCHEDULED_JOBS = 5_000
-  SCHEDULE_BATCH_SIZE = 100
+  MAX_JOBS_PER_QUEUE = 1_500
+  MAX_UNSAFE_JOBS = 12
+  MAX_UNPROCESSED_JOBS = 2
+  MAX_RETRY_QUEUE = 1_000
+  MAX_SCHEDULED_JOBS = 500
+  SCHEDULE_BATCH_SIZE = 12
+  SCHEDULER_INTERVAL = 2.0
+  SCHEDULED_REFRESH_EVERY = 4
   ACTIVEJOB_WRAPPER = "Sidekiq::ActiveJob::Wrapper"
   ACTION_MAILER_DELIVERY = "ActionMailer::MailDeliveryJob"
   COMMON_TAGS = %w[tag-alpha tag-bravo tag-charlie tag-delta tag-echo].freeze
@@ -152,6 +154,9 @@ class JobScheduler
   def initialize
     @weighted_jobs = build_weighted_job_list
     @running = false
+    @loop_count = 0
+    @scheduled_sizes = Hash.new(0)
+    @scheduled_total = 0
   end
 
   def start
@@ -163,9 +168,11 @@ class JobScheduler
     puts "Queues: #{QUEUES.join(", ")}"
 
     while @running
+      refresh_scheduled_sizes if refresh_scheduled_sizes?
       maintain_queues
       maintain_scheduled
-      sleep 0.5
+      @loop_count += 1
+      sleep SCHEDULER_INTERVAL
     end
   end
 
@@ -189,7 +196,7 @@ class JobScheduler
     end
 
     queue_sizes = fetch_queue_sizes
-    scheduled_sizes = fetch_scheduled_sizes
+    scheduled_sizes = @scheduled_sizes
 
     QUEUES.each do |queue_name|
       current_size = queue_sizes[queue_name] || 0
@@ -223,12 +230,11 @@ class JobScheduler
   end
 
   def maintain_scheduled
-    scheduled_size = Sidekiq::ScheduledSet.new.size
     queue_sizes = fetch_queue_sizes
-    scheduled_sizes = fetch_scheduled_sizes
+    scheduled_sizes = @scheduled_sizes
 
-    if scheduled_size < MAX_SCHEDULED_JOBS * 0.8
-      jobs_to_add = [MAX_SCHEDULED_JOBS - scheduled_size, SCHEDULE_BATCH_SIZE].min
+    if @scheduled_total < MAX_SCHEDULED_JOBS * 0.8
+      jobs_to_add = [MAX_SCHEDULED_JOBS - @scheduled_total, SCHEDULE_BATCH_SIZE].min
       add_scheduled_jobs(jobs_to_add, queue_sizes, scheduled_sizes) if jobs_to_add > 0
     end
   end
@@ -249,6 +255,7 @@ class JobScheduler
       delay = rand(1..86400) # Schedule between 1 second and 24 hours
       enqueue_job(job_def, delay: delay)
       scheduled_sizes[queue_name] = scheduled_size + 1
+      @scheduled_total += 1
       added += 1
     end
 
@@ -257,11 +264,24 @@ class JobScheduler
 
   def fetch_scheduled_sizes
     sizes = Hash.new(0)
+    total = 0
     Sidekiq::ScheduledSet.new.each do |job|
       queue_name = job.item["queue"]
-      sizes[queue_name] += 1 if queue_name
+      next unless queue_name
+
+      sizes[queue_name] += 1
+      total += 1
     end
-    sizes
+    @scheduled_sizes = sizes
+    @scheduled_total = total
+  end
+
+  def refresh_scheduled_sizes?
+    @scheduled_sizes.empty? || (@loop_count % SCHEDULED_REFRESH_EVERY).zero?
+  end
+
+  def refresh_scheduled_sizes
+    fetch_scheduled_sizes
   end
 
   def enqueue_job(job_def, delay: nil)
