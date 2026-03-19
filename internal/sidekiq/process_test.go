@@ -2,7 +2,9 @@ package sidekiq
 
 import (
 	"encoding/json"
+	"math"
 	"reflect"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -553,6 +555,29 @@ func TestProcessRefresh_IdentityParsing(t *testing.T) {
 	}
 	if process.Busy != 5 {
 		t.Errorf("Busy = %d, want 5", process.Busy)
+	}
+}
+
+func TestProcessRefresh_BusyOverflow(t *testing.T) {
+	mr, client := setupTestRedis(t)
+
+	mr.HSet("overflow:123:abc", "busy", "9223372036854775807")
+
+	process := client.NewProcess("overflow:123:abc")
+	err := process.Refresh(testContext(t))
+	if err != nil {
+		t.Fatalf("Refresh failed: %v", err)
+	}
+
+	if strconv.IntSize == 32 {
+		if process.Busy != 0 {
+			t.Fatalf("Busy = %d, want 0 for out-of-range int value", process.Busy)
+		}
+		return
+	}
+
+	if int64(process.Busy) != math.MaxInt64 {
+		t.Fatalf("Busy = %d, want %d", process.Busy, int64(math.MaxInt64))
 	}
 }
 

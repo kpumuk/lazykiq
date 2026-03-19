@@ -1,7 +1,29 @@
+x-sidekiq-service: &sidekiq-service
+  build:
+    context: .
+  depends_on:
+    redis:
+      condition: service_healthy
+  volumes:
+    - .:/app
+
 services:
   redis:
     image: redis:7-alpine
-    command: ["redis-server", "--save", ""]
+    command:
+      [
+        "redis-server",
+        "--save",
+        "",
+        "--hz",
+        "1",
+        "--dynamic-hz",
+        "no",
+        "--latency-tracking",
+        "no",
+        "--slowlog-log-slower-than",
+        "-1"
+      ]
     ports:
       - "6379:6379"
     healthcheck:
@@ -10,47 +32,38 @@ services:
       timeout: 3s
       retries: 5
 
-  sidekiq-7.3:
-    build:
-      context: .
-      args:
-        BUNDLE_GEMFILE: Gemfile.sidekiq-7.3
-    depends_on:
-      redis:
-        condition: service_healthy
-    environment:
-      REDIS_URL: redis://redis:6379/0
-    ports:
-      - "9292:9292"
-    volumes:
-      - .:/app
-
-  sidekiq-8.0:
-    build:
-      context: .
-      args:
-        BUNDLE_GEMFILE: Gemfile.sidekiq-8.0
-    depends_on:
-      redis:
-        condition: service_healthy
-    environment:
-      REDIS_URL: redis://redis:6379/1
-    ports:
-      - "9293:9292"
-    volumes:
-      - .:/app
-
   sidekiq-8.1:
+    <<: *sidekiq-service
     build:
       context: .
       args:
         BUNDLE_GEMFILE: Gemfile.sidekiq-8.1
-    depends_on:
-      redis:
-        condition: service_healthy
     environment:
+      LAZYKIQ_DEMO_LAYOUT: stretched
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "9292:9292"
+
+  sidekiq-8.0:
+    <<: *sidekiq-service
+    build:
+      context: .
+      args:
+        BUNDLE_GEMFILE: Gemfile.sidekiq-8.0
+    environment:
+      LAZYKIQ_DEMO_LAYOUT: compact
+      REDIS_URL: redis://redis:6379/1
+    ports:
+      - "9293:9292"
+
+  sidekiq-7.3:
+    <<: *sidekiq-service
+    build:
+      context: .
+      args:
+        BUNDLE_GEMFILE: Gemfile.sidekiq-7.3
+    environment:
+      LAZYKIQ_DEMO_LAYOUT: compact
       REDIS_URL: redis://redis:6379/2
     ports:
       - "9294:9292"
-    volumes:
-      - .:/app

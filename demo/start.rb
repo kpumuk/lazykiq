@@ -4,6 +4,24 @@
 require_relative "boot"
 require_relative "scheduler"
 
+def worker_profiles_for(layout)
+  case layout
+  when "stretched"
+    [
+      {queues: ["default,5"], concurrency: 2},
+      {queues: ["low,1"], concurrency: 1},
+      {queues: ["critical,10"], concurrency: 2},
+      {queues: ["mailers,5"], concurrency: 1},
+      {queues: ["batch,3"], concurrency: 1, unsafe_capsule: true}
+    ]
+  else
+    [
+      {queues: ["default,5", "low,1"], concurrency: 4},
+      {queues: ["critical,10", "mailers,5", "batch,3"], concurrency: 4, unsafe_capsule: true}
+    ]
+  end
+end
+
 # Determine mode
 mode = ARGV[0] || "all"
 
@@ -34,23 +52,16 @@ when "all"
 
   pids = []
 
-  # Fork worker processes with 8 workers each, different queues per process
-  worker_queues = [
-    # Process 1: default and low queues (weighted)
-    ["default,5", "low,1"],
-    # Process 2: default and low queues (weighted)
-    ["default,5", "low,1"],
-    # Process 3: critical and mailers queues (weighted)
-    ["critical,10", "mailers,5"],
-    # Process 4: batch queue only (weighted) with unsafe capsule
-    ["batch,3"]
-  ]
+  # Stretch the latest demo with more Sidekiq processes while keeping older
+  # versions compact and cheap.
+  worker_profiles = worker_profiles_for(ENV.fetch("LAZYKIQ_DEMO_LAYOUT", "compact"))
 
-  worker_queues.each_with_index do |queues, i|
+  worker_profiles.each do |profile|
     pids << fork do
       cmd = ["bundle", "exec", "sidekiq", "-r", "./boot.rb", "-C", "config/sidekiq.yml"] +
-        queues.flat_map { |q| ["-q", q] }
-      if i == 3
+        profile[:queues].flat_map { |q| ["-q", q] } +
+        ["-c", profile[:concurrency].to_s]
+      if profile[:unsafe_capsule]
         exec({"LAZYKIQ_UNSAFE_CAPSULE" => "1"}, *cmd)
       else
         exec(*cmd)

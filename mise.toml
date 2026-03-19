@@ -53,6 +53,41 @@ run = "bun dev --baseURL http://localhost:1313/lazykiq"
 dir = "website"
 
 [tasks.demo]
-description = "Run the demo application"
-run = "docker-compose -f docker-compose.yml up --build -d"
+description = "Run the latest demo application (Sidekiq 8.1)"
+run = """
+echo "Sidekiq 8.1 demo uses Redis DB 0"
+echo "Sidekiq Web UI: http://localhost:9292"
+echo "Connect with: go run ./cmd/lazykiq --redis redis://localhost:6379/0"
+docker-compose -f docker-compose.yml up --build -d --remove-orphans redis sidekiq-8.1
+"""
+dir = "demo"
+
+[tasks.demo-sidekiq81]
+description = "Run the Sidekiq 8.1 demo application"
+run = """
+echo "Sidekiq 8.1 demo uses Redis DB 0"
+echo "Sidekiq Web UI: http://localhost:9292"
+echo "Connect with: go run ./cmd/lazykiq --redis redis://localhost:6379/0"
+docker-compose -f docker-compose.yml up --build -d --remove-orphans redis sidekiq-8.1
+"""
+dir = "demo"
+
+[tasks.demo-sidekiq80]
+description = "Run the Sidekiq 8.0 demo application"
+run = """
+echo "Sidekiq 8.0 demo uses Redis DB 1"
+echo "Sidekiq Web UI: http://localhost:9293"
+echo "Connect with: go run ./cmd/lazykiq --redis redis://localhost:6379/1"
+docker-compose -f docker-compose.yml up --build -d --remove-orphans redis sidekiq-8.0
+"""
+dir = "demo"
+
+[tasks.demo-sidekiq73]
+description = "Run the Sidekiq 7.3 demo application"
+run = """
+echo "Sidekiq 7.3 demo uses Redis DB 2"
+echo "Sidekiq Web UI: http://localhost:9294"
+echo "Connect with: go run ./cmd/lazykiq --redis redis://localhost:6379/2"
+docker-compose -f docker-compose.yml up --build -d --remove-orphans redis sidekiq-7.3
+"""
 dir = "demo"

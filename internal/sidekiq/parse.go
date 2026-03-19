@@ -38,6 +38,16 @@ func parseOptionalInt64(field any) (int64, bool) {
 	return 0, false
 }
 
+// parseOptionalInt parses various types to int with success indication.
+// Values outside the platform int range are rejected.
+func parseOptionalInt(field any) (int, bool) {
+	parsed, ok := parseOptionalInt64(field)
+	if !ok || parsed < math.MinInt || parsed > math.MaxInt {
+		return 0, false
+	}
+	return int(parsed), true
+}
+
 // parseOptionalFloat64 parses various types to float64 with success indication.
 func parseOptionalFloat64(field any) (float64, bool) {
 	switch value := field.(type) {

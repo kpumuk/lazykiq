@@ -26,7 +26,7 @@ class DataSyncJob
       raise error, "Sync failed for entity #{entity_id} from #{source} to #{destination}"
     end
 
-    # Log progress (visible in Sidekiq logs)
-    logger.info "Synced entity #{entity_id} from #{source} to #{destination} (#{duration.round(2)}s)"
+    # Keep logs quiet; the dashboard already shows the live job mix.
+    logger.debug { "Synced entity #{entity_id} from #{source} to #{destination} (#{duration.round(2)}s)" }
   end
 end
