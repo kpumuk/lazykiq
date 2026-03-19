@@ -53,6 +53,15 @@ jobs:
           AUR_KEY: ${{ secrets.AUR_KEY }}
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
       - name: Generate release artifact attestation
+        id: attest
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
           subject-checksums: dist/checksums.txt
+      - name: Upload release provenance bundle
+        env:
+          ATTESTATION_BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          jq -c . "$ATTESTATION_BUNDLE" > dist/checksums.txt.intoto.jsonl
+          gh release upload "${GITHUB_REF_NAME}" dist/checksums.txt.intoto.jsonl --clobber
