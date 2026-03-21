@@ -17,6 +17,7 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/components/stats"
 	"github.com/kpumuk/lazykiq/internal/ui/components/timeseries"
 	"github.com/kpumuk/lazykiq/internal/ui/display"
+	"github.com/kpumuk/lazykiq/internal/ui/requestctx"
 )
 
 const (
@@ -61,6 +62,9 @@ type Dashboard struct {
 	historyFailed    []int64
 
 	redisInfo sidekiq.RedisInfo
+
+	redisInfoRequest requestctx.Controller
+	historyRequest   requestctx.Controller
 }
 
 // NewDashboard creates a new Dashboard view.
@@ -228,6 +232,12 @@ func (d *Dashboard) SetStyles(styles Styles) View {
 	return d
 }
 
+// CancelRequests stops in-flight dashboard fetches when the view is hidden.
+func (d *Dashboard) CancelRequests() {
+	d.redisInfoRequest.Cancel()
+	d.historyRequest.Cancel()
+}
+
 func (d *Dashboard) adjustHistoryRange(delta int) (View, tea.Cmd) {
 	next := max(d.historyRangeIdx+delta, 0)
 	if next >= len(d.historyRanges) {
@@ -241,10 +251,13 @@ func (d *Dashboard) adjustHistoryRange(delta int) (View, tea.Cmd) {
 }
 
 func (d *Dashboard) fetchRedisInfoCmd() tea.Cmd {
+	ctx := d.redisInfoRequest.Start(devtools.WithTracker(context.Background(), "dashboard.fetchRedisInfoCmd"))
 	return func() tea.Msg {
-		ctx := devtools.WithTracker(context.Background(), "dashboard.fetchRedisInfoCmd")
 		redisInfo, err := d.client.GetRedisInfo(ctx)
 		if err != nil {
+			if requestctx.IsCanceled(err) {
+				return nil
+			}
 			return ConnectionErrorMsg{Err: err}
 		}
 		return DashboardRedisInfoMsg{RedisInfo: redisInfo}
@@ -252,11 +265,14 @@ func (d *Dashboard) fetchRedisInfoCmd() tea.Cmd {
 }
 
 func (d *Dashboard) fetchHistoryCmd() tea.Cmd {
+	ctx := d.historyRequest.Start(devtools.WithTracker(context.Background(), "dashboard.fetchHistoryCmd"))
 	return func() tea.Msg {
-		ctx := devtools.WithTracker(context.Background(), "dashboard.fetchHistoryCmd")
 		days := d.historyRanges[d.historyRangeIdx]
 		history, err := d.client.GetStatsHistory(ctx, days)
 		if err != nil {
+			if requestctx.IsCanceled(err) {
+				return nil
+			}
 			return ConnectionErrorMsg{Err: err}
 		}
 		return DashboardHistoryMsg{history: history}

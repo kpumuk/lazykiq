@@ -317,6 +317,11 @@ func (d *Dead) Dispose() {
 	d.updateTableSize()
 }
 
+// CancelRequests stops in-flight fetches when the view is hidden.
+func (d *Dead) CancelRequests() {
+	d.lazy.CancelRequest()
+}
+
 // SetStyles implements View.
 func (d *Dead) SetStyles(styles Styles) View {
 	d.styles = styles

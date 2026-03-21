@@ -280,6 +280,11 @@ func (q *QueueDetails) Dispose() {
 	q.updateTableSize()
 }
 
+// CancelRequests stops in-flight fetches when the view is hidden.
+func (q *QueueDetails) CancelRequests() {
+	q.lazy.CancelRequest()
+}
+
 // SetStyles implements View.
 func (q *QueueDetails) SetStyles(styles Styles) View {
 	q.styles = styles

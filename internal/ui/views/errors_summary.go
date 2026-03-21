@@ -13,6 +13,7 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
 	"github.com/kpumuk/lazykiq/internal/ui/display"
+	"github.com/kpumuk/lazykiq/internal/ui/requestctx"
 )
 
 // errorsSummaryDataMsg carries error summary data internally.
@@ -24,18 +25,19 @@ type errorsSummaryDataMsg struct {
 
 // ErrorsSummary shows a summary of errors grouped by job and error class.
 type ErrorsSummary struct {
-	client      sidekiq.API
-	width       int
-	height      int
-	styles      Styles
-	rows        []errorSummaryRow
-	table       table.Model
-	ready       bool
-	deadCount   int
-	retryCount  int
-	filter      string
-	frameStyles frame.Styles
-	filterStyle filterdialog.Styles
+	client       sidekiq.API
+	width        int
+	height       int
+	styles       Styles
+	rows         []errorSummaryRow
+	table        table.Model
+	ready        bool
+	deadCount    int
+	retryCount   int
+	filter       string
+	frameStyles  frame.Styles
+	filterStyle  filterdialog.Styles
+	fetchRequest requestctx.Controller
 }
 
 // NewErrorsSummary creates a new ErrorsSummary view.
@@ -201,12 +203,20 @@ func (e *ErrorsSummary) SetStyles(styles Styles) View {
 	return e
 }
 
+// CancelRequests stops in-flight fetches when the view is hidden.
+func (e *ErrorsSummary) CancelRequests() {
+	e.fetchRequest.Cancel()
+}
+
 // fetchDataCmd fetches dead and retry jobs and builds summary data.
 func (e *ErrorsSummary) fetchDataCmd() tea.Cmd {
+	ctx := e.fetchRequest.Start(devtools.WithTracker(context.Background(), "errors.fetchDataCmd"))
 	return func() tea.Msg {
-		ctx := devtools.WithTracker(context.Background(), "errors.fetchDataCmd")
 		deadJobs, retryJobs, err := fetchErrorJobs(ctx, e.client, e.filter)
 		if err != nil {
+			if requestctx.IsCanceled(err) {
+				return nil
+			}
 			return ConnectionErrorMsg{Err: err}
 		}
 
@@ -225,6 +235,7 @@ func (e *ErrorsSummary) renderMessage(msg string) string {
 }
 
 func (e *ErrorsSummary) reset() {
+	e.fetchRequest.Cancel()
 	e.ready = false
 	e.rows = nil
 	e.deadCount = 0

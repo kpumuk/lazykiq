@@ -203,3 +203,8 @@ type ProcessSelector interface {
 type Disposable interface {
 	Dispose()
 }
+
+// RequestCanceler allows views to cancel in-flight requests when hidden.
+type RequestCanceler interface {
+	CancelRequests()
+}

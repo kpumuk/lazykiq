@@ -19,6 +19,7 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 	devtoolsdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/devtools"
 	helpdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/help"
+	"github.com/kpumuk/lazykiq/internal/ui/requestctx"
 	"github.com/kpumuk/lazykiq/internal/ui/theme"
 	"github.com/kpumuk/lazykiq/internal/ui/views"
 )
@@ -71,6 +72,7 @@ type App struct {
 	connectionError         error
 	dangerousActionsEnabled bool
 	devTracker              *devtools.Tracker
+	statsRequest            requestctx.Controller
 }
 
 // New creates a new App instance.
@@ -230,8 +232,8 @@ func (a App) Init() tea.Cmd {
 	return tea.Batch(
 		a.viewRegistry[activeID].Init(),
 		a.metrics.Init(),
-		a.fetchStatsCmd, // Fetch stats immediately
-		tickCmd(),       // Start the ticker for subsequent updates
+		a.fetchStatsCmd(), // Fetch stats immediately
+		tickCmd(),         // Start the ticker for subsequent updates
 	)
 }
 
@@ -258,7 +260,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tickMsg:
 		// Always fetch stats for metrics bar
-		cmds = append(cmds, a.fetchStatsCmd)
+		cmds = append(cmds, a.fetchStatsCmd())
 
 		// Broadcast refresh to active view (views now fetch their own data)
 		cmds = append(cmds, a.updateView(a.activeViewID(), views.RefreshMsg{}))
@@ -755,25 +757,29 @@ func filterMiniHelpBindings(bindings []key.Binding) []key.Binding {
 }
 
 // fetchStatsCmd fetches Sidekiq stats and returns a stats.UpdateMsg or connectionErrorMsg.
-func (a App) fetchStatsCmd() tea.Msg {
-	ctx := context.Background()
-	sidekiqStats, err := a.sidekiq.GetStats(ctx)
-	if err != nil {
-		// Return connection error message
-		return connectionErrorMsg{err: err}
-	}
+func (a *App) fetchStatsCmd() tea.Cmd {
+	ctx := a.statsRequest.Start(devtools.WithTracker(context.Background(), "app.fetchStatsCmd"))
+	return func() tea.Msg {
+		sidekiqStats, err := a.sidekiq.GetStats(ctx)
+		if err != nil {
+			if requestctx.IsCanceled(err) {
+				return nil
+			}
+			return connectionErrorMsg{err: err}
+		}
 
-	return stats.UpdateMsg{
-		Data: stats.Data{
-			Processed: sidekiqStats.Processed,
-			Failed:    sidekiqStats.Failed,
-			Busy:      sidekiqStats.Busy,
-			Enqueued:  sidekiqStats.Enqueued,
-			Retries:   sidekiqStats.Retries,
-			Scheduled: sidekiqStats.Scheduled,
-			Dead:      sidekiqStats.Dead,
-			UpdatedAt: time.Now(),
-		},
+		return stats.UpdateMsg{
+			Data: stats.Data{
+				Processed: sidekiqStats.Processed,
+				Failed:    sidekiqStats.Failed,
+				Busy:      sidekiqStats.Busy,
+				Enqueued:  sidekiqStats.Enqueued,
+				Retries:   sidekiqStats.Retries,
+				Scheduled: sidekiqStats.Scheduled,
+				Dead:      sidekiqStats.Dead,
+				UpdatedAt: time.Now(),
+			},
+		}
 	}
 }
 
@@ -807,8 +813,21 @@ func (a *App) updateView(id viewID, msg tea.Msg) tea.Cmd {
 	return cmd
 }
 
+func (a *App) cancelViewRequests(id viewID) {
+	view, ok := a.viewRegistry[id]
+	if !ok {
+		return
+	}
+	if canceler, ok := view.(views.RequestCanceler); ok {
+		canceler.CancelRequests()
+	}
+}
+
 func (a *App) setActiveView(id viewID) tea.Cmd {
 	for _, existing := range a.viewStack {
+		if existing != id {
+			a.cancelViewRequests(existing)
+		}
 		if existing == viewDashboard || existing == id {
 			continue
 		}
@@ -829,6 +848,9 @@ func (a *App) pushView(id viewID) tea.Cmd {
 		a.stackbar.SetStack(a.stackNames())
 		return nil
 	}
+	if len(a.viewStack) > 0 {
+		a.cancelViewRequests(a.viewStack[len(a.viewStack)-1])
+	}
 	a.viewStack = append(a.viewStack, id)
 	a.stackbar.SetStack(a.stackNames())
 	if view, ok := a.viewRegistry[id]; ok {
@@ -837,12 +859,13 @@ func (a *App) pushView(id viewID) tea.Cmd {
 	return nil
 }
 
-func (a *App) popView() {
+func (a *App) popTopView() bool {
 	if len(a.viewStack) <= 1 {
-		return
+		return false
 	}
 
 	popped := a.viewStack[len(a.viewStack)-1]
+	a.cancelViewRequests(popped)
 	a.viewStack = a.viewStack[:len(a.viewStack)-1]
 	if popped != viewDashboard {
 		if disposable, ok := a.viewRegistry[popped].(views.Disposable); ok {
@@ -850,20 +873,16 @@ func (a *App) popView() {
 		}
 	}
 	a.stackbar.SetStack(a.stackNames())
+	return true
+}
+
+func (a *App) popView() {
+	a.popTopView()
 }
 
 func (a *App) popAndRefresh(id viewID) tea.Cmd {
-	if len(a.viewStack) <= 1 {
+	if !a.popTopView() {
 		return a.updateView(id, views.RefreshMsg{})
 	}
-
-	popped := a.viewStack[len(a.viewStack)-1]
-	a.viewStack = a.viewStack[:len(a.viewStack)-1]
-	if popped != viewDashboard {
-		if disposable, ok := a.viewRegistry[popped].(views.Disposable); ok {
-			disposable.Dispose()
-		}
-	}
-	a.stackbar.SetStack(a.stackNames())
 	return a.updateView(id, views.RefreshMsg{})
 }

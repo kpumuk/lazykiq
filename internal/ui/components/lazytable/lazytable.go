@@ -12,6 +12,7 @@ import (
 
 	"github.com/kpumuk/lazykiq/internal/mathutil"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
+	"github.com/kpumuk/lazykiq/internal/ui/requestctx"
 )
 
 // CursorIntent controls how the cursor should be positioned after loading.
@@ -62,6 +63,7 @@ type Model struct {
 	requestID        int
 	pendingIntent    CursorIntent
 	anchor           anchorState
+	request          requestctx.Controller
 }
 
 type anchorState struct {
@@ -158,6 +160,7 @@ func (m *Model) SetEmptyMessage(msg string) {
 
 // Reset clears the window state and table rows.
 func (m *Model) Reset() {
+	m.CancelRequest()
 	m.ensurePagingDefaults()
 	m.windowStart = 0
 	m.totalSize = 0
@@ -169,12 +172,19 @@ func (m *Model) Reset() {
 	m.table.ClearScrollbar()
 }
 
+// CancelRequest stops the current in-flight fetch, if any.
+func (m *Model) CancelRequest() {
+	m.request.Cancel()
+	m.loading = false
+}
+
 // RequestWindow starts a fetch for the given window start.
 func (m *Model) RequestWindow(windowStart int, intent CursorIntent) tea.Cmd {
 	if m.fetcher == nil {
 		return nil
 	}
 	windowStart = max(windowStart, 0)
+	ctx := m.request.Start(context.Background())
 	m.pendingIntent = intent
 	if intent == CursorKeep {
 		m.captureAnchor()
@@ -188,7 +198,7 @@ func (m *Model) RequestWindow(windowStart int, intent CursorIntent) tea.Cmd {
 
 	return tea.Batch(
 		m.spinner.Tick,
-		m.fetchCmd(requestID, windowStart, windowSize, intent),
+		m.fetchCmd(ctx, requestID, windowStart, windowSize, intent),
 	)
 }
 
@@ -373,15 +383,18 @@ func (m Model) effectiveWindowSize() int {
 	return max(m.pageSize, m.fallbackPageSize) * max(m.windowPages, 1)
 }
 
-func (m *Model) fetchCmd(requestID, windowStart, windowSize int, intent CursorIntent) tea.Cmd {
+func (m *Model) fetchCmd(ctx context.Context, requestID, windowStart, windowSize int, intent CursorIntent) tea.Cmd {
 	fetcher := m.fetcher
 	handler := m.errorHandler
 	return func() tea.Msg {
 		if fetcher == nil {
 			return nil
 		}
-		result, err := fetcher(context.Background(), windowStart, windowSize, intent)
+		result, err := fetcher(ctx, windowStart, windowSize, intent)
 		if err != nil {
+			if requestctx.IsCanceled(err) {
+				return nil
+			}
 			if handler != nil {
 				return handler(err)
 			}

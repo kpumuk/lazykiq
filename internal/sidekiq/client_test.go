@@ -252,6 +252,29 @@ func TestMetricsPeriodOrder_Unknown(t *testing.T) {
 	}
 }
 
+func TestNewClient_ConfiguresRequestBackpressure(t *testing.T) {
+	mr := miniredis.RunT(t)
+
+	client, err := NewClient("redis://" + mr.Addr() + "/0")
+	if err != nil {
+		t.Fatalf("NewClient failed: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = client.Close()
+	})
+
+	opts := client.Redis().Options()
+	if !opts.ContextTimeoutEnabled {
+		t.Fatal("ContextTimeoutEnabled = false, want true")
+	}
+	if opts.PoolSize != uiRedisPoolSize {
+		t.Fatalf("PoolSize = %d, want %d", opts.PoolSize, uiRedisPoolSize)
+	}
+	if opts.MaxActiveConns != uiRedisPoolSize {
+		t.Fatalf("MaxActiveConns = %d, want %d", opts.MaxActiveConns, uiRedisPoolSize)
+	}
+}
+
 // setupTestRedis starts a miniredis instance and creates a Sidekiq client.
 // Cleanup is handled automatically via t.Cleanup().
 //

@@ -15,6 +15,7 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
 	"github.com/kpumuk/lazykiq/internal/ui/display"
+	"github.com/kpumuk/lazykiq/internal/ui/requestctx"
 )
 
 // errorsDetailsDataMsg carries error detail data internally.
@@ -29,13 +30,14 @@ type ErrorsDetails struct {
 	height int
 	styles Styles
 
-	ready       bool
-	groupKey    errorSummaryKey
-	groupJobs   []errorGroupJob
-	table       table.Model
-	filter      string
-	frameStyles frame.Styles
-	filterStyle filterdialog.Styles
+	ready        bool
+	groupKey     errorSummaryKey
+	groupJobs    []errorGroupJob
+	table        table.Model
+	filter       string
+	frameStyles  frame.Styles
+	filterStyle  filterdialog.Styles
+	fetchRequest requestctx.Controller
 }
 
 // NewErrorsDetails creates a new ErrorsDetails view.
@@ -227,11 +229,17 @@ func (e *ErrorsDetails) SetStyles(styles Styles) View {
 	return e
 }
 
+// CancelRequests stops in-flight fetches when the view is hidden.
+func (e *ErrorsDetails) CancelRequests() {
+	e.fetchRequest.Cancel()
+}
+
 func (e *ErrorsDetails) renderMessage(msg string) string {
 	return renderStatusMessage("Errors", msg, e.styles, e.width, e.height)
 }
 
 func (e *ErrorsDetails) resetData() {
+	e.fetchRequest.Cancel()
 	e.ready = false
 	e.groupJobs = nil
 	e.table.SetRows(nil)
@@ -309,10 +317,13 @@ func (e *ErrorsDetails) openFilterDialog() tea.Cmd {
 }
 
 func (e *ErrorsDetails) fetchDataCmd() tea.Cmd {
+	ctx := e.fetchRequest.Start(devtools.WithTracker(context.Background(), "errors_details.fetchDataCmd"))
 	return func() tea.Msg {
-		ctx := devtools.WithTracker(context.Background(), "errors_details.fetchDataCmd")
 		deadJobs, retryJobs, err := fetchErrorJobs(ctx, e.client, e.filter)
 		if err != nil {
+			if requestctx.IsCanceled(err) {
+				return nil
+			}
 			return ConnectionErrorMsg{Err: err}
 		}
 
