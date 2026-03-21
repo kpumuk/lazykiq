@@ -16,6 +16,8 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
 	"github.com/kpumuk/lazykiq/internal/ui/components/lazytable"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
+	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
+	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
 	"github.com/kpumuk/lazykiq/internal/ui/display"
 )
 
@@ -47,9 +49,12 @@ type QueueDetails struct {
 	jobs             []*sidekiq.PositionedEntry
 	lazy             lazytable.Model
 	ready            bool
+	filter           string
 	selectedQueue    int
 	selectedQueueKey string // Queue name to select after loading
 	displayOrder     []int  // Maps ctrl+1-5 to queue indices
+	frameStyles      frame.Styles
+	filterStyle      filterdialog.Styles
 }
 
 // NewQueueDetails creates a new QueueDetails view.
@@ -107,8 +112,27 @@ func (q *QueueDetails) Update(msg tea.Msg) (View, tea.Cmd) {
 		}
 		return q, q.lazy.RequestWindow(q.lazy.WindowStart(), lazytable.CursorKeep)
 
+	case filterdialog.ActionMsg:
+		if msg.Action == filterdialog.ActionNone || msg.Query == q.filter {
+			return q, nil
+		}
+		q.filter = msg.Query
+		q.updateEmptyMessage()
+		q.lazy.Table().SetCursor(0)
+		return q, q.lazy.RequestWindow(0, lazytable.CursorStart)
+
 	case tea.KeyPressMsg:
 		switch msg.String() {
+		case "/":
+			return q, q.openFilterDialog()
+		case "ctrl+u":
+			if q.filter == "" {
+				return q, nil
+			}
+			q.filter = ""
+			q.updateEmptyMessage()
+			q.lazy.Table().SetCursor(0)
+			return q, q.lazy.RequestWindow(0, lazytable.CursorStart)
 		case "s":
 			// Switch to queues list view
 			return q, func() tea.Msg {
@@ -133,18 +157,27 @@ func (q *QueueDetails) Update(msg tea.Msg) (View, tea.Cmd) {
 				}
 			}
 			return q, nil
-		case "alt+left", "[":
-			q.lazy.MovePage(-1)
-			return q, q.lazy.MaybePrefetch()
-		case "alt+right", "]":
-			q.lazy.MovePage(1)
-			return q, q.lazy.MaybePrefetch()
 		case "enter":
 			// Show detail for selected job
 			if idx := q.lazy.Table().Cursor(); idx >= 0 && idx < len(q.jobs) {
 				return q, func() tea.Msg {
 					return ShowJobDetailMsg{Job: q.jobs[idx].JobRecord}
 				}
+			}
+			return q, nil
+		}
+
+		switch msg.String() {
+		case "alt+left", "[":
+			if q.filter == "" {
+				q.lazy.MovePage(-1)
+				return q, q.lazy.MaybePrefetch()
+			}
+			return q, nil
+		case "alt+right", "]":
+			if q.filter == "" {
+				q.lazy.MovePage(1)
+				return q, q.lazy.MaybePrefetch()
 			}
 			return q, nil
 		}
@@ -206,6 +239,9 @@ func (q *QueueDetails) ContextItems() []ContextItem {
 	if queueName != "" {
 		items = append(items, ContextItem{Label: "Queue", Value: q.styles.QueueText.Render(queueName)})
 	}
+	if q.filter != "" {
+		items = append(items, ContextItem{Label: "Filter", Value: q.filter})
+	}
 	if start, end, total := q.lazy.Range(); total > 0 && len(q.jobs) > 0 {
 		items = append(items, ContextItem{
 			Label: "Rows",
@@ -223,6 +259,8 @@ func (q *QueueDetails) ContextItems() []ContextItem {
 // HintBindings implements HintProvider.
 func (q *QueueDetails) HintBindings() []key.Binding {
 	return []key.Binding{
+		helpBinding([]string{"/"}, "/", "filter"),
+		helpBinding([]string{"ctrl+u"}, "ctrl+u", "reset filter"),
 		helpBinding([]string{"s"}, "s", "switch queue"),
 		helpBinding([]string{"[", "]"}, "[ ⋰ ]", "page up/down"),
 		helpBinding([]string{"enter"}, "enter", "job detail"),
@@ -232,8 +270,10 @@ func (q *QueueDetails) HintBindings() []key.Binding {
 // HelpSections implements HelpProvider.
 func (q *QueueDetails) HelpSections() []HelpSection {
 	sections := []HelpSection{{
-		Title: "Queue Actions",
+		Title: "Queue Jobs",
 		Bindings: []key.Binding{
+			helpBinding([]string{"/"}, "/", "filter"),
+			helpBinding([]string{"ctrl+u"}, "ctrl+u", "clear filter"),
 			helpBinding([]string{"s"}, "s", "switch queue"),
 			helpBinding([]string{"ctrl+1"}, "ctrl+1-5", "select queue"),
 			helpBinding([]string{"["}, "[", "page up"),
@@ -263,12 +303,16 @@ func (q *QueueDetails) SetSize(width, height int) View {
 // Dispose clears cached data when the view is removed from the stack.
 func (q *QueueDetails) Dispose() {
 	q.reset()
+	q.filter = ""
+	q.SetStyles(q.styles)
 	q.updateTableSize()
 }
 
 // SetStyles implements View.
 func (q *QueueDetails) SetStyles(styles Styles) View {
 	q.styles = styles
+	q.frameStyles = frameStylesFromTheme(styles)
+	q.filterStyle = filterDialogStylesFromTheme(styles)
 	q.lazy.SetSpinnerStyle(styles.Muted)
 	q.lazy.SetTableStyles(tableStylesFromTheme(styles))
 	return q
@@ -312,7 +356,10 @@ func (q *QueueDetails) fetchWindow(
 	}
 
 	selectedQueue := q.resolveSelectedQueue(queues, q.selectedQueue)
-	jobs, totalSize, windowStart := q.fetchQueueJobs(ctx, queues, selectedQueue, windowStart, windowSize)
+	jobs, totalSize, windowStart, err := q.fetchQueueJobs(ctx, queues, selectedQueue, windowStart, windowSize)
+	if err != nil {
+		return lazytable.FetchResult{}, err
+	}
 
 	return lazytable.FetchResult{
 		Rows:        q.buildRows(jobs),
@@ -352,9 +399,9 @@ func (q *QueueDetails) fetchQueueJobs(
 	selectedQueue int,
 	windowStart int,
 	windowSize int,
-) ([]*sidekiq.PositionedEntry, int64, int) {
+) ([]*sidekiq.PositionedEntry, int64, int, error) {
 	if len(queues) == 0 || selectedQueue < 0 || selectedQueue >= len(queues) {
-		return nil, 0, 0
+		return nil, 0, 0, nil
 	}
 
 	if windowSize <= 0 {
@@ -362,19 +409,66 @@ func (q *QueueDetails) fetchQueueJobs(
 	}
 
 	queue := queues[selectedQueue]
-	jobs, totalSize, _ := queue.GetJobs(ctx, windowStart, windowSize)
+	if q.filter != "" {
+		return q.fetchFilteredQueueJobs(ctx, queue, windowStart, windowSize)
+	}
+
+	return q.fetchUnfilteredQueueJobs(ctx, queue, windowStart, windowSize)
+}
+
+func (q *QueueDetails) fetchFilteredQueueJobs(
+	ctx context.Context,
+	queue *sidekiq.Queue,
+	windowStart int,
+	windowSize int,
+) ([]*sidekiq.PositionedEntry, int64, int, error) {
+	window, err := queue.ScanJobsWindow(ctx, q.filter, windowStart, windowSize)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+
+	totalSize := window.Total
+	if totalSize <= 0 {
+		return nil, 0, 0, nil
+	}
+
+	maxStart := max(int(totalSize)-windowSize, 0)
+	if windowStart > maxStart {
+		windowStart = maxStart
+		window, err = queue.ScanJobsWindow(ctx, q.filter, windowStart, windowSize)
+		if err != nil {
+			return nil, 0, 0, err
+		}
+	}
+
+	return window.Entries, totalSize, windowStart, nil
+}
+
+func (q *QueueDetails) fetchUnfilteredQueueJobs(
+	ctx context.Context,
+	queue *sidekiq.Queue,
+	windowStart int,
+	windowSize int,
+) ([]*sidekiq.PositionedEntry, int64, int, error) {
+	jobs, totalSize, err := queue.GetJobs(ctx, windowStart, windowSize)
+	if err != nil {
+		return nil, 0, 0, err
+	}
 
 	if totalSize > 0 {
 		maxStart := max(int(totalSize)-windowSize, 0)
 		if windowStart > maxStart {
 			windowStart = maxStart
-			jobs, totalSize, _ = queue.GetJobs(ctx, windowStart, windowSize)
+			jobs, totalSize, err = queue.GetJobs(ctx, windowStart, windowSize)
+			if err != nil {
+				return nil, 0, 0, err
+			}
 		}
 	} else {
 		windowStart = 0
 	}
 
-	return jobs, totalSize, windowStart
+	return jobs, totalSize, windowStart, nil
 }
 
 func (q *QueueDetails) reset() {
@@ -387,6 +481,7 @@ func (q *QueueDetails) reset() {
 	q.queues = nil
 	q.jobs = nil
 	q.displayOrder = nil
+	q.updateEmptyMessage()
 }
 
 // renderQueueList renders the compact queue list (outside the border).
@@ -525,6 +620,25 @@ func (q *QueueDetails) rowsMeta() string {
 	return q.styles.MetricLabel.Render("rows: ") + q.styles.MetricValue.Render(rangeLabel)
 }
 
+func (q *QueueDetails) updateEmptyMessage() {
+	msg := "No jobs in queue"
+	if q.filter != "" {
+		msg = "No matches"
+	}
+	q.lazy.SetEmptyMessage(msg)
+}
+
+func (q *QueueDetails) openFilterDialog() tea.Cmd {
+	return func() tea.Msg {
+		return dialogs.OpenDialogMsg{
+			Model: filterdialog.New(
+				filterdialog.WithStyles(q.filterStyle),
+				filterdialog.WithQuery(q.filter),
+			),
+		}
+	}
+}
+
 // formatContext formats the context map as a string.
 func formatContext(ctx map[string]any) string {
 	if len(ctx) == 0 {
@@ -560,21 +674,9 @@ func (q *QueueDetails) renderJobsBox() string {
 	content := q.lazy.View()
 
 	box := frame.New(
-		frame.WithStyles(frame.Styles{
-			Focused: frame.StyleState{
-				Title:  q.styles.Title,
-				Muted:  q.styles.Muted,
-				Filter: q.styles.FilterFocused,
-				Border: q.styles.FocusBorder,
-			},
-			Blurred: frame.StyleState{
-				Title:  q.styles.Title,
-				Muted:  q.styles.Muted,
-				Filter: q.styles.FilterBlurred,
-				Border: q.styles.BorderStyle,
-			},
-		}),
+		frame.WithStyles(q.frameStyles),
 		frame.WithTitle(title),
+		frame.WithFilter(q.filter),
 		frame.WithTitlePadding(0),
 		frame.WithMeta(meta),
 		frame.WithContent(content),

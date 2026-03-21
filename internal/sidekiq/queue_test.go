@@ -461,6 +461,89 @@ func TestQueueGetJobs_BeyondEnd(t *testing.T) {
 	}
 }
 
+func TestQueueScanJobsWindow_FilteredWindow(t *testing.T) {
+	mr, client := setupTestRedis(t)
+	ctx := testContext(t)
+
+	q := client.NewQueue("default")
+
+	entries := []map[string]any{
+		{"jid": "job1", "class": "TestJob", "args": []any{"skip"}},
+		{"jid": "job2", "class": "TestJob", "args": []any{"match second"}},
+		{"jid": "job3", "class": "TestJob", "args": []any{"match third"}},
+		{"jid": "job4", "class": "TestJob", "args": []any{"skip"}},
+		{"jid": "job5", "class": "TestJob", "args": []any{"match newest"}},
+	}
+	for _, entry := range entries {
+		_, _ = mr.Lpush("queue:default", string(mustMarshalJSON(t, entry)))
+	}
+
+	window, err := q.ScanJobsWindow(ctx, "match", 1, 2)
+	if err != nil {
+		t.Fatalf("ScanJobsWindow failed: %v", err)
+	}
+
+	if window.Total != 3 {
+		t.Fatalf("window.Total = %d, want 3", window.Total)
+	}
+	if len(window.Entries) != 2 {
+		t.Fatalf("len(window.Entries) = %d, want 2", len(window.Entries))
+	}
+
+	if got := window.Entries[0].JID(); got != "job3" {
+		t.Fatalf("window.Entries[0].JID() = %q, want %q", got, "job3")
+	}
+	if got := window.Entries[0].Position; got != 3 {
+		t.Fatalf("window.Entries[0].Position = %d, want %d", got, 3)
+	}
+	if got := window.Entries[1].JID(); got != "job2" {
+		t.Fatalf("window.Entries[1].JID() = %q, want %q", got, "job2")
+	}
+	if got := window.Entries[1].Position; got != 2 {
+		t.Fatalf("window.Entries[1].Position = %d, want %d", got, 2)
+	}
+}
+
+func TestQueueScanJobsWindow_EmptyFilterMatchesQueueOrder(t *testing.T) {
+	mr, client := setupTestRedis(t)
+	ctx := testContext(t)
+
+	q := client.NewQueue("default")
+
+	for i := range 4 {
+		job := map[string]any{
+			"jid":   "job" + strconv.Itoa(i),
+			"class": "TestJob",
+		}
+		_, _ = mr.Lpush("queue:default", string(mustMarshalJSON(t, job)))
+	}
+
+	window, err := q.ScanJobsWindow(ctx, "", 1, 2)
+	if err != nil {
+		t.Fatalf("ScanJobsWindow failed: %v", err)
+	}
+
+	if window.Total != 4 {
+		t.Fatalf("window.Total = %d, want 4", window.Total)
+	}
+	if len(window.Entries) != 2 {
+		t.Fatalf("len(window.Entries) = %d, want 2", len(window.Entries))
+	}
+
+	if got := window.Entries[0].JID(); got != "job2" {
+		t.Fatalf("window.Entries[0].JID() = %q, want %q", got, "job2")
+	}
+	if got := window.Entries[0].Position; got != 3 {
+		t.Fatalf("window.Entries[0].Position = %d, want %d", got, 3)
+	}
+	if got := window.Entries[1].JID(); got != "job1" {
+		t.Fatalf("window.Entries[1].JID() = %q, want %q", got, "job1")
+	}
+	if got := window.Entries[1].Position; got != 2 {
+		t.Fatalf("window.Entries[1].Position = %d, want %d", got, 2)
+	}
+}
+
 func TestQueueClear_RemovesJobsAndQueueSet(t *testing.T) {
 	mr, client := setupTestRedis(t)
 	ctx := testContext(t)

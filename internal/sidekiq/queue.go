@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -88,6 +89,12 @@ type PositionedEntry struct {
 	Position   int
 }
 
+// QueueEntriesWindow holds a filtered window plus aggregate metadata.
+type QueueEntriesWindow struct {
+	Entries []*PositionedEntry
+	Total   int64
+}
+
 // GetJobs fetches jobs from the queue with pagination.
 // start is 0-indexed, count is the number of jobs to fetch.
 // Jobs are returned newest-first (matching Sidekiq's default display order).
@@ -120,6 +127,51 @@ func (q *Queue) GetJobs(ctx context.Context, start, count int) ([]*PositionedEnt
 	}
 
 	return jobs, size, nil
+}
+
+// ScanJobsWindow scans queue jobs using a raw payload substring filter and returns one window.
+func (q *Queue) ScanJobsWindow(ctx context.Context, filter string, start, count int) (QueueEntriesWindow, error) {
+	size, err := q.Size(ctx)
+	if err != nil {
+		return QueueEntriesWindow{}, err
+	}
+	if size == 0 {
+		return QueueEntriesWindow{}, nil
+	}
+
+	start = max(start, 0)
+	count = max(count, 1)
+	windowEnd := start + count
+	batchSize := max(count, 100)
+
+	window := QueueEntriesWindow{
+		Entries: make([]*PositionedEntry, 0, count),
+	}
+
+	for batchStart := 0; batchStart < int(size); batchStart += batchSize {
+		batchEnd := min(batchStart+batchSize-1, int(size)-1)
+		entries, err := q.client.redis.LRange(ctx, "queue:"+q.name, int64(batchStart), int64(batchEnd)).Result()
+		if err != nil {
+			return QueueEntriesWindow{}, err
+		}
+
+		for i, entry := range entries {
+			if filter != "" && !strings.Contains(entry, filter) {
+				continue
+			}
+
+			if window.Total >= int64(start) && window.Total < int64(windowEnd) {
+				position := int(size) - batchStart - i
+				window.Entries = append(window.Entries, &PositionedEntry{
+					JobRecord: NewJobRecord(entry, q.name),
+					Position:  position,
+				})
+			}
+			window.Total++
+		}
+	}
+
+	return window, nil
 }
 
 // Clear deletes all jobs within this queue and removes it from the queues set.

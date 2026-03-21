@@ -3,7 +3,7 @@ title: "Queues"
 description: "Browse queues and inspect queued jobs."
 summary: "Browse queues and inspect queued jobs."
 date: 2025-12-30T00:00:00Z
-lastmod: 2026-01-10T00:00:00Z
+lastmod: 2026-03-21T00:00:00Z
 draft: false
 weight: 60
 toc: true
@@ -20,6 +20,8 @@ Queues show the backlog waiting to be processed, with per-queue counts.
 | `3`               | Go to Queues.                                             |
 | `Up` / `k`        | Move up one row.                                          |
 | `Down` / `j`      | Move down one row.                                        |
+| `/`               | Filter jobs in the selected queue by payload substring.   |
+| `Ctrl+u`          | Clear the active job filter.                              |
 | `Enter`           | Show job details.                                         |
 | `c`               | Copy job JID.                                             |
 | `Ctrl+1`–`Ctrl+5` | Select queue.                                             |
