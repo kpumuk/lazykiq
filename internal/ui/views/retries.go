@@ -369,13 +369,6 @@ func (r *Retries) fetchWindow(
 	windowSize int,
 	_ lazytable.CursorIntent,
 ) (lazytable.FetchResult, error) {
-	var scanWindow func(context.Context, string, int, int) (sidekiq.SortedEntriesWindow, error)
-	if client, ok := r.client.(interface {
-		ScanRetryJobsWindow(context.Context, string, int, int) (sidekiq.SortedEntriesWindow, error)
-	}); ok {
-		scanWindow = client.ScanRetryJobsWindow
-	}
-
 	return fetchSortedEntriesWindow(ctx, sortedEntriesFetchConfig{
 		tracker:          "retries.fetchWindow",
 		filter:           r.filter,
@@ -383,7 +376,7 @@ func (r *Retries) fetchWindow(
 		windowSize:       windowSize,
 		fallbackPageSize: retriesFallbackPageSize,
 		windowPages:      retriesWindowPages,
-		scanWindow:       scanWindow,
+		scanWindow:       r.client.ScanRetryJobsWindow,
 		scan:             r.client.ScanRetryJobs,
 		fetch:            r.client.GetRetryJobs,
 		bounds:           r.client.GetRetryBounds,
