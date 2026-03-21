@@ -3,7 +3,9 @@ package lazytable
 import (
 	"context"
 	"testing"
+	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/exp/golden"
@@ -97,4 +99,87 @@ func TestGoldenLazyTableLoading(t *testing.T) {
 
 	output := ansi.Strip(m.View())
 	golden.RequireEqual(t, []byte(output))
+}
+
+func TestLazyTableRequestWindowCancelsSupersededFetch(t *testing.T) {
+	started := make(chan context.Context, 2)
+
+	m := New(
+		WithTableOptions(
+			table.WithColumns([]table.Column{{Title: "A", Width: 3}}),
+			table.WithStyles(blankTableStyles()),
+		),
+		WithFetcher(func(ctx context.Context, _, _ int, _ CursorIntent) (FetchResult, error) {
+			started <- ctx
+			<-ctx.Done()
+			return FetchResult{}, ctx.Err()
+		}),
+	)
+
+	cmd1 := m.RequestWindow(0, CursorStart)
+	msg1 := cmd1()
+	batch1, ok := msg1.(tea.BatchMsg)
+	if !ok || len(batch1) < 2 {
+		t.Fatalf("RequestWindow() returned %T, want tea.BatchMsg with fetch cmd", msg1)
+	}
+	done1 := make(chan any, 1)
+	go func() {
+		done1 <- batch1[1]()
+	}()
+
+	ctx1 := <-started
+	select {
+	case <-ctx1.Done():
+		t.Fatal("first request canceled before replacement")
+	default:
+	}
+
+	cmd2 := m.RequestWindow(25, CursorStart)
+	msg2 := cmd2()
+	batch2, ok := msg2.(tea.BatchMsg)
+	if !ok || len(batch2) < 2 {
+		t.Fatalf("RequestWindow() returned %T, want tea.BatchMsg with fetch cmd", msg2)
+	}
+	select {
+	case <-ctx1.Done():
+	case <-time.After(time.Second):
+		t.Fatal("first request was not canceled when a new window was requested")
+	}
+
+	done2 := make(chan any, 1)
+	go func() {
+		done2 <- batch2[1]()
+	}()
+
+	ctx2 := <-started
+	select {
+	case <-ctx2.Done():
+		t.Fatal("replacement request canceled unexpectedly")
+	default:
+	}
+
+	select {
+	case msg := <-done1:
+		if msg != nil {
+			t.Fatalf("superseded request returned %T, want nil", msg)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("superseded request did not finish after cancellation")
+	}
+
+	m.CancelRequest()
+	select {
+	case <-ctx2.Done():
+	case <-time.After(time.Second):
+		t.Fatal("CancelRequest did not cancel the active fetch")
+	}
+
+	select {
+	case msg := <-done2:
+		if msg != nil {
+			t.Fatalf("canceled request returned %T, want nil", msg)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("active request did not finish after cancellation")
+	}
 }

@@ -19,6 +19,7 @@ import (
 	confirmdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/confirm"
 	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
 	"github.com/kpumuk/lazykiq/internal/ui/display"
+	"github.com/kpumuk/lazykiq/internal/ui/requestctx"
 )
 
 // QueuesListInfo holds queue information for the list view.
@@ -48,6 +49,7 @@ type QueuesList struct {
 	dangerousActionsEnabled bool
 	frameStyles             frame.Styles
 	filterStyle             filterdialog.Styles
+	fetchRequest            requestctx.Controller
 }
 
 // NewQueuesList creates a new QueuesList view.
@@ -280,13 +282,20 @@ func (q *QueuesList) SetStyles(styles Styles) View {
 	return q
 }
 
+// CancelRequests stops in-flight fetches when the view is hidden.
+func (q *QueuesList) CancelRequests() {
+	q.fetchRequest.Cancel()
+}
+
 // fetchDataCmd fetches queues data from Redis.
 func (q *QueuesList) fetchDataCmd() tea.Cmd {
+	ctx := q.fetchRequest.Start(devtools.WithTracker(context.Background(), "queues.fetchDataCmd"))
 	return func() tea.Msg {
-		ctx := devtools.WithTracker(context.Background(), "queues.fetchDataCmd")
-
 		queues, err := q.client.GetQueues(ctx)
 		if err != nil {
+			if requestctx.IsCanceled(err) {
+				return nil
+			}
 			return ConnectionErrorMsg{Err: err}
 		}
 
@@ -327,6 +336,7 @@ func (q *QueuesList) fetchDataCmd() tea.Cmd {
 }
 
 func (q *QueuesList) reset() {
+	q.fetchRequest.Cancel()
 	q.ready = false
 	q.queues = nil
 	q.table.SetRows(nil)

@@ -16,6 +16,7 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
 	"github.com/kpumuk/lazykiq/internal/ui/display"
+	"github.com/kpumuk/lazykiq/internal/ui/requestctx"
 )
 
 // processesListDataMsg carries processes list data internally.
@@ -36,6 +37,7 @@ type ProcessesList struct {
 	dangerousActionsEnabled bool
 	frameStyles             frame.Styles
 	filterStyle             filterdialog.Styles
+	fetchRequest            requestctx.Controller
 }
 
 // NewProcessesList creates a new ProcessesList view.
@@ -257,6 +259,11 @@ func (p *ProcessesList) Dispose() {
 	p.updateTableSize()
 }
 
+// CancelRequests stops in-flight fetches when the view is hidden.
+func (p *ProcessesList) CancelRequests() {
+	p.fetchRequest.Cancel()
+}
+
 // SetStyles implements View.
 func (p *ProcessesList) SetStyles(styles Styles) View {
 	p.styles = styles
@@ -268,11 +275,13 @@ func (p *ProcessesList) SetStyles(styles Styles) View {
 
 // fetchDataCmd fetches processes data from Redis.
 func (p *ProcessesList) fetchDataCmd() tea.Cmd {
+	ctx := p.fetchRequest.Start(devtools.WithTracker(context.Background(), "processes.fetchDataCmd"))
 	return func() tea.Msg {
-		ctx := devtools.WithTracker(context.Background(), "processes.fetchDataCmd")
-
 		data, err := p.client.GetBusyData(ctx, "")
 		if err != nil {
+			if requestctx.IsCanceled(err) {
+				return nil
+			}
 			return ConnectionErrorMsg{Err: err}
 		}
 
@@ -316,6 +325,7 @@ func (p *ProcessesList) matchesFilter(proc sidekiq.Process) bool {
 }
 
 func (p *ProcessesList) reset() {
+	p.fetchRequest.Cancel()
 	p.ready = false
 	p.processes = nil
 	p.table.SetRows(nil)

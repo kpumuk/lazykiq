@@ -23,6 +23,8 @@ const (
 	Version7
 	// Version8 uses j|YYMMDD|H:M format (6-digit date).
 	Version8
+
+	uiRedisPoolSize = 4
 )
 
 func init() {
@@ -53,7 +55,9 @@ func NewClient(redisURL string) (*Client, error) {
 	opts.DialTimeout = 2 * time.Second // Short timeout to fail fast
 	opts.ReadTimeout = 2 * time.Second
 	opts.WriteTimeout = 2 * time.Second
-	opts.PoolSize = 1 // Minimal pool size
+	opts.ContextTimeoutEnabled = true
+	opts.PoolSize = uiRedisPoolSize
+	opts.MaxActiveConns = uiRedisPoolSize
 
 	rdb := redis.NewClient(opts)
 

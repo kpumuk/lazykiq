@@ -340,6 +340,11 @@ func (r *Retries) Dispose() {
 	r.updateTableSize()
 }
 
+// CancelRequests stops in-flight fetches when the view is hidden.
+func (r *Retries) CancelRequests() {
+	r.lazy.CancelRequest()
+}
+
 // SetStyles implements View.
 func (r *Retries) SetStyles(styles Styles) View {
 	r.styles = styles

@@ -12,6 +12,7 @@ import (
 
 	"github.com/kpumuk/lazykiq/internal/mathutil"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
+	"github.com/kpumuk/lazykiq/internal/ui/requestctx"
 )
 
 // CursorIntent controls how the cursor should be positioned after loading.
@@ -62,6 +63,7 @@ type Model struct {
 	requestID        int
 	pendingIntent    CursorIntent
 	anchor           anchorState
+	request          requestctx.Controller
 }
 
 type anchorState struct {
@@ -158,6 +160,7 @@ func (m *Model) SetEmptyMessage(msg string) {
 
 // Reset clears the window state and table rows.
 func (m *Model) Reset() {
+	m.CancelRequest()
 	m.ensurePagingDefaults()
 	m.windowStart = 0
 	m.totalSize = 0
@@ -167,6 +170,11 @@ func (m *Model) Reset() {
 	m.table.SetRows(nil)
 	m.table.SetCursor(0)
 	m.table.ClearScrollbar()
+}
+
+// CancelRequest stops the current in-flight fetch, if any.
+func (m *Model) CancelRequest() {
+	m.request.Cancel()
 }
 
 // RequestWindow starts a fetch for the given window start.
@@ -376,12 +384,16 @@ func (m Model) effectiveWindowSize() int {
 func (m *Model) fetchCmd(requestID, windowStart, windowSize int, intent CursorIntent) tea.Cmd {
 	fetcher := m.fetcher
 	handler := m.errorHandler
+	ctx := m.request.Start(context.Background())
 	return func() tea.Msg {
 		if fetcher == nil {
 			return nil
 		}
-		result, err := fetcher(context.Background(), windowStart, windowSize, intent)
+		result, err := fetcher(ctx, windowStart, windowSize, intent)
 		if err != nil {
+			if requestctx.IsCanceled(err) {
+				return nil
+			}
 			if handler != nil {
 				return handler(err)
 			}

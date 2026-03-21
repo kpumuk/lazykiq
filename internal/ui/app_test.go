@@ -36,6 +36,20 @@ func (d stubDialogs) GetLayers() []*lipgloss.Layer                { return d.lay
 func (d stubDialogs) ActiveModel() dialogs.DialogModel            { return nil }
 func (d stubDialogs) ActiveDialogID() dialogs.DialogID            { return "" }
 
+type cancelableStubView struct {
+	name         string
+	cancelations int
+}
+
+func (v *cancelableStubView) Init() tea.Cmd                        { return nil }
+func (v *cancelableStubView) Update(tea.Msg) (views.View, tea.Cmd) { return v, nil }
+func (v *cancelableStubView) View() string                         { return v.name }
+func (v *cancelableStubView) Name() string                         { return v.name }
+func (v *cancelableStubView) ShortHelp() []key.Binding             { return nil }
+func (v *cancelableStubView) SetSize(int, int) views.View          { return v }
+func (v *cancelableStubView) SetStyles(views.Styles) views.View    { return v }
+func (v *cancelableStubView) CancelRequests()                      { v.cancelations++ }
+
 func TestAppViewOverlaysDialogsAtLayerCoordinates(t *testing.T) {
 	t.Parallel()
 
@@ -70,5 +84,51 @@ func TestAppViewOverlaysDialogsAtLayerCoordinates(t *testing.T) {
 	}
 	if !strings.HasPrefix(lines[3], "     BOX") {
 		t.Fatalf("dialog line = %q, want it positioned at x=5", lines[3])
+	}
+}
+
+func TestSetActiveViewCancelsInactiveViewRequests(t *testing.T) {
+	t.Parallel()
+
+	dashboard := &cancelableStubView{name: "Dashboard"}
+	busy := &cancelableStubView{name: "Busy"}
+	app := App{
+		viewStack: []viewID{viewDashboard},
+		viewRegistry: map[viewID]views.View{
+			viewDashboard: dashboard,
+			viewBusy:      busy,
+		},
+	}
+
+	app.setActiveView(viewBusy)
+
+	if dashboard.cancelations != 1 {
+		t.Fatalf("dashboard cancelations = %d, want 1", dashboard.cancelations)
+	}
+	if busy.cancelations != 0 {
+		t.Fatalf("busy cancelations = %d, want 0", busy.cancelations)
+	}
+}
+
+func TestPushViewCancelsPreviousActiveViewRequests(t *testing.T) {
+	t.Parallel()
+
+	busy := &cancelableStubView{name: "Busy"}
+	processes := &cancelableStubView{name: "Processes"}
+	app := App{
+		viewStack: []viewID{viewBusy},
+		viewRegistry: map[viewID]views.View{
+			viewBusy:          busy,
+			viewProcessesList: processes,
+		},
+	}
+
+	app.pushView(viewProcessesList)
+
+	if busy.cancelations != 1 {
+		t.Fatalf("busy cancelations = %d, want 1", busy.cancelations)
+	}
+	if processes.cancelations != 0 {
+		t.Fatalf("processes cancelations = %d, want 0", processes.cancelations)
 	}
 }

@@ -19,6 +19,7 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
 	"github.com/kpumuk/lazykiq/internal/ui/display"
+	"github.com/kpumuk/lazykiq/internal/ui/requestctx"
 )
 
 // metricsListMsg carries list metrics data.
@@ -40,17 +41,18 @@ type Metrics struct {
 	height int
 	styles Styles
 
-	ready       bool
-	result      sidekiq.MetricsTopJobsResult
-	rows        []metricsRow
-	resetScroll bool
-	periods     []string
-	period      string
-	periodIdx   int
-	filter      string
-	frameStyles frame.Styles
-	filterStyle filterdialog.Styles
-	table       table.Model
+	ready        bool
+	result       sidekiq.MetricsTopJobsResult
+	rows         []metricsRow
+	resetScroll  bool
+	periods      []string
+	period       string
+	periodIdx    int
+	filter       string
+	frameStyles  frame.Styles
+	filterStyle  filterdialog.Styles
+	table        table.Model
+	fetchRequest requestctx.Controller
 }
 
 // NewMetrics creates a new Metrics view.
@@ -240,6 +242,11 @@ func (m *Metrics) SetSize(width, height int) View {
 	return m
 }
 
+// CancelRequests stops in-flight fetches when the view is hidden.
+func (m *Metrics) CancelRequests() {
+	m.fetchRequest.Cancel()
+}
+
 // SetStyles implements View.
 func (m *Metrics) SetStyles(styles Styles) View {
 	m.styles = styles
@@ -262,9 +269,8 @@ func (m *Metrics) fetchListCmd() tea.Cmd {
 	period := m.period
 	filter := m.filter
 	client := m.client
+	ctx := m.fetchRequest.Start(devtools.WithTracker(context.Background(), "metrics.fetchListCmd"))
 	return func() tea.Msg {
-		ctx := devtools.WithTracker(context.Background(), "metrics.fetchListCmd")
-
 		periods := normalizeMetricsPeriods(client.MetricsPeriodOrder(ctx))
 		queryPeriod := period
 		if !slices.Contains(periods, queryPeriod) {
@@ -274,6 +280,9 @@ func (m *Metrics) fetchListCmd() tea.Cmd {
 		params := sidekiq.MetricsPeriods[queryPeriod]
 		result, err := client.GetMetricsTopJobs(ctx, params, filter)
 		if err != nil {
+			if requestctx.IsCanceled(err) {
+				return nil
+			}
 			return ConnectionErrorMsg{Err: err}
 		}
 		return metricsListMsg{

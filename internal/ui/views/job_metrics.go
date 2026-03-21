@@ -18,6 +18,7 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/scatter"
 	"github.com/kpumuk/lazykiq/internal/ui/display"
+	"github.com/kpumuk/lazykiq/internal/ui/requestctx"
 )
 
 // jobMetricsDataMsg carries job metrics data.
@@ -35,10 +36,11 @@ type JobMetrics struct {
 	periods []string
 	period  string
 
-	periodIdx int
-	result    sidekiq.MetricsJobDetailResult
-	processed *charts.ProcessedMetrics
-	focused   int
+	periodIdx    int
+	result       sidekiq.MetricsJobDetailResult
+	processed    *charts.ProcessedMetrics
+	focused      int
+	fetchRequest requestctx.Controller
 }
 
 // NewJobMetrics creates a new job metrics view.
@@ -303,6 +305,7 @@ func (j *JobMetrics) SetJobMetrics(jobName, period string) {
 
 // Dispose clears cached data when the view is removed from the stack.
 func (j *JobMetrics) Dispose() {
+	j.fetchRequest.Cancel()
 	j.jobName = ""
 	j.periodIdx = 0
 	j.period = j.periods[0]
@@ -311,19 +314,27 @@ func (j *JobMetrics) Dispose() {
 	j.focused = 0
 }
 
+// CancelRequests stops in-flight fetches when the view is hidden.
+func (j *JobMetrics) CancelRequests() {
+	j.fetchRequest.Cancel()
+}
+
 func (j *JobMetrics) fetchCmd() tea.Cmd {
 	jobName := j.jobName
 	period := j.period
 	client := j.client
 	periods := j.periods
+	ctx := j.fetchRequest.Start(devtools.WithTracker(context.Background(), "job_metrics.fetchCmd"))
 	return func() tea.Msg {
-		ctx := devtools.WithTracker(context.Background(), "job_metrics.fetchCmd")
 		params, ok := sidekiq.MetricsPeriods[period]
 		if !ok {
 			params = sidekiq.MetricsPeriods[periods[0]]
 		}
 		result, err := client.GetMetricsJobDetail(ctx, jobName, params)
 		if err != nil {
+			if requestctx.IsCanceled(err) {
+				return nil
+			}
 			return ConnectionErrorMsg{Err: err}
 		}
 		return jobMetricsDataMsg{result: result}

@@ -19,6 +19,7 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
 	"github.com/kpumuk/lazykiq/internal/ui/display"
+	"github.com/kpumuk/lazykiq/internal/ui/requestctx"
 )
 
 // busyDataMsg carries busy data from the fetch command to the Busy view.
@@ -41,6 +42,7 @@ type Busy struct {
 	treeMode        bool
 	filter          string
 	filterStyle     filterdialog.Styles
+	fetchRequest    requestctx.Controller
 }
 
 const processGlyph = "⚙"
@@ -229,6 +231,11 @@ func (b *Busy) Dispose() {
 	b.updateTableSize()
 }
 
+// CancelRequests stops in-flight fetches when the view is hidden.
+func (b *Busy) CancelRequests() {
+	b.fetchRequest.Cancel()
+}
+
 // SetStyles implements View.
 func (b *Busy) SetStyles(styles Styles) View {
 	b.styles = styles
@@ -261,10 +268,13 @@ func (b *Busy) SetProcessIdentity(identity string) {
 
 // fetchDataCmd fetches busy data from Redis.
 func (b *Busy) fetchDataCmd() tea.Cmd {
+	ctx := b.fetchRequest.Start(devtools.WithTracker(context.Background(), "busy.fetchDataCmd"))
 	return func() tea.Msg {
-		ctx := devtools.WithTracker(context.Background(), "busy.fetchDataCmd")
 		data, err := b.client.GetBusyData(ctx, b.filter)
 		if err != nil {
+			if requestctx.IsCanceled(err) {
+				return nil
+			}
 			return ConnectionErrorMsg{Err: err}
 		}
 		return busyDataMsg{data: data}
@@ -272,6 +282,7 @@ func (b *Busy) fetchDataCmd() tea.Cmd {
 }
 
 func (b *Busy) reset() {
+	b.fetchRequest.Cancel()
 	b.ready = false
 	b.data = sidekiq.BusyData{}
 	b.filteredJobs = nil
