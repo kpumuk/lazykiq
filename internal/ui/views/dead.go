@@ -75,7 +75,7 @@ func NewDead(client sidekiq.API) *Dead {
 // Init implements View.
 func (d *Dead) Init() tea.Cmd {
 	d.reset()
-	return d.lazy.RequestWindow(0, lazytable.CursorStart)
+	return requestLazyFromStart(&d.lazy)
 }
 
 // Update implements View.
@@ -96,10 +96,7 @@ func (d *Dead) Update(msg tea.Msg) (View, tea.Cmd) {
 		return d, cmd
 
 	case RefreshMsg:
-		if d.lazy.Loading() {
-			return d, nil
-		}
-		return d, d.lazy.RequestWindow(d.lazy.WindowStart(), lazytable.CursorKeep)
+		return d, refreshLazyWindow(&d.lazy)
 
 	case filterdialog.ActionMsg:
 		if msg.Action == filterdialog.ActionNone || msg.Query == d.filter {
@@ -107,8 +104,7 @@ func (d *Dead) Update(msg tea.Msg) (View, tea.Cmd) {
 		}
 		d.filter = msg.Query
 		d.updateEmptyMessage()
-		d.lazy.Table().SetCursor(0)
-		return d, d.lazy.RequestWindow(0, lazytable.CursorStart)
+		return d, reloadLazyFromStart(&d.lazy)
 
 	case confirmdialog.ActionMsg:
 		action, entry, ok := d.pendingConfirm.Confirm(msg, d.dangerousActionsEnabled, deadJobActionNone)
@@ -144,8 +140,7 @@ func (d *Dead) Update(msg tea.Msg) (View, tea.Cmd) {
 			}
 			d.filter = ""
 			d.updateEmptyMessage()
-			d.lazy.Table().SetCursor(0)
-			return d, d.lazy.RequestWindow(0, lazytable.CursorStart)
+			return d, reloadLazyFromStart(&d.lazy)
 		case "c":
 			if entry, ok := d.selectedEntry(); ok {
 				return d, copyTextCmd(entry.JID())
@@ -155,17 +150,9 @@ func (d *Dead) Update(msg tea.Msg) (View, tea.Cmd) {
 
 		switch msg.String() {
 		case "alt+left", "[":
-			if d.filter == "" {
-				d.lazy.MovePage(-1)
-				return d, d.lazy.MaybePrefetch()
-			}
-			return d, nil
+			return d, moveLazyPage(&d.lazy, -1)
 		case "alt+right", "]":
-			if d.filter == "" {
-				d.lazy.MovePage(1)
-				return d, d.lazy.MaybePrefetch()
-			}
-			return d, nil
+			return d, moveLazyPage(&d.lazy, 1)
 		case "enter":
 			// Show detail for selected job
 			if idx := d.lazy.Table().Cursor(); idx >= 0 && idx < len(d.jobs) {

@@ -78,7 +78,7 @@ func NewRetries(client sidekiq.API) *Retries {
 // Init implements View.
 func (r *Retries) Init() tea.Cmd {
 	r.reset()
-	return r.lazy.RequestWindow(0, lazytable.CursorStart)
+	return requestLazyFromStart(&r.lazy)
 }
 
 // Update implements View.
@@ -99,10 +99,7 @@ func (r *Retries) Update(msg tea.Msg) (View, tea.Cmd) {
 		return r, cmd
 
 	case RefreshMsg:
-		if r.lazy.Loading() {
-			return r, nil
-		}
-		return r, r.lazy.RequestWindow(r.lazy.WindowStart(), lazytable.CursorKeep)
+		return r, refreshLazyWindow(&r.lazy)
 
 	case filterdialog.ActionMsg:
 		if msg.Action == filterdialog.ActionNone || msg.Query == r.filter {
@@ -110,8 +107,7 @@ func (r *Retries) Update(msg tea.Msg) (View, tea.Cmd) {
 		}
 		r.filter = msg.Query
 		r.updateEmptyMessage()
-		r.lazy.Table().SetCursor(0)
-		return r, r.lazy.RequestWindow(0, lazytable.CursorStart)
+		return r, reloadLazyFromStart(&r.lazy)
 
 	case confirmdialog.ActionMsg:
 		action, entry, ok := r.pendingConfirm.Confirm(msg, r.dangerousActionsEnabled, retriesJobActionNone)
@@ -154,8 +150,7 @@ func (r *Retries) Update(msg tea.Msg) (View, tea.Cmd) {
 			}
 			r.filter = ""
 			r.updateEmptyMessage()
-			r.lazy.Table().SetCursor(0)
-			return r, r.lazy.RequestWindow(0, lazytable.CursorStart)
+			return r, reloadLazyFromStart(&r.lazy)
 		case "c":
 			if entry, ok := r.selectedEntry(); ok {
 				return r, copyTextCmd(entry.JID())
@@ -165,17 +160,9 @@ func (r *Retries) Update(msg tea.Msg) (View, tea.Cmd) {
 
 		switch msg.String() {
 		case "alt+left", "[":
-			if r.filter == "" {
-				r.lazy.MovePage(-1)
-				return r, r.lazy.MaybePrefetch()
-			}
-			return r, nil
+			return r, moveLazyPage(&r.lazy, -1)
 		case "alt+right", "]":
-			if r.filter == "" {
-				r.lazy.MovePage(1)
-				return r, r.lazy.MaybePrefetch()
-			}
-			return r, nil
+			return r, moveLazyPage(&r.lazy, 1)
 		case "enter":
 			// Show detail for selected job
 			if idx := r.lazy.Table().Cursor(); idx >= 0 && idx < len(r.jobs) {
