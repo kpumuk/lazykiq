@@ -49,6 +49,17 @@ func newTestModel(tableOpts ...table.Option) Model {
 	)
 }
 
+func fetchBatchCmd(t *testing.T, cmd tea.Cmd) tea.Cmd {
+	t.Helper()
+
+	msg := cmd()
+	batch, ok := msg.(tea.BatchMsg)
+	if !ok || len(batch) < 2 {
+		t.Fatalf("RequestWindow() returned %T, want tea.BatchMsg with fetch cmd", msg)
+	}
+	return batch[1]
+}
+
 func TestLazyTableAnchorKeepsSelection(t *testing.T) {
 	m := newTestModel()
 
@@ -116,15 +127,10 @@ func TestLazyTableRequestWindowCancelsSupersededFetch(t *testing.T) {
 		}),
 	)
 
-	cmd1 := m.RequestWindow(0, CursorStart)
-	msg1 := cmd1()
-	batch1, ok := msg1.(tea.BatchMsg)
-	if !ok || len(batch1) < 2 {
-		t.Fatalf("RequestWindow() returned %T, want tea.BatchMsg with fetch cmd", msg1)
-	}
+	cmd1 := fetchBatchCmd(t, m.RequestWindow(0, CursorStart))
 	done1 := make(chan any, 1)
 	go func() {
-		done1 <- batch1[1]()
+		done1 <- cmd1()
 	}()
 
 	ctx1 := <-started
@@ -134,12 +140,7 @@ func TestLazyTableRequestWindowCancelsSupersededFetch(t *testing.T) {
 	default:
 	}
 
-	cmd2 := m.RequestWindow(25, CursorStart)
-	msg2 := cmd2()
-	batch2, ok := msg2.(tea.BatchMsg)
-	if !ok || len(batch2) < 2 {
-		t.Fatalf("RequestWindow() returned %T, want tea.BatchMsg with fetch cmd", msg2)
-	}
+	cmd2 := fetchBatchCmd(t, m.RequestWindow(25, CursorStart))
 	select {
 	case <-ctx1.Done():
 	case <-time.After(time.Second):
@@ -148,7 +149,7 @@ func TestLazyTableRequestWindowCancelsSupersededFetch(t *testing.T) {
 
 	done2 := make(chan any, 1)
 	go func() {
-		done2 <- batch2[1]()
+		done2 <- cmd2()
 	}()
 
 	ctx2 := <-started
@@ -168,6 +169,9 @@ func TestLazyTableRequestWindowCancelsSupersededFetch(t *testing.T) {
 	}
 
 	m.CancelRequest()
+	if m.Loading() {
+		t.Fatal("CancelRequest should clear loading state")
+	}
 	select {
 	case <-ctx2.Done():
 	case <-time.After(time.Second):

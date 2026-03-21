@@ -175,6 +175,7 @@ func (m *Model) Reset() {
 // CancelRequest stops the current in-flight fetch, if any.
 func (m *Model) CancelRequest() {
 	m.request.Cancel()
+	m.loading = false
 }
 
 // RequestWindow starts a fetch for the given window start.
@@ -183,6 +184,7 @@ func (m *Model) RequestWindow(windowStart int, intent CursorIntent) tea.Cmd {
 		return nil
 	}
 	windowStart = max(windowStart, 0)
+	ctx := m.request.Start(context.Background())
 	m.pendingIntent = intent
 	if intent == CursorKeep {
 		m.captureAnchor()
@@ -196,7 +198,7 @@ func (m *Model) RequestWindow(windowStart int, intent CursorIntent) tea.Cmd {
 
 	return tea.Batch(
 		m.spinner.Tick,
-		m.fetchCmd(requestID, windowStart, windowSize, intent),
+		m.fetchCmd(ctx, requestID, windowStart, windowSize, intent),
 	)
 }
 
@@ -381,10 +383,9 @@ func (m Model) effectiveWindowSize() int {
 	return max(m.pageSize, m.fallbackPageSize) * max(m.windowPages, 1)
 }
 
-func (m *Model) fetchCmd(requestID, windowStart, windowSize int, intent CursorIntent) tea.Cmd {
+func (m *Model) fetchCmd(ctx context.Context, requestID, windowStart, windowSize int, intent CursorIntent) tea.Cmd {
 	fetcher := m.fetcher
 	handler := m.errorHandler
-	ctx := m.request.Start(context.Background())
 	return func() tea.Msg {
 		if fetcher == nil {
 			return nil

@@ -859,9 +859,9 @@ func (a *App) pushView(id viewID) tea.Cmd {
 	return nil
 }
 
-func (a *App) popView() {
+func (a *App) popTopView() bool {
 	if len(a.viewStack) <= 1 {
-		return
+		return false
 	}
 
 	popped := a.viewStack[len(a.viewStack)-1]
@@ -873,21 +873,16 @@ func (a *App) popView() {
 		}
 	}
 	a.stackbar.SetStack(a.stackNames())
+	return true
+}
+
+func (a *App) popView() {
+	a.popTopView()
 }
 
 func (a *App) popAndRefresh(id viewID) tea.Cmd {
-	if len(a.viewStack) <= 1 {
+	if !a.popTopView() {
 		return a.updateView(id, views.RefreshMsg{})
 	}
-
-	popped := a.viewStack[len(a.viewStack)-1]
-	a.cancelViewRequests(popped)
-	a.viewStack = a.viewStack[:len(a.viewStack)-1]
-	if popped != viewDashboard {
-		if disposable, ok := a.viewRegistry[popped].(views.Disposable); ok {
-			disposable.Dispose()
-		}
-	}
-	a.stackbar.SetStack(a.stackNames())
 	return a.updateView(id, views.RefreshMsg{})
 }
