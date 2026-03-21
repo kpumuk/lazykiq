@@ -547,6 +547,37 @@ func normalizeSortedSetMatch(match string) string {
 	return match
 }
 
+func (c *Client) scanSortedSetEntries(
+	ctx context.Context,
+	key, match string,
+	visit func(*SortedEntry) error,
+) error {
+	match = normalizeSortedSetMatch(match)
+
+	var cursor uint64
+	for {
+		values, nextCursor, err := c.redis.ZScan(ctx, key, cursor, match, sortedSetScanCount).Result()
+		if err != nil {
+			return err
+		}
+
+		for i := 0; i+1 < len(values); i += 2 {
+			score, err := strconv.ParseFloat(values[i+1], 64)
+			if err != nil {
+				continue
+			}
+			if err := visit(NewSortedEntry(values[i], score)); err != nil {
+				return err
+			}
+		}
+
+		cursor = nextCursor
+		if cursor == 0 {
+			return nil
+		}
+	}
+}
+
 func sortedEntryBefore(a, b *SortedEntry, reverse bool) bool {
 	if a == nil {
 		return false

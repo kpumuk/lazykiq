@@ -72,6 +72,12 @@ type API interface {
 	// GetRetryBounds fetches the earliest and latest retry jobs.
 	GetRetryBounds(ctx context.Context) (*SortedEntry, *SortedEntry, error)
 
+	// GetErrorSummary fetches exact error summary rows across dead and retry sets.
+	GetErrorSummary(ctx context.Context, query string) ([]ErrorSummaryRow, ErrorSummaryMeta, error)
+
+	// GetErrorGroupWindow fetches one exact paged error group window across dead and retry sets.
+	GetErrorGroupWindow(ctx context.Context, key ErrorGroupKey, query string, start, count int) (ErrorGroupWindow, error)
+
 	// GetScheduledJobs fetches scheduled jobs with pagination (earliest execution time first).
 	GetScheduledJobs(ctx context.Context, start, count int) ([]*SortedEntry, int64, error)
 

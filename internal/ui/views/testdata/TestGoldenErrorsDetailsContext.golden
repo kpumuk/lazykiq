@@ -1,0 +1,5 @@
+ Job:    CleanupJob                                                             /      filter       
+ Error:  ArgumentError                                                          ctrl+u reset filter 
+ Queue:  default                                                                [ ⋰ ]  page up/down 
+ Total:  42                                                                     enter  job detail   
+ Filter: cleanup                                                                                    

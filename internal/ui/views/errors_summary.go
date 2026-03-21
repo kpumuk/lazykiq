@@ -2,6 +2,7 @@ package views
 
 import (
 	"context"
+	"time"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
@@ -18,10 +19,14 @@ import (
 
 // errorsSummaryDataMsg carries error summary data internally.
 type errorsSummaryDataMsg struct {
-	rows       []errorSummaryRow
-	deadCount  int
-	retryCount int
+	rows      []sidekiq.ErrorSummaryRow
+	meta      sidekiq.ErrorSummaryMeta
+	fetchedAt time.Time
 }
+
+const errorsSummaryRefreshInterval = time.Minute
+
+var nowFuncErrorsSummary = time.Now
 
 // ErrorsSummary shows a summary of errors grouped by job and error class.
 type ErrorsSummary struct {
@@ -29,11 +34,12 @@ type ErrorsSummary struct {
 	width        int
 	height       int
 	styles       Styles
-	rows         []errorSummaryRow
+	rows         []sidekiq.ErrorSummaryRow
 	table        table.Model
 	ready        bool
-	deadCount    int
-	retryCount   int
+	refreshing   bool
+	meta         sidekiq.ErrorSummaryMeta
+	fetchedAt    time.Time
 	filter       string
 	frameStyles  frame.Styles
 	filterStyle  filterdialog.Styles
@@ -54,7 +60,7 @@ func NewErrorsSummary(client sidekiq.API) *ErrorsSummary {
 // Init implements View.
 func (e *ErrorsSummary) Init() tea.Cmd {
 	e.reset()
-	return e.fetchDataCmd()
+	return e.fetchDataCmd(true)
 }
 
 // Update implements View.
@@ -62,14 +68,15 @@ func (e *ErrorsSummary) Update(msg tea.Msg) (View, tea.Cmd) {
 	switch msg := msg.(type) {
 	case errorsSummaryDataMsg:
 		e.rows = msg.rows
-		e.deadCount = msg.deadCount
-		e.retryCount = msg.retryCount
+		e.meta = msg.meta
+		e.fetchedAt = msg.fetchedAt
 		e.ready = true
+		e.refreshing = false
 		e.updateTableRows()
 		return e, nil
 
 	case RefreshMsg:
-		return e, e.fetchDataCmd()
+		return e, e.fetchDataCmd(false)
 
 	case filterdialog.ActionMsg:
 		if msg.Action == filterdialog.ActionNone {
@@ -80,7 +87,7 @@ func (e *ErrorsSummary) Update(msg tea.Msg) (View, tea.Cmd) {
 		}
 		e.filter = msg.Query
 		e.table.SetCursor(0)
-		return e, e.fetchDataCmd()
+		return e, e.fetchDataCmd(true)
 
 	case tea.KeyPressMsg:
 		switch msg.String() {
@@ -90,25 +97,25 @@ func (e *ErrorsSummary) Update(msg tea.Msg) (View, tea.Cmd) {
 			if e.filter != "" {
 				e.filter = ""
 				e.table.SetCursor(0)
-				return e, e.fetchDataCmd()
+				return e, e.fetchDataCmd(true)
 			}
 			return e, nil
+		case "r":
+			return e, e.fetchDataCmd(true)
 		}
 
 		switch msg.String() {
 		case "enter":
-			if idx := e.table.Cursor(); idx >= 0 && idx < len(e.rows) {
-				row := e.rows[idx]
-				return e, func() tea.Msg {
-					return ShowErrorDetailsMsg{
-						DisplayClass: row.displayClass,
-						ErrorClass:   row.errorClass,
-						Queue:        row.queue,
-						Query:        e.filter,
-					}
+			row, ok := e.selectedRow()
+			if !ok {
+				return e, nil
+			}
+			return e, func() tea.Msg {
+				return ShowErrorDetailsMsg{
+					Key:   errorGroupKeyForRow(row),
+					Query: e.filter,
 				}
 			}
-			return e, nil
 		}
 
 		e.table, _ = e.table.Update(msg)
@@ -124,7 +131,7 @@ func (e *ErrorsSummary) View() string {
 		return e.renderMessage("Loading...")
 	}
 
-	total := e.deadCount + e.retryCount
+	total := e.meta.DeadCount + e.meta.RetryCount
 	if len(e.rows) == 0 && total == 0 && e.filter == "" {
 		return e.renderMessage("No errors")
 	}
@@ -144,10 +151,15 @@ func (e *ErrorsSummary) ShortHelp() []key.Binding {
 
 // ContextItems implements ContextProvider.
 func (e *ErrorsSummary) ContextItems() []ContextItem {
-	if e.filter == "" {
-		return nil
+	items := []ContextItem{
+		{Label: "Updated", Value: e.updatedLabel()},
+		{Label: "Dead", Value: display.Number(e.meta.DeadCount)},
+		{Label: "Retry", Value: display.Number(e.meta.RetryCount)},
 	}
-	return []ContextItem{{Label: "Filter", Value: e.filter}}
+	if e.filter != "" {
+		items = append(items, ContextItem{Label: "Filter", Value: e.filter})
+	}
+	return items
 }
 
 // HintBindings implements HintProvider.
@@ -155,6 +167,7 @@ func (e *ErrorsSummary) HintBindings() []key.Binding {
 	return []key.Binding{
 		helpBinding([]string{"/"}, "/", "filter"),
 		helpBinding([]string{"ctrl+u"}, "ctrl+u", "reset filter"),
+		helpBinding([]string{"r"}, "r", "refresh"),
 		helpBinding([]string{"enter"}, "enter", "error details"),
 	}
 }
@@ -167,6 +180,7 @@ func (e *ErrorsSummary) HelpSections() []HelpSection {
 			Bindings: []key.Binding{
 				helpBinding([]string{"/"}, "/", "filter"),
 				helpBinding([]string{"ctrl+u"}, "ctrl+u", "clear filter"),
+				helpBinding([]string{"r"}, "r", "refresh"),
 				helpBinding([]string{"enter"}, "enter", "error details"),
 			},
 		},
@@ -206,13 +220,19 @@ func (e *ErrorsSummary) SetStyles(styles Styles) View {
 // CancelRequests stops in-flight fetches when the view is hidden.
 func (e *ErrorsSummary) CancelRequests() {
 	e.fetchRequest.Cancel()
+	e.refreshing = false
 }
 
-// fetchDataCmd fetches dead and retry jobs and builds summary data.
-func (e *ErrorsSummary) fetchDataCmd() tea.Cmd {
+// fetchDataCmd refreshes the exact cached summary snapshot.
+func (e *ErrorsSummary) fetchDataCmd(force bool) tea.Cmd {
+	if e.shouldSkipRefresh(force) {
+		return nil
+	}
+
+	e.refreshing = true
 	ctx := e.fetchRequest.Start(devtools.WithTracker(context.Background(), "errors.fetchDataCmd"))
 	return func() tea.Msg {
-		deadJobs, retryJobs, err := fetchErrorJobs(ctx, e.client, e.filter)
+		rows, meta, err := e.client.GetErrorSummary(ctx, e.filter)
 		if err != nil {
 			if requestctx.IsCanceled(err) {
 				return nil
@@ -220,14 +240,25 @@ func (e *ErrorsSummary) fetchDataCmd() tea.Cmd {
 			return ConnectionErrorMsg{Err: err}
 		}
 
-		rows, _ := buildErrorSummary(deadJobs, retryJobs)
-
 		return errorsSummaryDataMsg{
-			rows:       rows,
-			deadCount:  len(deadJobs),
-			retryCount: len(retryJobs),
+			rows:      rows,
+			meta:      meta,
+			fetchedAt: nowFuncErrorsSummary(),
 		}
 	}
+}
+
+func (e *ErrorsSummary) shouldSkipRefresh(force bool) bool {
+	if force {
+		return false
+	}
+	if e.refreshing {
+		return true
+	}
+	if !e.ready || e.fetchedAt.IsZero() {
+		return false
+	}
+	return nowFuncErrorsSummary().Sub(e.fetchedAt) < errorsSummaryRefreshInterval
 }
 
 func (e *ErrorsSummary) renderMessage(msg string) string {
@@ -237,9 +268,10 @@ func (e *ErrorsSummary) renderMessage(msg string) string {
 func (e *ErrorsSummary) reset() {
 	e.fetchRequest.Cancel()
 	e.ready = false
+	e.refreshing = false
 	e.rows = nil
-	e.deadCount = 0
-	e.retryCount = 0
+	e.meta = sidekiq.ErrorSummaryMeta{}
+	e.fetchedAt = time.Time{}
 	e.table.SetRows(nil)
 	e.table.SetCursor(0)
 }
@@ -270,20 +302,37 @@ func (e *ErrorsSummary) updateTableRows() {
 
 	rows := make([]table.Row, 0, len(e.rows))
 	for _, row := range e.rows {
-		rowID := row.displayClass + "\x1f" + row.errorClass + "\x1f" + row.queue
 		rows = append(rows, table.Row{
-			ID: rowID,
+			ID: errorGroupRowID(errorGroupKeyForRow(row)),
 			Cells: []string{
-				row.displayClass,
-				row.errorClass,
-				e.styles.QueueText.Render(row.queue),
-				display.Number(row.count),
-				row.errorMessage,
+				row.DisplayClass,
+				row.ErrorClass,
+				e.styles.QueueText.Render(row.Queue),
+				display.Number(row.Count),
+				row.ErrorMessage,
 			},
 		})
 	}
 	e.table.SetRows(rows)
 	e.updateTableSize()
+}
+
+func (e *ErrorsSummary) selectedRow() (sidekiq.ErrorSummaryRow, bool) {
+	idx := e.table.Cursor()
+	if idx < 0 || idx >= len(e.rows) {
+		return sidekiq.ErrorSummaryRow{}, false
+	}
+	return e.rows[idx], true
+}
+
+func (e *ErrorsSummary) updatedLabel() string {
+	if e.fetchedAt.IsZero() {
+		if e.refreshing {
+			return "updating..."
+		}
+		return "-"
+	}
+	return display.Duration(int64(nowFuncErrorsSummary().Sub(e.fetchedAt).Seconds())) + " ago"
 }
 
 func (e *ErrorsSummary) openFilterDialog() tea.Cmd {

@@ -3,13 +3,15 @@ title: "Errors"
 description: "Explore error summaries and details across queues."
 summary: "Explore error summaries and details across queues."
 date: 2025-12-30T00:00:00Z
-lastmod: 2026-01-08T00:00:00Z
+lastmod: 2026-03-21T00:00:00Z
 draft: false
 weight: 100
 toc: true
 ---
 
 Errors group failures by exception so you can spot the biggest problems fast.
+The summary is an exact snapshot that refreshes on entry, on filter changes,
+when you press `r`, and at most once per minute while the screen stays active.
 
 {{< lightbox src="assets/errors_summary.png" alt="Errors screen" >}}
 
@@ -23,11 +25,13 @@ Errors group failures by exception so you can spot the biggest problems fast.
 | `Enter`      | Open error details.           |
 | `/`          | Filter errors by substring.   |
 | `Ctrl+u`     | Clear filter.                 |
+| `r`          | Refresh the snapshot now.     |
 | `q`          | Quit.                         |
 
 ## Error details
 
-Drill into a specific error to see its backtrace, payload, and occurrence data.
+Drill into a specific error to see its payload and exact occurrences across
+dead and retry sets.
 
 {{< lightbox src="assets/errors_details.png" alt="Error details screen" >}}
 
@@ -37,6 +41,7 @@ Drill into a specific error to see its backtrace, payload, and occurrence data.
 |--------------|-------------------------------------|
 | `Up` / `k`   | Move up one row.                    |
 | `Down` / `j` | Move down one row.                  |
+| `[` / `]`    | Page up or down.                   |
 | `Enter`      | Show job details.                   |
 | `/`          | Filter errors by substring.         |
 | `Ctrl+u`     | Clear filter.                       |
