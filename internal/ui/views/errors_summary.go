@@ -106,16 +106,16 @@ func (e *ErrorsSummary) Update(msg tea.Msg) (View, tea.Cmd) {
 
 		switch msg.String() {
 		case "enter":
-			if idx := e.table.Cursor(); idx >= 0 && idx < len(e.rows) {
-				row := e.rows[idx]
-				return e, func() tea.Msg {
-					return ShowErrorDetailsMsg{
-						Key:   errorGroupKeyForRow(row),
-						Query: e.filter,
-					}
+			row, ok := e.selectedRow()
+			if !ok {
+				return e, nil
+			}
+			return e, func() tea.Msg {
+				return ShowErrorDetailsMsg{
+					Key:   errorGroupKeyForRow(row),
+					Query: e.filter,
 				}
 			}
-			return e, nil
 		}
 
 		e.table, _ = e.table.Update(msg)
@@ -225,10 +225,7 @@ func (e *ErrorsSummary) CancelRequests() {
 
 // fetchDataCmd refreshes the exact cached summary snapshot.
 func (e *ErrorsSummary) fetchDataCmd(force bool) tea.Cmd {
-	if e.refreshing && !force {
-		return nil
-	}
-	if !force && e.ready && !e.fetchedAt.IsZero() && nowFuncErrorsSummary().Sub(e.fetchedAt) < errorsSummaryRefreshInterval {
+	if e.shouldSkipRefresh(force) {
 		return nil
 	}
 
@@ -249,6 +246,19 @@ func (e *ErrorsSummary) fetchDataCmd(force bool) tea.Cmd {
 			fetchedAt: nowFuncErrorsSummary(),
 		}
 	}
+}
+
+func (e *ErrorsSummary) shouldSkipRefresh(force bool) bool {
+	if force {
+		return false
+	}
+	if e.refreshing {
+		return true
+	}
+	if !e.ready || e.fetchedAt.IsZero() {
+		return false
+	}
+	return nowFuncErrorsSummary().Sub(e.fetchedAt) < errorsSummaryRefreshInterval
 }
 
 func (e *ErrorsSummary) renderMessage(msg string) string {
@@ -305,6 +315,14 @@ func (e *ErrorsSummary) updateTableRows() {
 	}
 	e.table.SetRows(rows)
 	e.updateTableSize()
+}
+
+func (e *ErrorsSummary) selectedRow() (sidekiq.ErrorSummaryRow, bool) {
+	idx := e.table.Cursor()
+	if idx < 0 || idx >= len(e.rows) {
+		return sidekiq.ErrorSummaryRow{}, false
+	}
+	return e.rows[idx], true
 }
 
 func (e *ErrorsSummary) updatedLabel() string {

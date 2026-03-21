@@ -33,13 +33,7 @@ func (s *errorsSummaryClientStub) GetErrorSummary(
 }
 
 func TestErrorsSummaryRefreshMsgUsesTTL(t *testing.T) {
-	prevNow := nowFuncErrorsSummary
-	nowFuncErrorsSummary = func() time.Time {
-		return time.Date(2026, 3, 21, 12, 0, 0, 0, time.UTC)
-	}
-	t.Cleanup(func() {
-		nowFuncErrorsSummary = prevNow
-	})
+	freezeErrorsSummaryTime(t, time.Date(2026, 3, 21, 12, 0, 0, 0, time.UTC))
 
 	client := &errorsSummaryClientStub{
 		rows: []sidekiq.ErrorSummaryRow{
@@ -111,13 +105,7 @@ func TestErrorsSummaryRefreshMsgUsesTTL(t *testing.T) {
 }
 
 func TestGoldenErrorsSummaryContext(t *testing.T) {
-	prevNow := nowFuncErrorsSummary
-	nowFuncErrorsSummary = func() time.Time {
-		return time.Date(2026, 3, 21, 12, 0, 0, 0, time.UTC)
-	}
-	t.Cleanup(func() {
-		nowFuncErrorsSummary = prevNow
-	})
+	freezeErrorsSummaryTime(t, time.Date(2026, 3, 21, 12, 0, 0, 0, time.UTC))
 
 	view := NewErrorsSummary(nil)
 	view.ready = true
@@ -168,11 +156,7 @@ func TestErrorsDetailsResetDataResetsArgumentWidth(t *testing.T) {
 			},
 		},
 	})
-	wideLine := strings.Split(ansi.Strip(view.lazy.Table().View()), "\n")[2]
-	wideIndex := strings.Index(wideLine, "boom")
-	if wideIndex < 0 {
-		t.Fatal("wide row missing error column")
-	}
+	wideIndex := errorColumnIndex(t, view)
 
 	view.resetData()
 	view.lazy.Table().SetRows([]table.Row{
@@ -188,11 +172,7 @@ func TestErrorsDetailsResetDataResetsArgumentWidth(t *testing.T) {
 			},
 		},
 	})
-	narrowLine := strings.Split(ansi.Strip(view.lazy.Table().View()), "\n")[2]
-	narrowIndex := strings.Index(narrowLine, "boom")
-	if narrowIndex < 0 {
-		t.Fatal("narrow row missing error column")
-	}
+	narrowIndex := errorColumnIndex(t, view)
 
 	if narrowIndex >= wideIndex {
 		t.Fatalf("error column did not shift back after reset: wide=%d narrow=%d", wideIndex, narrowIndex)
@@ -222,4 +202,29 @@ func renderContextBar(items []ContextItem, bindings []key.Binding) string {
 		contextbar.WithHints(hints),
 	)
 	return bar.View()
+}
+
+func freezeErrorsSummaryTime(t *testing.T, now time.Time) {
+	t.Helper()
+
+	prevNow := nowFuncErrorsSummary
+	nowFuncErrorsSummary = func() time.Time { return now }
+	t.Cleanup(func() {
+		nowFuncErrorsSummary = prevNow
+	})
+}
+
+func errorColumnIndex(t *testing.T, view *ErrorsDetails) int {
+	t.Helper()
+
+	lines := strings.Split(ansi.Strip(view.lazy.Table().View()), "\n")
+	if len(lines) < 3 {
+		t.Fatalf("table view has %d lines, want at least 3", len(lines))
+	}
+
+	idx := strings.Index(lines[2], "boom")
+	if idx < 0 {
+		t.Fatal("row missing error column")
+	}
+	return idx
 }
