@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -88,6 +89,12 @@ type PositionedEntry struct {
 	Position   int
 }
 
+// QueueEntriesWindow holds a filtered window plus aggregate metadata.
+type QueueEntriesWindow struct {
+	Entries []*PositionedEntry
+	Total   int64
+}
+
 // GetJobs fetches jobs from the queue with pagination.
 // start is 0-indexed, count is the number of jobs to fetch.
 // Jobs are returned newest-first (matching Sidekiq's default display order).
@@ -111,15 +118,51 @@ func (q *Queue) GetJobs(ctx context.Context, start, count int) ([]*PositionedEnt
 
 	jobs := make([]*PositionedEntry, len(entries))
 	for i, entry := range entries {
-		// Position is calculated as total_size - index (descending, matching Sidekiq UI)
-		position := int(size) - start - i
-		jobs[i] = &PositionedEntry{
-			JobRecord: NewJobRecord(entry, q.name),
-			Position:  position,
-		}
+		jobs[i] = q.newPositionedEntry(entry, int(size)-start-i)
 	}
 
 	return jobs, size, nil
+}
+
+// ScanJobsWindow scans queue jobs using a raw payload substring filter and returns one window.
+func (q *Queue) ScanJobsWindow(ctx context.Context, filter string, start, count int) (QueueEntriesWindow, error) {
+	size, err := q.Size(ctx)
+	if err != nil {
+		return QueueEntriesWindow{}, err
+	}
+	if size == 0 {
+		return QueueEntriesWindow{}, nil
+	}
+
+	start = max(start, 0)
+	count = max(count, 1)
+	windowEnd := start + count
+	batchSize := max(count, 100)
+
+	window := QueueEntriesWindow{
+		Entries: make([]*PositionedEntry, 0, count),
+	}
+
+	for batchStart := 0; batchStart < int(size); batchStart += batchSize {
+		batchEnd := min(batchStart+batchSize-1, int(size)-1)
+		entries, err := q.client.redis.LRange(ctx, "queue:"+q.name, int64(batchStart), int64(batchEnd)).Result()
+		if err != nil {
+			return QueueEntriesWindow{}, err
+		}
+
+		for i, entry := range entries {
+			if filter != "" && !strings.Contains(entry, filter) {
+				continue
+			}
+
+			if window.Total >= int64(start) && window.Total < int64(windowEnd) {
+				window.Entries = append(window.Entries, q.newPositionedEntry(entry, int(size)-batchStart-i))
+			}
+			window.Total++
+		}
+	}
+
+	return window, nil
 }
 
 // Clear deletes all jobs within this queue and removes it from the queues set.
@@ -134,4 +177,11 @@ func (q *Queue) Clear(ctx context.Context) error {
 		return nil
 	})
 	return err
+}
+
+func (q *Queue) newPositionedEntry(entry string, position int) *PositionedEntry {
+	return &PositionedEntry{
+		JobRecord: NewJobRecord(entry, q.name),
+		Position:  position,
+	}
 }

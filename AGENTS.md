@@ -4,6 +4,10 @@
 
 Bubble Tea TUI for Sidekiq monitoring. Go 1.26.
 
+## Git
+
+- Use flat branch names. Do not prefix with `feature/`, `perf/`, `fix/`, etc. unless explicitly requested.
+
 ## Code Quality
 
 - Make sure to always perform `mise run ci` to ensure code formatting matches the style of the repository, linters don't have any offenses, and tests pass.
