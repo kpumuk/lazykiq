@@ -7,6 +7,7 @@
   <br />
   <br />
   <a href="https://github.com/kpumuk/lazykiq/releases"><img src="https://img.shields.io/github/release/kpumuk/lazykiq.svg" alt="Latest Release"></a>
+  <a href="https://scorecard.dev/viewer/?uri=github.com/kpumuk/lazykiq"><img src="https://api.scorecard.dev/projects/github.com/kpumuk/lazykiq/badge" alt="OpenSSF Scorecard"></a>
   <a href="https://github.com/kpumuk/lazykiq/actions"><img src="https://github.com/kpumuk/lazykiq/workflows/test/badge.svg" alt="Build Status"></a>
   <a href="https://github.com/kpumuk/lazykiq/blob/main/LICENSE"><img alt="GitHub License" src="https://img.shields.io/github/license/kpumuk/lazykiq"></a>
 </p>
@@ -43,7 +44,7 @@ go install github.com/kpumuk/lazykiq/cmd/lazykiq@latest
 - `j` / `k` - navigate down / up (or `Down` / `Up`)
 - `h` / `l` - navigate left / right (or `Left` / `Right`)
 - `Enter` - view job details, `Esc` to close
-- `[` / `]` - previous / next page 
+- `[` / `]` - previous / next page
 - `{` / `}` - switch interval on the dashboard or metrics
 - `/` - filter job list (case-sensitive)
 - `q` - quit
