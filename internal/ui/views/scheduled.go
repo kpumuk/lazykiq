@@ -346,6 +346,13 @@ func (s *Scheduled) fetchWindow(
 	windowSize int,
 	_ lazytable.CursorIntent,
 ) (lazytable.FetchResult, error) {
+	var scanWindow func(context.Context, string, int, int) (sidekiq.SortedEntriesWindow, error)
+	if client, ok := s.client.(interface {
+		ScanScheduledJobsWindow(context.Context, string, int, int) (sidekiq.SortedEntriesWindow, error)
+	}); ok {
+		scanWindow = client.ScanScheduledJobsWindow
+	}
+
 	return fetchSortedEntriesWindow(ctx, sortedEntriesFetchConfig{
 		tracker:          "scheduled.fetchWindow",
 		filter:           s.filter,
@@ -353,6 +360,7 @@ func (s *Scheduled) fetchWindow(
 		windowSize:       windowSize,
 		fallbackPageSize: scheduledFallbackPageSize,
 		windowPages:      scheduledWindowPages,
+		scanWindow:       scanWindow,
 		scan:             s.client.ScanScheduledJobs,
 		fetch:            s.client.GetScheduledJobs,
 		bounds:           s.client.GetScheduledBounds,

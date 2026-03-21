@@ -15,6 +15,7 @@ type sortedWindowConfig struct {
 	windowSize       int
 	fallbackPageSize int
 	windowPages      int
+	scanWindow       func(context.Context, string, int, int) (sidekiq.SortedEntriesWindow, error)
 	scan             func(context.Context, string) ([]*sidekiq.SortedEntry, error)
 	fetch            func(context.Context, int, int) ([]*sidekiq.SortedEntry, int64, error)
 	bounds           func(context.Context) (*sidekiq.SortedEntry, *sidekiq.SortedEntry, error)
@@ -41,6 +42,7 @@ type sortedEntriesFetchConfig struct {
 	windowSize       int
 	fallbackPageSize int
 	windowPages      int
+	scanWindow       func(context.Context, string, int, int) (sidekiq.SortedEntriesWindow, error)
 	scan             func(context.Context, string) ([]*sidekiq.SortedEntry, error)
 	fetch            func(context.Context, int, int) ([]*sidekiq.SortedEntry, int64, error)
 	bounds           func(context.Context) (*sidekiq.SortedEntry, *sidekiq.SortedEntry, error)
@@ -57,6 +59,7 @@ func fetchSortedEntriesWindow(ctx context.Context, cfg sortedEntriesFetchConfig)
 		windowSize:       cfg.windowSize,
 		fallbackPageSize: cfg.fallbackPageSize,
 		windowPages:      cfg.windowPages,
+		scanWindow:       cfg.scanWindow,
 		scan:             cfg.scan,
 		fetch:            cfg.fetch,
 		bounds:           cfg.bounds,
@@ -78,24 +81,13 @@ func fetchSortedEntriesWindow(ctx context.Context, cfg sortedEntriesFetchConfig)
 }
 
 func fetchSortedWindow(ctx context.Context, cfg sortedWindowConfig) (sortedWindowResult, error) {
-	if cfg.filter != "" {
-		jobs, err := cfg.scan(ctx, cfg.filter)
-		if err != nil {
-			return sortedWindowResult{}, err
-		}
-		firstEntry, lastEntry := sortedEntryBounds(jobs)
-		return sortedWindowResult{
-			jobs:        jobs,
-			total:       int64(len(jobs)),
-			windowStart: 0,
-			firstEntry:  firstEntry,
-			lastEntry:   lastEntry,
-		}, nil
-	}
-
 	windowSize := cfg.windowSize
 	if windowSize <= 0 {
-		windowSize = max(cfg.fallbackPageSize, 1) * cfg.windowPages
+		windowSize = max(cfg.fallbackPageSize, 1) * max(cfg.windowPages, 1)
+	}
+
+	if cfg.filter != "" {
+		return fetchFilteredSortedWindow(ctx, cfg, windowSize)
 	}
 
 	jobs, totalSize, err := cfg.fetch(ctx, cfg.windowStart, windowSize)
@@ -133,6 +125,81 @@ func fetchSortedWindow(ctx context.Context, cfg sortedWindowConfig) (sortedWindo
 	return sortedWindowResult{
 		jobs:        jobs,
 		total:       totalSize,
+		windowStart: windowStart,
+		firstEntry:  firstEntry,
+		lastEntry:   lastEntry,
+	}, nil
+}
+
+func fetchFilteredSortedWindow(
+	ctx context.Context,
+	cfg sortedWindowConfig,
+	windowSize int,
+) (sortedWindowResult, error) {
+	if cfg.scanWindow != nil {
+		return fetchFilteredSortedWindowPage(ctx, cfg, windowSize)
+	}
+	return fetchFilteredSortedWindowFallback(ctx, cfg, windowSize)
+}
+
+func fetchFilteredSortedWindowPage(
+	ctx context.Context,
+	cfg sortedWindowConfig,
+	windowSize int,
+) (sortedWindowResult, error) {
+	windowStart := max(cfg.windowStart, 0)
+	window, err := cfg.scanWindow(ctx, cfg.filter, windowStart, windowSize)
+	if err != nil {
+		return sortedWindowResult{}, err
+	}
+	if window.Total <= 0 {
+		return sortedWindowResult{total: 0}, nil
+	}
+
+	maxStart := max(int(window.Total)-windowSize, 0)
+	if windowStart > maxStart {
+		windowStart = maxStart
+		window, err = cfg.scanWindow(ctx, cfg.filter, windowStart, windowSize)
+		if err != nil {
+			return sortedWindowResult{}, err
+		}
+	}
+
+	return sortedWindowResult{
+		jobs:        window.Entries,
+		total:       window.Total,
+		windowStart: windowStart,
+		firstEntry:  window.FirstEntry,
+		lastEntry:   window.LastEntry,
+	}, nil
+}
+
+func fetchFilteredSortedWindowFallback(
+	ctx context.Context,
+	cfg sortedWindowConfig,
+	windowSize int,
+) (sortedWindowResult, error) {
+	jobs, err := cfg.scan(ctx, cfg.filter)
+	if err != nil {
+		return sortedWindowResult{}, err
+	}
+
+	total := int64(len(jobs))
+	if total <= 0 {
+		return sortedWindowResult{total: 0}, nil
+	}
+
+	windowStart := max(cfg.windowStart, 0)
+	maxStart := max(int(total)-windowSize, 0)
+	if windowStart > maxStart {
+		windowStart = maxStart
+	}
+
+	firstEntry, lastEntry := sortedEntryBounds(jobs)
+	end := min(windowStart+windowSize, len(jobs))
+	return sortedWindowResult{
+		jobs:        jobs[windowStart:end],
+		total:       total,
 		windowStart: windowStart,
 		firstEntry:  firstEntry,
 		lastEntry:   lastEntry,

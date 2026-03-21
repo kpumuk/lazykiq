@@ -370,6 +370,45 @@ func TestScanDeadJobs_Wildcard(t *testing.T) {
 	}
 }
 
+func TestScanDeadJobsWindow(t *testing.T) {
+	mr, client := setupTestRedis(t)
+	ctx := context.Background()
+
+	job1 := `{"jid":"abc123","class":"MyJob","args":[]}`
+	job2 := `{"jid":"xyz456","class":"OtherJob","args":[]}`
+	job3 := `{"jid":"abc789","class":"MyJob","args":[]}`
+	job4 := `{"jid":"abc999","class":"MyJob","args":[]}`
+
+	_, _ = mr.ZAdd("dead", testScoreA, job1)
+	_, _ = mr.ZAdd("dead", testScoreB, job2)
+	_, _ = mr.ZAdd("dead", testScoreC, job3)
+	_, _ = mr.ZAdd("dead", testScoreC+60, job4)
+
+	window, err := client.ScanDeadJobsWindow(ctx, "abc", 1, 2)
+	if err != nil {
+		t.Fatalf("ScanDeadJobsWindow failed: %v", err)
+	}
+
+	if window.Total != 3 {
+		t.Fatalf("window.Total = %d, want 3", window.Total)
+	}
+	if len(window.Entries) != 2 {
+		t.Fatalf("len(window.Entries) = %d, want 2", len(window.Entries))
+	}
+	if window.Entries[0].JID() != "abc789" {
+		t.Fatalf("window.Entries[0].JID() = %q, want abc789", window.Entries[0].JID())
+	}
+	if window.Entries[1].JID() != "abc123" {
+		t.Fatalf("window.Entries[1].JID() = %q, want abc123", window.Entries[1].JID())
+	}
+	if window.FirstEntry == nil || window.FirstEntry.JID() != "abc999" {
+		t.Fatalf("window.FirstEntry = %#v, want abc999", window.FirstEntry)
+	}
+	if window.LastEntry == nil || window.LastEntry.JID() != "abc123" {
+		t.Fatalf("window.LastEntry = %#v, want abc123", window.LastEntry)
+	}
+}
+
 func TestScanRetryJobs(t *testing.T) {
 	mr, client := setupTestRedis(t)
 	ctx := context.Background()
@@ -396,6 +435,45 @@ func TestScanRetryJobs(t *testing.T) {
 	}
 	if entries[1].JID() != "retry_late" {
 		t.Errorf("entries[1].JID() = %q, want retry_late", entries[1].JID())
+	}
+}
+
+func TestScanRetryJobsWindow(t *testing.T) {
+	mr, client := setupTestRedis(t)
+	ctx := context.Background()
+
+	job1 := `{"jid":"retry_early","class":"MyJob","args":[]}`
+	job2 := `{"jid":"retry_late","class":"MyJob","args":[]}`
+	job3 := `{"jid":"other_job","class":"MyJob","args":[]}`
+	job4 := `{"jid":"retry_latest","class":"MyJob","args":[]}`
+
+	_, _ = mr.ZAdd("retry", testScoreC, job2)
+	_, _ = mr.ZAdd("retry", testScoreA, job1)
+	_, _ = mr.ZAdd("retry", testScoreB, job3)
+	_, _ = mr.ZAdd("retry", testScoreC+60, job4)
+
+	window, err := client.ScanRetryJobsWindow(ctx, "retry", 1, 2)
+	if err != nil {
+		t.Fatalf("ScanRetryJobsWindow failed: %v", err)
+	}
+
+	if window.Total != 3 {
+		t.Fatalf("window.Total = %d, want 3", window.Total)
+	}
+	if len(window.Entries) != 2 {
+		t.Fatalf("len(window.Entries) = %d, want 2", len(window.Entries))
+	}
+	if window.Entries[0].JID() != "retry_late" {
+		t.Fatalf("window.Entries[0].JID() = %q, want retry_late", window.Entries[0].JID())
+	}
+	if window.Entries[1].JID() != "retry_latest" {
+		t.Fatalf("window.Entries[1].JID() = %q, want retry_latest", window.Entries[1].JID())
+	}
+	if window.FirstEntry == nil || window.FirstEntry.JID() != "retry_early" {
+		t.Fatalf("window.FirstEntry = %#v, want retry_early", window.FirstEntry)
+	}
+	if window.LastEntry == nil || window.LastEntry.JID() != "retry_latest" {
+		t.Fatalf("window.LastEntry = %#v, want retry_latest", window.LastEntry)
 	}
 }
 

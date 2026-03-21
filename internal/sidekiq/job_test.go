@@ -36,6 +36,34 @@ func TestNewJobRecord_QueueExtraction(t *testing.T) {
 	}
 }
 
+func TestNewJobRecord_LazyParsing(t *testing.T) {
+	record := NewJobRecord(`{"queue":"default","jid":"123"}`, "")
+
+	if record.parsed {
+		t.Fatal("parsed = true, want false")
+	}
+	if record.item != nil {
+		t.Fatalf("item = %#v, want nil", record.item)
+	}
+
+	if got := record.Value(); got == "" {
+		t.Fatal("Value() = empty, want original payload")
+	}
+	if record.parsed {
+		t.Fatal("parsed after Value() = true, want false")
+	}
+
+	if got := record.JID(); got != "123" {
+		t.Fatalf("JID() = %q, want %q", got, "123")
+	}
+	if !record.parsed {
+		t.Fatal("parsed after JID() = false, want true")
+	}
+	if got := record.Queue(); got != "default" {
+		t.Fatalf("Queue() = %q, want %q", got, "default")
+	}
+}
+
 func TestNewJobRecord_QueueOverride(t *testing.T) {
 	value := `{"queue":"default","jid":"123"}`
 

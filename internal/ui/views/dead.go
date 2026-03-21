@@ -346,6 +346,13 @@ func (d *Dead) fetchWindow(
 	windowSize int,
 	_ lazytable.CursorIntent,
 ) (lazytable.FetchResult, error) {
+	var scanWindow func(context.Context, string, int, int) (sidekiq.SortedEntriesWindow, error)
+	if client, ok := d.client.(interface {
+		ScanDeadJobsWindow(context.Context, string, int, int) (sidekiq.SortedEntriesWindow, error)
+	}); ok {
+		scanWindow = client.ScanDeadJobsWindow
+	}
+
 	return fetchSortedEntriesWindow(ctx, sortedEntriesFetchConfig{
 		tracker:          "dead.fetchWindow",
 		filter:           d.filter,
@@ -353,6 +360,7 @@ func (d *Dead) fetchWindow(
 		windowSize:       windowSize,
 		fallbackPageSize: deadFallbackPageSize,
 		windowPages:      deadWindowPages,
+		scanWindow:       scanWindow,
 		scan:             d.client.ScanDeadJobs,
 		fetch:            d.client.GetDeadJobs,
 		bounds:           d.client.GetDeadBounds,
