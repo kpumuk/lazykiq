@@ -2,6 +2,7 @@ package views
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/contextbar"
 	"github.com/kpumuk/lazykiq/internal/ui/components/lazytable"
+	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 )
 
 type errorsSummaryClientStub struct {
@@ -146,6 +148,55 @@ func TestGoldenErrorsDetailsContext(t *testing.T) {
 
 	output := ansi.Strip(renderContextBar(view.ContextItems(), view.HintBindings()))
 	golden.RequireEqual(t, []byte(output))
+}
+
+func TestErrorsDetailsResetDataResetsArgumentWidth(t *testing.T) {
+	view := NewErrorsDetails(nil)
+	view.SetSize(280, 8)
+	view.SetStyles(Styles{})
+
+	view.lazy.Table().SetRows([]table.Row{
+		{
+			ID: "wide",
+			Cells: []string{
+				"retry",
+				"1s",
+				"default",
+				"CleanupJob",
+				strings.Repeat("x", 80),
+				"boom",
+			},
+		},
+	})
+	wideLine := strings.Split(ansi.Strip(view.lazy.Table().View()), "\n")[2]
+	wideIndex := strings.Index(wideLine, "boom")
+	if wideIndex < 0 {
+		t.Fatal("wide row missing error column")
+	}
+
+	view.resetData()
+	view.lazy.Table().SetRows([]table.Row{
+		{
+			ID: "narrow",
+			Cells: []string{
+				"retry",
+				"1s",
+				"default",
+				"CleanupJob",
+				"",
+				"boom",
+			},
+		},
+	})
+	narrowLine := strings.Split(ansi.Strip(view.lazy.Table().View()), "\n")[2]
+	narrowIndex := strings.Index(narrowLine, "boom")
+	if narrowIndex < 0 {
+		t.Fatal("narrow row missing error column")
+	}
+
+	if narrowIndex >= wideIndex {
+		t.Fatalf("error column did not shift back after reset: wide=%d narrow=%d", wideIndex, narrowIndex)
+	}
 }
 
 func renderContextBar(items []ContextItem, bindings []key.Binding) string {

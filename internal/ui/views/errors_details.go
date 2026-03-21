@@ -262,6 +262,8 @@ func (e *ErrorsDetails) resetData() {
 	e.ready = false
 	e.groupJobs = nil
 	e.lazy.Reset()
+	e.lazy.Table().SetColumns(errorDetailsColumns)
+	e.lazy.Table().ScrollToStart()
 	e.updateEmptyMessage()
 }
 
