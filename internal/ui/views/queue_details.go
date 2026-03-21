@@ -81,7 +81,7 @@ func NewQueueDetails(client sidekiq.API) *QueueDetails {
 // Init implements View.
 func (q *QueueDetails) Init() tea.Cmd {
 	q.reset()
-	return q.lazy.RequestWindow(0, lazytable.CursorStart)
+	return requestLazyFromStart(&q.lazy)
 }
 
 // Update implements View.
@@ -352,7 +352,7 @@ func (q *QueueDetails) refreshWindow() tea.Cmd {
 	if q.selectedQueueKey != "" {
 		return q.reloadFromStart()
 	}
-	return q.lazy.RequestWindow(q.lazy.WindowStart(), lazytable.CursorKeep)
+	return refreshLazyWindow(&q.lazy)
 }
 
 func (q *QueueDetails) resolveSelectedQueue(queues []*sidekiq.Queue, selected int) int {
@@ -467,8 +467,7 @@ func (q *QueueDetails) reset() {
 }
 
 func (q *QueueDetails) reloadFromStart() tea.Cmd {
-	q.lazy.Table().SetCursor(0)
-	return q.lazy.RequestWindow(0, lazytable.CursorStart)
+	return reloadLazyFromStart(&q.lazy)
 }
 
 func (q *QueueDetails) setFilter(filter string) tea.Cmd {
@@ -484,11 +483,7 @@ func (q *QueueDetails) selectQueue(queueIdx int) tea.Cmd {
 }
 
 func (q *QueueDetails) page(delta int) tea.Cmd {
-	if q.filter != "" {
-		return nil
-	}
-	q.lazy.MovePage(delta)
-	return q.lazy.MaybePrefetch()
+	return moveLazyPage(&q.lazy, delta)
 }
 
 func (q *QueueDetails) selectedJob() (*sidekiq.PositionedEntry, bool) {
