@@ -289,7 +289,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case views.ShowErrorDetailsMsg:
 		if setter, ok := a.viewRegistry[viewErrorsDetails].(views.ErrorDetailsSetter); ok {
-			setter.SetErrorGroup(msg.DisplayClass, msg.ErrorClass, msg.Queue, msg.Query)
+			setter.SetErrorGroup(msg.Key, msg.Query)
 		}
 		cmds = append(cmds, a.pushView(viewErrorsDetails))
 

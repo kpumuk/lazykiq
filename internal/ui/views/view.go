@@ -146,10 +146,8 @@ type ShowJobDetailMsg struct {
 
 // ShowErrorDetailsMsg requests a stacked error details view.
 type ShowErrorDetailsMsg struct {
-	DisplayClass string
-	ErrorClass   string
-	Queue        string
-	Query        string
+	Key   sidekiq.ErrorGroupKey
+	Query string
 }
 
 // ShowJobMetricsMsg requests a stacked job metrics view.
@@ -181,7 +179,7 @@ type JobDetailSetter interface {
 
 // ErrorDetailsSetter allows setting error group data on an error details view.
 type ErrorDetailsSetter interface {
-	SetErrorGroup(displayClass, errorClass, queue, query string)
+	SetErrorGroup(key sidekiq.ErrorGroupKey, query string)
 }
 
 // JobMetricsSetter allows setting job metrics data on a job metrics view.
