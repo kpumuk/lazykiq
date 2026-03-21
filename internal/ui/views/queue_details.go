@@ -104,22 +104,13 @@ func (q *QueueDetails) Update(msg tea.Msg) (View, tea.Cmd) {
 		return q, cmd
 
 	case RefreshMsg:
-		if q.lazy.Loading() {
-			return q, nil
-		}
-		if q.selectedQueueKey != "" {
-			return q, q.lazy.RequestWindow(0, lazytable.CursorStart)
-		}
-		return q, q.lazy.RequestWindow(q.lazy.WindowStart(), lazytable.CursorKeep)
+		return q, q.refreshWindow()
 
 	case filterdialog.ActionMsg:
 		if msg.Action == filterdialog.ActionNone || msg.Query == q.filter {
 			return q, nil
 		}
-		q.filter = msg.Query
-		q.updateEmptyMessage()
-		q.lazy.Table().SetCursor(0)
-		return q, q.lazy.RequestWindow(0, lazytable.CursorStart)
+		return q, q.setFilter(msg.Query)
 
 	case tea.KeyPressMsg:
 		switch msg.String() {
@@ -129,20 +120,15 @@ func (q *QueueDetails) Update(msg tea.Msg) (View, tea.Cmd) {
 			if q.filter == "" {
 				return q, nil
 			}
-			q.filter = ""
-			q.updateEmptyMessage()
-			q.lazy.Table().SetCursor(0)
-			return q, q.lazy.RequestWindow(0, lazytable.CursorStart)
+			return q, q.setFilter("")
 		case "s":
 			// Switch to queues list view
 			return q, func() tea.Msg {
 				return ShowQueuesListMsg{}
 			}
 		case "c":
-			if idx := q.lazy.Table().Cursor(); idx >= 0 && idx < len(q.jobs) {
-				if q.jobs[idx] != nil {
-					return q, copyTextCmd(q.jobs[idx].JID())
-				}
+			if job, ok := q.selectedJob(); ok {
+				return q, copyTextCmd(job.JID())
 			}
 			return q, nil
 		case "ctrl+1", "ctrl+2", "ctrl+3", "ctrl+4", "ctrl+5":
@@ -150,18 +136,15 @@ func (q *QueueDetails) Update(msg tea.Msg) (View, tea.Cmd) {
 			if displayIdx >= 0 && displayIdx < len(q.displayOrder) {
 				queueIdx := q.displayOrder[displayIdx]
 				if queueIdx >= 0 && queueIdx < len(q.queues) && q.selectedQueue != queueIdx {
-					q.selectedQueue = queueIdx
-					q.selectedQueueKey = "" // Clear queue key when manually switching
-					q.lazy.Table().SetCursor(0)
-					return q, q.lazy.RequestWindow(0, lazytable.CursorStart)
+					return q, q.selectQueue(queueIdx)
 				}
 			}
 			return q, nil
 		case "enter":
 			// Show detail for selected job
-			if idx := q.lazy.Table().Cursor(); idx >= 0 && idx < len(q.jobs) {
+			if job, ok := q.selectedJob(); ok {
 				return q, func() tea.Msg {
-					return ShowJobDetailMsg{Job: q.jobs[idx].JobRecord}
+					return ShowJobDetailMsg{Job: job.JobRecord}
 				}
 			}
 			return q, nil
@@ -169,17 +152,9 @@ func (q *QueueDetails) Update(msg tea.Msg) (View, tea.Cmd) {
 
 		switch msg.String() {
 		case "alt+left", "[":
-			if q.filter == "" {
-				q.lazy.MovePage(-1)
-				return q, q.lazy.MaybePrefetch()
-			}
-			return q, nil
+			return q, q.page(-1)
 		case "alt+right", "]":
-			if q.filter == "" {
-				q.lazy.MovePage(1)
-				return q, q.lazy.MaybePrefetch()
-			}
-			return q, nil
+			return q, q.page(1)
 		}
 
 		var cmd tea.Cmd
@@ -222,9 +197,6 @@ func (q *QueueDetails) HeaderLines() []string {
 	if len(lines) < 5 {
 		padding := make([]string, 5-len(lines))
 		lines = append(lines, padding...)
-	}
-	if len(lines) == 0 {
-		return make([]string, 5)
 	}
 	return lines
 }
@@ -373,6 +345,16 @@ func (q *QueueDetails) fetchWindow(
 	}, nil
 }
 
+func (q *QueueDetails) refreshWindow() tea.Cmd {
+	if q.lazy.Loading() {
+		return nil
+	}
+	if q.selectedQueueKey != "" {
+		return q.reloadFromStart()
+	}
+	return q.lazy.RequestWindow(q.lazy.WindowStart(), lazytable.CursorKeep)
+}
+
 func (q *QueueDetails) resolveSelectedQueue(queues []*sidekiq.Queue, selected int) int {
 	if len(queues) == 0 {
 		return 0
@@ -482,6 +464,42 @@ func (q *QueueDetails) reset() {
 	q.jobs = nil
 	q.displayOrder = nil
 	q.updateEmptyMessage()
+}
+
+func (q *QueueDetails) reloadFromStart() tea.Cmd {
+	q.lazy.Table().SetCursor(0)
+	return q.lazy.RequestWindow(0, lazytable.CursorStart)
+}
+
+func (q *QueueDetails) setFilter(filter string) tea.Cmd {
+	q.filter = filter
+	q.updateEmptyMessage()
+	return q.reloadFromStart()
+}
+
+func (q *QueueDetails) selectQueue(queueIdx int) tea.Cmd {
+	q.selectedQueue = queueIdx
+	q.selectedQueueKey = ""
+	return q.reloadFromStart()
+}
+
+func (q *QueueDetails) page(delta int) tea.Cmd {
+	if q.filter != "" {
+		return nil
+	}
+	q.lazy.MovePage(delta)
+	return q.lazy.MaybePrefetch()
+}
+
+func (q *QueueDetails) selectedJob() (*sidekiq.PositionedEntry, bool) {
+	idx := q.lazy.Table().Cursor()
+	if idx < 0 || idx >= len(q.jobs) {
+		return nil, false
+	}
+	if q.jobs[idx] == nil {
+		return nil, false
+	}
+	return q.jobs[idx], true
 }
 
 // renderQueueList renders the compact queue list (outside the border).

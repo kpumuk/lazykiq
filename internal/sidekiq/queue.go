@@ -118,12 +118,7 @@ func (q *Queue) GetJobs(ctx context.Context, start, count int) ([]*PositionedEnt
 
 	jobs := make([]*PositionedEntry, len(entries))
 	for i, entry := range entries {
-		// Position is calculated as total_size - index (descending, matching Sidekiq UI)
-		position := int(size) - start - i
-		jobs[i] = &PositionedEntry{
-			JobRecord: NewJobRecord(entry, q.name),
-			Position:  position,
-		}
+		jobs[i] = q.newPositionedEntry(entry, int(size)-start-i)
 	}
 
 	return jobs, size, nil
@@ -161,11 +156,7 @@ func (q *Queue) ScanJobsWindow(ctx context.Context, filter string, start, count 
 			}
 
 			if window.Total >= int64(start) && window.Total < int64(windowEnd) {
-				position := int(size) - batchStart - i
-				window.Entries = append(window.Entries, &PositionedEntry{
-					JobRecord: NewJobRecord(entry, q.name),
-					Position:  position,
-				})
+				window.Entries = append(window.Entries, q.newPositionedEntry(entry, int(size)-batchStart-i))
 			}
 			window.Total++
 		}
@@ -186,4 +177,11 @@ func (q *Queue) Clear(ctx context.Context) error {
 		return nil
 	})
 	return err
+}
+
+func (q *Queue) newPositionedEntry(entry string, position int) *PositionedEntry {
+	return &PositionedEntry{
+		JobRecord: NewJobRecord(entry, q.name),
+		Position:  position,
+	}
 }
