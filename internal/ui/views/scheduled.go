@@ -353,6 +353,7 @@ func (s *Scheduled) fetchWindow(
 		windowSize:       windowSize,
 		fallbackPageSize: scheduledFallbackPageSize,
 		windowPages:      scheduledWindowPages,
+		scanWindow:       s.client.ScanScheduledJobsWindow,
 		scan:             s.client.ScanScheduledJobs,
 		fetch:            s.client.GetScheduledJobs,
 		bounds:           s.client.GetScheduledBounds,

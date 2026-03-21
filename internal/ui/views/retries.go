@@ -376,6 +376,7 @@ func (r *Retries) fetchWindow(
 		windowSize:       windowSize,
 		fallbackPageSize: retriesFallbackPageSize,
 		windowPages:      retriesWindowPages,
+		scanWindow:       r.client.ScanRetryJobsWindow,
 		scan:             r.client.ScanRetryJobs,
 		fetch:            r.client.GetRetryJobs,
 		bounds:           r.client.GetRetryBounds,

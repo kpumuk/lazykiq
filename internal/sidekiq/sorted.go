@@ -33,6 +33,14 @@ type SortedEntry struct {
 	Score      float64 // sorted set score (timestamp)
 }
 
+// SortedEntriesWindow holds a filtered window plus aggregate metadata.
+type SortedEntriesWindow struct {
+	Entries    []*SortedEntry
+	Total      int64
+	FirstEntry *SortedEntry
+	LastEntry  *SortedEntry
+}
+
 // NewSortedEntry creates a SortedEntry from raw JSON data and score.
 func NewSortedEntry(value string, score float64) *SortedEntry {
 	return &SortedEntry{
@@ -82,16 +90,34 @@ func (c *Client) getSortedSetJobs(ctx context.Context, key string, start, count 
 }
 
 func (c *Client) scanSortedSetJobs(ctx context.Context, key, match string, reverse bool) ([]*SortedEntry, error) {
-	if match != "" && !strings.Contains(match, "*") {
-		match = "*" + match + "*"
+	window, err := c.scanSortedSetWindow(ctx, key, match, 0, -1, reverse)
+	if err != nil {
+		return nil, err
+	}
+	return window.Entries, nil
+}
+
+func (c *Client) scanSortedSetWindow(
+	ctx context.Context,
+	key, match string,
+	start, count int,
+	reverse bool,
+) (SortedEntriesWindow, error) {
+	start = max(start, 0)
+	match = normalizeSortedSetMatch(match)
+
+	limit := -1
+	if count > 0 {
+		limit = start + count
 	}
 
+	result := SortedEntriesWindow{}
+	selected := make([]*SortedEntry, 0, max(min(limit, int(sortedSetScanCount)), 0))
 	var cursor uint64
-	var entries []*SortedEntry
 	for {
 		values, nextCursor, err := c.redis.ZScan(ctx, key, cursor, match, sortedSetScanCount).Result()
 		if err != nil {
-			return nil, err
+			return SortedEntriesWindow{}, err
 		}
 
 		for i := 0; i+1 < len(values); i += 2 {
@@ -99,7 +125,21 @@ func (c *Client) scanSortedSetJobs(ctx context.Context, key, match string, rever
 			if err != nil {
 				continue
 			}
-			entries = append(entries, NewSortedEntry(values[i], score))
+
+			entry := NewSortedEntry(values[i], score)
+			result.Total++
+			if result.FirstEntry == nil || sortedEntryBefore(entry, result.FirstEntry, reverse) {
+				result.FirstEntry = entry
+			}
+			if result.LastEntry == nil || sortedEntryBefore(result.LastEntry, entry, reverse) {
+				result.LastEntry = entry
+			}
+
+			if limit < 0 {
+				selected = append(selected, entry)
+				continue
+			}
+			selected = insertSortedEntry(selected, entry, reverse, limit)
 		}
 
 		cursor = nextCursor
@@ -108,14 +148,20 @@ func (c *Client) scanSortedSetJobs(ctx context.Context, key, match string, rever
 		}
 	}
 
-	sort.Slice(entries, func(i, j int) bool {
-		if reverse {
-			return entries[i].Score > entries[j].Score
-		}
-		return entries[i].Score < entries[j].Score
-	})
+	if limit < 0 {
+		sortSortedEntries(selected, reverse)
+	}
+	if start >= len(selected) {
+		return result, nil
+	}
+	if count > 0 {
+		end := min(start+count, len(selected))
+		result.Entries = append([]*SortedEntry(nil), selected[start:end]...)
+		return result, nil
+	}
 
-	return entries, nil
+	result.Entries = append([]*SortedEntry(nil), selected[start:]...)
+	return result, nil
 }
 
 func (c *Client) getSortedSetBounds(ctx context.Context, key string) (*SortedEntry, *SortedEntry, error) {
@@ -159,6 +205,15 @@ func (c *Client) ScanDeadJobs(ctx context.Context, match string) ([]*SortedEntry
 	return c.scanSortedSetJobs(ctx, deadSetKey, match, true)
 }
 
+// ScanDeadJobsWindow scans dead jobs using a match pattern and returns one window.
+func (c *Client) ScanDeadJobsWindow(
+	ctx context.Context,
+	match string,
+	start, count int,
+) (SortedEntriesWindow, error) {
+	return c.scanSortedSetWindow(ctx, deadSetKey, match, start, count, true)
+}
+
 // GetDeadBounds fetches the oldest and newest dead jobs.
 func (c *Client) GetDeadBounds(ctx context.Context) (*SortedEntry, *SortedEntry, error) {
 	return c.getSortedSetBounds(ctx, deadSetKey)
@@ -174,6 +229,15 @@ func (c *Client) ScanRetryJobs(ctx context.Context, match string) ([]*SortedEntr
 	return c.scanSortedSetJobs(ctx, retrySetKey, match, false)
 }
 
+// ScanRetryJobsWindow scans retry jobs using a match pattern and returns one window.
+func (c *Client) ScanRetryJobsWindow(
+	ctx context.Context,
+	match string,
+	start, count int,
+) (SortedEntriesWindow, error) {
+	return c.scanSortedSetWindow(ctx, retrySetKey, match, start, count, false)
+}
+
 // GetRetryBounds fetches the earliest and latest retry jobs.
 func (c *Client) GetRetryBounds(ctx context.Context) (*SortedEntry, *SortedEntry, error) {
 	return c.getSortedSetBounds(ctx, retrySetKey)
@@ -187,6 +251,15 @@ func (c *Client) GetScheduledJobs(ctx context.Context, start, count int) ([]*Sor
 // ScanScheduledJobs scans scheduled jobs using a match pattern (no paging).
 func (c *Client) ScanScheduledJobs(ctx context.Context, match string) ([]*SortedEntry, error) {
 	return c.scanSortedSetJobs(ctx, scheduleSetKey, match, false)
+}
+
+// ScanScheduledJobsWindow scans scheduled jobs using a match pattern and returns one window.
+func (c *Client) ScanScheduledJobsWindow(
+	ctx context.Context,
+	match string,
+	start, count int,
+) (SortedEntriesWindow, error) {
+	return c.scanSortedSetWindow(ctx, scheduleSetKey, match, start, count, false)
 }
 
 // GetScheduledBounds fetches the earliest and latest scheduled jobs.
@@ -465,4 +538,51 @@ func decrementRetryCountField(payload map[string]any) {
 		return
 	}
 	payload["retry_count"] = json.Number(strconv.FormatInt(count-1, 10))
+}
+
+func normalizeSortedSetMatch(match string) string {
+	if match != "" && !strings.Contains(match, "*") {
+		return "*" + match + "*"
+	}
+	return match
+}
+
+func sortedEntryBefore(a, b *SortedEntry, reverse bool) bool {
+	if a == nil {
+		return false
+	}
+	if b == nil {
+		return true
+	}
+	if reverse {
+		return a.Score > b.Score
+	}
+	return a.Score < b.Score
+}
+
+func sortSortedEntries(entries []*SortedEntry, reverse bool) {
+	sort.Slice(entries, func(i, j int) bool {
+		return sortedEntryBefore(entries[i], entries[j], reverse)
+	})
+}
+
+func insertSortedEntry(entries []*SortedEntry, entry *SortedEntry, reverse bool, limit int) []*SortedEntry {
+	if limit == 0 {
+		return entries
+	}
+
+	pos := sort.Search(len(entries), func(i int) bool {
+		return sortedEntryBefore(entry, entries[i], reverse)
+	})
+	if limit > 0 && len(entries) == limit && pos == len(entries) {
+		return entries
+	}
+
+	entries = append(entries, nil)
+	copy(entries[pos+1:], entries[pos:])
+	entries[pos] = entry
+	if limit > 0 && len(entries) > limit {
+		entries = entries[:limit]
+	}
+	return entries
 }

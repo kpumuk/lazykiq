@@ -13,9 +13,10 @@ import (
 // JobRecord represents a pending job within a Sidekiq queue.
 // Mirrors Sidekiq::JobRecord.
 type JobRecord struct {
-	value string         // the underlying String in Redis
-	item  map[string]any // the parsed job data
-	queue string         // the queue associated with this job
+	value  string         // the underlying String in Redis
+	item   map[string]any // the parsed job data
+	queue  string         // the queue associated with this job
+	parsed bool
 
 	args               []any
 	displayArgs        []any
@@ -27,35 +28,25 @@ type JobRecord struct {
 }
 
 // NewJobRecord creates a JobRecord from raw JSON data.
-// If queueName is empty, it will be extracted from the parsed JSON item.
+// If queueName is empty, it will be extracted lazily from the parsed JSON item.
 func NewJobRecord(value string, queueName string) *JobRecord {
-	jr := &JobRecord{
+	return &JobRecord{
 		value: value,
 		queue: queueName,
 	}
-
-	if err := json.Unmarshal([]byte(value), &jr.item); err != nil {
-		jr.item = make(map[string]any)
-		jr.args = []any{value}
-	}
-
-	// Extract queue from item if not provided
-	if jr.queue == "" {
-		if q, ok := jr.item["queue"].(string); ok {
-			jr.queue = q
-		}
-	}
-
-	return jr
 }
 
 // Queue returns the queue name associated with this job.
 func (jr *JobRecord) Queue() string {
+	if jr.queue == "" {
+		jr.ensureParsed()
+	}
 	return jr.queue
 }
 
 // JID returns the job ID.
 func (jr *JobRecord) JID() string {
+	jr.ensureParsed()
 	if jid, ok := jr.item["jid"].(string); ok {
 		return jid
 	}
@@ -64,6 +55,7 @@ func (jr *JobRecord) JID() string {
 
 // Klass returns the job class which Sidekiq will execute.
 func (jr *JobRecord) Klass() string {
+	jr.ensureParsed()
 	if klass, ok := jr.item["class"].(string); ok {
 		return klass
 	}
@@ -75,6 +67,7 @@ func (jr *JobRecord) DisplayClass() string {
 	if jr.displayClassLoaded {
 		return jr.displayClass
 	}
+	jr.ensureParsed()
 
 	klass := jr.Klass()
 	displayClass := klass
@@ -94,6 +87,7 @@ func (jr *JobRecord) Args() []any {
 	if jr.args != nil {
 		return jr.args
 	}
+	jr.ensureParsed()
 	if args, ok := jr.item["args"].([]any); ok {
 		jr.args = args
 		return jr.args
@@ -106,6 +100,7 @@ func (jr *JobRecord) DisplayArgs() []any {
 	if jr.displayArgsLoaded {
 		return jr.displayArgs
 	}
+	jr.ensureParsed()
 
 	klass := jr.Klass()
 	if isActiveJobWrapper(klass) {
@@ -136,6 +131,7 @@ func (jr *JobRecord) DisplayArgs() []any {
 
 // Context returns the current attributes (cattr) for the job.
 func (jr *JobRecord) Context() map[string]any {
+	jr.ensureParsed()
 	if cattr, ok := jr.item["cattr"].(map[string]any); ok {
 		return cattr
 	}
@@ -144,6 +140,7 @@ func (jr *JobRecord) Context() map[string]any {
 
 // Item returns the full parsed job data.
 func (jr *JobRecord) Item() map[string]any {
+	jr.ensureParsed()
 	return jr.item
 }
 
@@ -154,6 +151,7 @@ func (jr *JobRecord) Value() string {
 
 // ErrorClass returns the error class if this job failed.
 func (jr *JobRecord) ErrorClass() string {
+	jr.ensureParsed()
 	if errClass, ok := jr.item["error_class"].(string); ok {
 		return errClass
 	}
@@ -162,6 +160,7 @@ func (jr *JobRecord) ErrorClass() string {
 
 // ErrorMessage returns the error message if this job failed.
 func (jr *JobRecord) ErrorMessage() string {
+	jr.ensureParsed()
 	if errMsg, ok := jr.item["error_message"].(string); ok {
 		return errMsg
 	}
@@ -170,12 +169,14 @@ func (jr *JobRecord) ErrorMessage() string {
 
 // HasError returns true if this job has error information.
 func (jr *JobRecord) HasError() bool {
+	jr.ensureParsed()
 	_, ok := jr.item["error_class"]
 	return ok
 }
 
 // RetryCount returns the number of times this job has been retried.
 func (jr *JobRecord) RetryCount() int {
+	jr.ensureParsed()
 	if rc, ok := jr.item["retry_count"].(float64); ok {
 		return int(rc)
 	}
@@ -184,16 +185,19 @@ func (jr *JobRecord) RetryCount() int {
 
 // FailedAt returns the timestamp when the job failed (zero if not failed).
 func (jr *JobRecord) FailedAt() time.Time {
+	jr.ensureParsed()
 	return parseTimestamp(jr.item["failed_at"])
 }
 
 // RetriedAt returns the timestamp of the last retry (zero if never retried).
 func (jr *JobRecord) RetriedAt() time.Time {
+	jr.ensureParsed()
 	return parseTimestamp(jr.item["retried_at"])
 }
 
 // Bid returns the batch ID.
 func (jr *JobRecord) Bid() string {
+	jr.ensureParsed()
 	if bid, ok := jr.item["bid"].(string); ok {
 		return bid
 	}
@@ -202,11 +206,13 @@ func (jr *JobRecord) Bid() string {
 
 // EnqueuedAt returns the enqueued timestamp (zero if missing).
 func (jr *JobRecord) EnqueuedAt() time.Time {
+	jr.ensureParsed()
 	return parseTimestamp(jr.item["enqueued_at"])
 }
 
 // CreatedAt returns the created timestamp, falling back to enqueued_at (zero if missing).
 func (jr *JobRecord) CreatedAt() time.Time {
+	jr.ensureParsed()
 	createdAt := parseTimestamp(jr.item["created_at"])
 	if !createdAt.IsZero() {
 		return createdAt
@@ -216,6 +222,7 @@ func (jr *JobRecord) CreatedAt() time.Time {
 
 // Tags returns any tags associated with the job.
 func (jr *JobRecord) Tags() []string {
+	jr.ensureParsed()
 	rawTags, ok := jr.item["tags"].([]any)
 	if !ok {
 		return nil
@@ -236,6 +243,7 @@ func (jr *JobRecord) ErrorBacktrace() []string {
 	if jr.errorBacktraceSet {
 		return jr.errorBacktrace
 	}
+	jr.ensureParsed()
 	jr.errorBacktraceSet = true
 
 	switch raw := jr.item["error_backtrace"].(type) {
@@ -289,7 +297,27 @@ func (jr *JobRecord) Latency() float64 {
 	return latency
 }
 
+func (jr *JobRecord) ensureParsed() {
+	if jr.parsed {
+		return
+	}
+	jr.parsed = true
+
+	if err := json.Unmarshal([]byte(jr.value), &jr.item); err != nil {
+		jr.item = make(map[string]any)
+		jr.args = []any{jr.value}
+		return
+	}
+
+	if jr.queue == "" {
+		if q, ok := jr.item["queue"].(string); ok {
+			jr.queue = q
+		}
+	}
+}
+
 func (jr *JobRecord) unwrapActiveJobDisplayClass(displayClass string) string {
+	jr.ensureParsed()
 	if wrapped, ok := jr.item["wrapped"].(string); ok {
 		displayClass = wrapped
 	} else if firstArg, ok := firstStringArg(jr.Args()); ok {
@@ -321,6 +349,7 @@ func (jr *JobRecord) unwrapActiveJobDisplayClass(displayClass string) string {
 }
 
 func (jr *JobRecord) unwrapActiveJobArgs() []any {
+	jr.ensureParsed()
 	args := jr.Args()
 	wrapped, hasWrapped := jr.item["wrapped"].(string)
 	jobArgs := []any{}

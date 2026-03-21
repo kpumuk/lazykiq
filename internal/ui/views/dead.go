@@ -353,6 +353,7 @@ func (d *Dead) fetchWindow(
 		windowSize:       windowSize,
 		fallbackPageSize: deadFallbackPageSize,
 		windowPages:      deadWindowPages,
+		scanWindow:       d.client.ScanDeadJobsWindow,
 		scan:             d.client.ScanDeadJobs,
 		fetch:            d.client.GetDeadJobs,
 		bounds:           d.client.GetDeadBounds,
