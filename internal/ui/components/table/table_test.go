@@ -513,6 +513,39 @@ func TestSetRows_PreservesSelectionByID(t *testing.T) {
 	}
 }
 
+func TestSetRows_EmptyResetsScrollOffsets(t *testing.T) {
+	table := newTestTable(
+		WithColumns([]Column{
+			{Title: "A", Width: 3},
+			{Title: "B", Width: 3},
+		}),
+		WithRows([]Row{
+			row("row-1", "one", "twoooooo"),
+			row("row-2", "three", "four"),
+			row("row-3", "five", "six"),
+			row("row-4", "seven", "eight"),
+			row("row-5", "nine", "ten"),
+		}),
+		WithWidth(5),
+		WithHeight(4),
+	)
+
+	table.xOffset = 4
+	table.yOffset = 2
+
+	table.SetRows(nil)
+
+	if table.xOffset != 0 {
+		t.Fatalf("want xOffset 0, got %d", table.xOffset)
+	}
+	if table.yOffset != 0 {
+		t.Fatalf("want yOffset 0, got %d", table.yOffset)
+	}
+	if table.cursor != 0 {
+		t.Fatalf("want cursor 0, got %d", table.cursor)
+	}
+}
+
 func TestSetStyles_RefreshesContent(t *testing.T) {
 	table := newTestTable(
 		WithColumns([]Column{{Title: "A", Width: 1}}),

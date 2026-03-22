@@ -266,6 +266,8 @@ func (m *Model) SetRowsWithMeta(rows []Row, fullRows map[int]string, spans map[i
 
 	if len(m.rows) == 0 {
 		m.cursor = 0
+		m.xOffset = 0
+		m.yOffset = 0
 	} else if selectedID != "" {
 		if m.cursor < 0 || m.cursor >= len(m.rows) || m.rows[m.cursor].ID != selectedID {
 			if idx := indexRowByID(m.rows, selectedID); idx >= 0 {
