@@ -673,17 +673,10 @@ func formatContext(ctx map[string]any) string {
 func (q *QueueDetails) renderJobsBox() string {
 	// Build dynamic title with queue name
 	queueName := ""
-	queueSize := int64(0)
 	if q.selectedQueue < len(q.queues) {
 		queueName = q.queues[q.selectedQueue].Name
-		queueSize = q.queues[q.selectedQueue].Size
 	}
 	title := "Jobs in " + queueName
-
-	// Build meta: SIZE and PAGE info
-	sep := q.styles.Muted.Render(" • ")
-	sizeInfo := q.styles.MetricLabel.Render("SIZE: ") + q.styles.MetricValue.Render(display.ShortNumber(queueSize))
-	meta := sizeInfo + sep + q.rowsMeta()
 
 	// Calculate box height
 	boxHeight := q.height
@@ -696,7 +689,7 @@ func (q *QueueDetails) renderJobsBox() string {
 		frame.WithTitle(title),
 		frame.WithFilter(q.filter),
 		frame.WithTitlePadding(0),
-		frame.WithMeta(meta),
+		frame.WithMeta(q.rowsMeta()),
 		frame.WithContent(content),
 		frame.WithPadding(1),
 		frame.WithSize(q.width, boxHeight),
