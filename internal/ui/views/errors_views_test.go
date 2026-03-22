@@ -138,6 +138,48 @@ func TestGoldenErrorsDetailsContext(t *testing.T) {
 	golden.RequireEqual(t, []byte(output))
 }
 
+func TestGoldenErrorsDetailsRowsMeta(t *testing.T) {
+	view := NewErrorsDetails(nil)
+	view.SetSize(140, 40)
+	view.SetStyles(Styles{})
+	view.groupKey = sidekiq.ErrorGroupKey{
+		DisplayClass: "CleanupJob",
+		ErrorClass:   "ArgumentError",
+	}
+
+	rows := make([]table.Row, 13)
+	entries := make([]sidekiq.ErrorGroupEntry, 13)
+	for i := range rows {
+		rows[i] = table.Row{
+			ID: "row",
+			Cells: []string{
+				"retry",
+				"1m",
+				"default",
+				"CleanupJob",
+				"{}",
+				"boom",
+			},
+		}
+	}
+
+	updated, _ := view.Update(lazytable.DataMsg{
+		RequestID: view.lazy.RequestID(),
+		Result: lazytable.FetchResult{
+			Rows:        rows,
+			Total:       13,
+			WindowStart: 0,
+			Payload: errorDetailsPayload{
+				jobs: entries,
+			},
+		},
+	})
+	view = updated.(*ErrorsDetails)
+
+	output := ansi.Strip(view.renderDetailsBox())
+	golden.RequireEqual(t, []byte(output))
+}
+
 func TestErrorsDetailsResetDataResetsArgumentWidth(t *testing.T) {
 	view := NewErrorsDetails(nil)
 	view.SetSize(280, 8)

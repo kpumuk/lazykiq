@@ -324,6 +324,22 @@ func (e *ErrorsDetails) buildRows(jobs []sidekiq.ErrorGroupEntry) []table.Row {
 	return rows
 }
 
+func (e *ErrorsDetails) rowsMeta() string {
+	start, end, total := e.lazy.Range()
+	label := e.styles.MetricLabel.Render("rows: ")
+	if total == 0 || len(e.groupJobs) == 0 {
+		return label + e.styles.MetricValue.Render("0/0")
+	}
+
+	rangeLabel := fmt.Sprintf(
+		"%s-%s/%s",
+		display.Number(int64(start)),
+		display.Number(int64(end)),
+		display.Number(total),
+	)
+	return label + e.styles.MetricValue.Render(rangeLabel)
+}
+
 func (e *ErrorsDetails) openFilterDialog() tea.Cmd {
 	return func() tea.Msg {
 		return dialogs.OpenDialogMsg{
@@ -375,6 +391,7 @@ func (e *ErrorsDetails) renderDetailsBox() string {
 		frame.WithTitle(fmt.Sprintf("Error %s in %s", e.groupKey.ErrorClass, e.groupKey.DisplayClass)),
 		frame.WithFilter(e.filter),
 		frame.WithTitlePadding(0),
+		frame.WithMeta(e.rowsMeta()),
 		frame.WithContent(content),
 		frame.WithPadding(1),
 		frame.WithSize(e.width, e.height),
