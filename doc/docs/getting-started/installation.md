@@ -15,7 +15,7 @@ Download the latest release for your platform from the
 [GitHub Releases page](https://github.com/kpumuk/lazykiq/releases).
 
 {{< callout context="note" title="Note" icon="outline/info-circle" >}}
-Lazykiq uses special glyphs in the UI; without a Nerd Font in your terminal some characters may render incorrectly.
+Lazykiq uses Unicode box-drawing and chart glyphs in the UI; a modern UTF-8 terminal font is recommended.
 {{< /callout >}}
 
 ## Homebrew Tap

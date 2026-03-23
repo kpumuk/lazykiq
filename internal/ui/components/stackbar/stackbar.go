@@ -122,5 +122,5 @@ func (m Model) View() string {
 }
 
 func formatLabel(styles Styles, label string) string {
-	return styles.Item.Render(label) + styles.Arrow.Render("")
+	return styles.Item.Render(label)
 }

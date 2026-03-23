@@ -47,13 +47,8 @@ func TestViewDimensions(t *testing.T) {
 }
 
 func TestViewFormatsStack(t *testing.T) {
-	const arrow = ""
 	labels := []string{"Errors", "Detail"}
-	items := []string{
-		labels[0] + arrow,
-		labels[1] + arrow,
-	}
-	expected := strings.Join(items, " ")
+	expected := strings.Join(labels, " ")
 
 	m := New(
 		WithStyles(Styles{
