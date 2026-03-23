@@ -11,6 +11,7 @@ import (
 
 	"github.com/kpumuk/lazykiq/internal/mathutil"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
+	"github.com/kpumuk/lazykiq/internal/ui/components/scrollbar"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 )
 
@@ -39,12 +40,14 @@ type Section struct {
 
 // Styles holds the styles used by the help dialog.
 type Styles struct {
-	Title   lipgloss.Style
-	Border  lipgloss.Style
-	Section lipgloss.Style
-	Key     lipgloss.Style
-	Desc    lipgloss.Style
-	Muted   lipgloss.Style
+	Title          lipgloss.Style
+	Border         lipgloss.Style
+	Section        lipgloss.Style
+	Key            lipgloss.Style
+	Desc           lipgloss.Style
+	Muted          lipgloss.Style
+	ScrollbarTrack lipgloss.Style
+	ScrollbarThumb lipgloss.Style
 }
 
 // DefaultStyles returns zero-value styles.
@@ -145,18 +148,6 @@ func (m *Model) View() string {
 		return ""
 	}
 
-	contentWidth := m.contentWidth()
-	contentHeight := m.contentHeight()
-	lines := m.renderColumnLines(contentWidth)
-	m.clampOffset(len(lines), contentHeight)
-	if contentHeight > 0 && m.yOffset < len(lines) {
-		end := min(m.yOffset+contentHeight, len(lines))
-		lines = lines[m.yOffset:end]
-	} else if contentHeight > 0 {
-		lines = nil
-	}
-	content := strings.Join(lines, "\n")
-
 	box := frame.New(
 		frame.WithStyles(frame.Styles{
 			Focused: frame.StyleState{
@@ -174,12 +165,12 @@ func (m *Model) View() string {
 		}),
 		frame.WithTitle("Help"),
 		frame.WithTitlePadding(0),
-		frame.WithContent(content),
 		frame.WithPadding(m.padding),
 		frame.WithSize(m.width, m.height),
 		frame.WithMinHeight(5),
 		frame.WithFocused(true),
 	)
+	box.SetContent(m.renderContent())
 	return box.View()
 }
 
@@ -255,12 +246,54 @@ func (m *Model) contentWidth() int {
 	return max(m.width-2-(m.padding*2), 1)
 }
 
+func (m *Model) renderContent() string {
+	contentWidth := m.contentWidth()
+	contentHeight := m.contentHeight()
+	if contentWidth <= 0 || contentHeight <= 0 {
+		return ""
+	}
+
+	lines := m.renderColumnLines(contentWidth)
+	scrollbarWidth := m.scrollbarWidth(len(lines), contentHeight)
+	renderWidth := contentWidth
+	if scrollbarWidth > 0 {
+		renderWidth = max(contentWidth-scrollbarWidth, 0)
+		if renderWidth == 0 {
+			scrollbarWidth = 0
+			renderWidth = contentWidth
+		} else {
+			lines = m.renderColumnLines(renderWidth)
+		}
+	}
+
+	m.clampOffset(len(lines), contentHeight)
+	windowLines := visibleLines(lines, m.yOffset, contentHeight)
+	if scrollbarWidth == 0 {
+		return strings.Join(windowLines, "\n")
+	}
+
+	windowLines = padLinesToHeight(windowLines, contentHeight)
+	scrollbarLines := m.renderScrollbarLines(len(lines), contentHeight)
+	for i := range windowLines {
+		windowLines[i] = padRight(windowLines[i], renderWidth) + scrollbarLines[i]
+	}
+
+	return strings.Join(windowLines, "\n")
+}
+
 func (m *Model) contentHeight() int {
 	effectiveHeight := m.height
 	if m.minHeight > 0 {
 		effectiveHeight = max(effectiveHeight, m.minHeight)
 	}
 	return max(effectiveHeight-2, 0)
+}
+
+func (m *Model) scrollbarWidth(totalLines, visible int) int {
+	if visible <= 0 || totalLines <= visible {
+		return 0
+	}
+	return scrollbar.DefaultWidth
 }
 
 func (m *Model) pageSize() int {
@@ -278,6 +311,32 @@ func (m *Model) maxOffset() int {
 		return 0
 	}
 	return totalLines - visible
+}
+
+func (m *Model) renderScrollbarLines(totalLines, visible int) []string {
+	if visible <= 0 || totalLines <= visible {
+		return nil
+	}
+
+	bar := scrollbar.New(
+		scrollbar.WithStyles(scrollbar.Styles{
+			Track: m.styles.ScrollbarTrack,
+			Thumb: m.styles.ScrollbarThumb,
+		}),
+		scrollbar.WithSize(scrollbar.DefaultWidth, visible),
+		scrollbar.WithRange(totalLines, visible, m.yOffset),
+	)
+
+	lines := strings.Split(bar.View(), "\n")
+	if len(lines) >= visible {
+		return lines
+	}
+
+	blank := strings.Repeat(" ", scrollbar.DefaultWidth)
+	for len(lines) < visible {
+		lines = append(lines, blank)
+	}
+	return lines
 }
 
 func (m *Model) clampOffset(totalLines, visible int) {
@@ -425,4 +484,29 @@ func padRight(value string, width int) string {
 		return ansi.Truncate(value, width, "")
 	}
 	return value + strings.Repeat(" ", width-stringWidth)
+}
+
+func visibleLines(lines []string, offset, visible int) []string {
+	if visible <= 0 || offset >= len(lines) {
+		return nil
+	}
+
+	end := min(offset+visible, len(lines))
+	return append([]string(nil), lines[offset:end]...)
+}
+
+func padLinesToHeight(lines []string, height int) []string {
+	if height <= 0 {
+		return nil
+	}
+
+	if len(lines) >= height {
+		return lines
+	}
+
+	padded := append([]string(nil), lines...)
+	for len(padded) < height {
+		padded = append(padded, "")
+	}
+	return padded
 }

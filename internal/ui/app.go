@@ -608,12 +608,14 @@ func (a App) toggleHelpDialog() tea.Cmd {
 		return dialogs.OpenDialogMsg{
 			Model: helpdialog.New(
 				helpdialog.WithStyles(helpdialog.Styles{
-					Title:   a.styles.ViewTitle,
-					Border:  a.styles.FocusBorder,
-					Section: a.styles.ViewTitle,
-					Key:     a.styles.ContextKey,
-					Desc:    a.styles.ViewText,
-					Muted:   a.styles.ViewMuted,
+					Title:          a.styles.ViewTitle,
+					Border:         a.styles.FocusBorder,
+					Section:        a.styles.ViewTitle,
+					Key:            a.styles.ContextKey,
+					Desc:           a.styles.ViewText,
+					Muted:          a.styles.ViewMuted,
+					ScrollbarTrack: a.styles.ScrollbarTrack,
+					ScrollbarThumb: a.styles.ScrollbarThumb,
 				}),
 				helpdialog.WithSections(sections),
 			),
