@@ -193,9 +193,8 @@ func New(client sidekiq.API, version string, dangerousActionsEnabled bool, devTr
 		),
 		stackbar: stackbar.New(
 			stackbar.WithStyles(stackbar.Styles{
-				Bar:   styles.StackBar,
-				Item:  styles.StackItem,
-				Arrow: styles.StackArrow,
+				Bar:  styles.StackBar,
+				Item: styles.StackItem,
 			}),
 			stackbar.WithStack([]string{viewRegistry[viewDashboard].Name()}),
 		),
