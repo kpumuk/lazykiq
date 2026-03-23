@@ -89,6 +89,17 @@ func sampleSections() []Section {
 	}
 }
 
+func overflowingSections() []Section {
+	lines := make([]string, 0, 18)
+	for i := 1; i <= 18; i++ {
+		lines = append(lines, "line "+string(rune('A'+i-1)))
+	}
+	return []Section{{
+		Title: "Overflow",
+		Lines: lines,
+	}}
+}
+
 func TestHelpDialogWindowSizing(t *testing.T) {
 	t.Parallel()
 
@@ -211,10 +222,35 @@ func TestHelpDialogRenderSectionsContains(t *testing.T) {
 	}
 }
 
+func TestHelpDialogShowsScrollbarWhenOverflowing(t *testing.T) {
+	t.Parallel()
+
+	m := New(WithSections(overflowingSections()))
+	m.Init()
+	m, _ = updateModel(t, m, tea.WindowSizeMsg{Width: 80, Height: 14})
+
+	output := ansi.Strip(m.View())
+	if !strings.Contains(output, "█") {
+		t.Fatalf("expected scrollbar thumb in output, got %q", output)
+	}
+	if !strings.Contains(output, "░") {
+		t.Fatalf("expected scrollbar track in output, got %q", output)
+	}
+}
+
 func TestGoldenHelpDialog(t *testing.T) {
 	m := New(WithSections(sampleSections()))
 	m.Init()
 	m, _ = updateModel(t, m, tea.WindowSizeMsg{Width: 100, Height: 30})
+
+	output := ansi.Strip(m.View())
+	golden.RequireEqual(t, []byte(output))
+}
+
+func TestGoldenHelpDialogScrollbar(t *testing.T) {
+	m := New(WithSections(overflowingSections()))
+	m.Init()
+	m, _ = updateModel(t, m, tea.WindowSizeMsg{Width: 80, Height: 14})
 
 	output := ansi.Strip(m.View())
 	golden.RequireEqual(t, []byte(output))
