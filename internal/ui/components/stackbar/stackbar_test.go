@@ -11,9 +11,8 @@ import (
 
 func TestViewDimensions(t *testing.T) {
 	styles := Styles{
-		Bar:   lipgloss.NewStyle(),
-		Item:  lipgloss.NewStyle(),
-		Arrow: lipgloss.NewStyle(),
+		Bar:  lipgloss.NewStyle(),
+		Item: lipgloss.NewStyle(),
 	}
 
 	tests := map[string]struct {
@@ -47,19 +46,13 @@ func TestViewDimensions(t *testing.T) {
 }
 
 func TestViewFormatsStack(t *testing.T) {
-	const arrow = ""
 	labels := []string{"Errors", "Detail"}
-	items := []string{
-		labels[0] + arrow,
-		labels[1] + arrow,
-	}
-	expected := strings.Join(items, " ")
+	expected := strings.Join(labels, " ")
 
 	m := New(
 		WithStyles(Styles{
-			Bar:   lipgloss.NewStyle(),
-			Item:  lipgloss.NewStyle(),
-			Arrow: lipgloss.NewStyle(),
+			Bar:  lipgloss.NewStyle(),
+			Item: lipgloss.NewStyle(),
 		}),
 		WithStack(labels),
 	)
@@ -72,9 +65,8 @@ func TestViewFormatsStack(t *testing.T) {
 func TestGoldenStackBar(t *testing.T) {
 	m := New(
 		WithStyles(Styles{
-			Bar:   lipgloss.NewStyle(),
-			Item:  lipgloss.NewStyle(),
-			Arrow: lipgloss.NewStyle(),
+			Bar:  lipgloss.NewStyle(),
+			Item: lipgloss.NewStyle(),
 		}),
 		WithWidth(40),
 		WithStack([]string{"Errors", "Detail", "Payload"}),

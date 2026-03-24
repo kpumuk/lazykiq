@@ -201,10 +201,8 @@ type Styles struct {
 	NavBrand lipgloss.Style
 
 	// Stack bar
-	StackBar       lipgloss.Style
-	StackItem      lipgloss.Style
-	StackArrowLeft lipgloss.Style
-	StackArrow     lipgloss.Style
+	StackBar  lipgloss.Style
+	StackItem lipgloss.Style
 
 	// Content
 	ViewTitle lipgloss.Style
@@ -317,9 +315,6 @@ func NewStyles() Styles {
 			Foreground(t.StackBarText).
 			Background(t.StackBarBg).
 			Padding(0, 1),
-
-		StackArrow: lipgloss.NewStyle().
-			Foreground(t.StackBarBg),
 
 		// Content
 		ViewTitle: lipgloss.NewStyle().
