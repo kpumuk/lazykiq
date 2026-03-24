@@ -59,7 +59,7 @@ type Theme struct {
 // Use Open Color palette when possible to define colors: https://yeun.github.io/open-color/
 var DefaultTheme = Theme{
 	Primary: compat.CompleteAdaptiveColor{
-		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#B2003C"), ANSI256: lipgloss.Color("161"), ANSI: lipgloss.Color("13")},
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#B2003C"), ANSI256: lipgloss.Color("124"), ANSI: lipgloss.Color("1")},
 		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#F73D68"), ANSI256: lipgloss.Color("204"), ANSI: lipgloss.Color("13")},
 	},
 
@@ -69,7 +69,7 @@ var DefaultTheme = Theme{
 		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#F9FAFB"), ANSI256: lipgloss.Color("15"), ANSI: lipgloss.Color("15")},
 	},
 	TextMuted: compat.CompleteAdaptiveColor{
-		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#6B7280"), ANSI256: lipgloss.Color("240"), ANSI: lipgloss.Color("8")},
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#6B7280"), ANSI256: lipgloss.Color("240"), ANSI: lipgloss.Color("0")},
 		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#9CA3AF"), ANSI256: lipgloss.Color("250"), ANSI: lipgloss.Color("7")},
 	},
 
@@ -79,17 +79,17 @@ var DefaultTheme = Theme{
 		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#000000"), ANSI256: lipgloss.Color("0"), ANSI: lipgloss.Color("0")},
 	},
 	MetricsBarBg: compat.CompleteAdaptiveColor{
-		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#1c7ed6"), ANSI256: lipgloss.Color("33"), ANSI: lipgloss.Color("12")},
-		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#275DA9"), ANSI256: lipgloss.Color("25"), ANSI: lipgloss.Color("4")},
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#0B5CAD"), ANSI256: lipgloss.Color("25"), ANSI: lipgloss.Color("12")},
+		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#275DA9"), ANSI256: lipgloss.Color("25"), ANSI: lipgloss.Color("6")},
 	},
 
 	// Borders
 	Border: compat.CompleteAdaptiveColor{
-		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#D1D5DB"), ANSI256: lipgloss.Color("252"), ANSI: lipgloss.Color("8")},
-		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#374151"), ANSI256: lipgloss.Color("238"), ANSI: lipgloss.Color("7")},
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#6B7280"), ANSI256: lipgloss.Color("242"), ANSI: lipgloss.Color("0")},
+		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#808080"), ANSI256: lipgloss.Color("245"), ANSI: lipgloss.Color("7")},
 	},
 	BorderFocus: compat.CompleteAdaptiveColor{
-		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#B2003C"), ANSI256: lipgloss.Color("161"), ANSI: lipgloss.Color("13")},
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#B2003C"), ANSI256: lipgloss.Color("124"), ANSI: lipgloss.Color("1")},
 		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#F73D68"), ANSI256: lipgloss.Color("204"), ANSI: lipgloss.Color("13")},
 	},
 
@@ -99,19 +99,19 @@ var DefaultTheme = Theme{
 		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#F8F9FA"), ANSI256: lipgloss.Color("255"), ANSI: lipgloss.Color("15")},
 	},
 	TableSelectedBg: compat.CompleteAdaptiveColor{
-		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#1864AB"), ANSI256: lipgloss.Color("27"), ANSI: lipgloss.Color("4")},
-		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#1C7ED6"), ANSI256: lipgloss.Color("33"), ANSI: lipgloss.Color("4")},
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#1864AB"), ANSI256: lipgloss.Color("25"), ANSI: lipgloss.Color("4")},
+		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#0B5CAD"), ANSI256: lipgloss.Color("25"), ANSI: lipgloss.Color("6")},
 	},
 	Success: compat.CompleteAdaptiveColor{
-		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#16A34A"), ANSI256: lipgloss.Color("34"), ANSI: lipgloss.Color("2")},
-		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#22C55E"), ANSI256: lipgloss.Color("70"), ANSI: lipgloss.Color("2")},
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#236C34"), ANSI256: lipgloss.Color("22"), ANSI: lipgloss.Color("2")},
+		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#22C55E"), ANSI256: lipgloss.Color("70"), ANSI: lipgloss.Color("10")},
 	},
 	Error: compat.CompleteAdaptiveColor{
 		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#FF0000"), ANSI256: lipgloss.Color("196"), ANSI: lipgloss.Color("9")},
 		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#FF0000"), ANSI256: lipgloss.Color("196"), ANSI: lipgloss.Color("9")},
 	},
 	Filter: compat.CompleteAdaptiveColor{
-		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#C026D3"), ANSI256: lipgloss.Color("165"), ANSI: lipgloss.Color("13")},
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#B2003C"), ANSI256: lipgloss.Color("124"), ANSI: lipgloss.Color("1")},
 		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#E879F9"), ANSI256: lipgloss.Color("171"), ANSI: lipgloss.Color("13")},
 	},
 	DangerBg: compat.CompleteAdaptiveColor{
@@ -127,58 +127,58 @@ var DefaultTheme = Theme{
 
 	// Charts
 	ChartAxis: compat.CompleteAdaptiveColor{
-		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#6B7280"), ANSI256: lipgloss.Color("240"), ANSI: lipgloss.Color("8")},
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#6B7280"), ANSI256: lipgloss.Color("240"), ANSI: lipgloss.Color("0")},
 		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#9CA3AF"), ANSI256: lipgloss.Color("250"), ANSI: lipgloss.Color("7")},
 	},
 	ChartLabel: compat.CompleteAdaptiveColor{
-		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#6B7280"), ANSI256: lipgloss.Color("240"), ANSI: lipgloss.Color("8")},
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#6B7280"), ANSI256: lipgloss.Color("240"), ANSI: lipgloss.Color("0")},
 		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#9CA3AF"), ANSI256: lipgloss.Color("250"), ANSI: lipgloss.Color("7")},
 	},
 	ChartHistogram: compat.CompleteAdaptiveColor{
-		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#B2003C"), ANSI256: lipgloss.Color("161"), ANSI: lipgloss.Color("13")},
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#B2003C"), ANSI256: lipgloss.Color("124"), ANSI: lipgloss.Color("1")},
 		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#F73D68"), ANSI256: lipgloss.Color("204"), ANSI: lipgloss.Color("13")},
 	},
 
 	// Stack bar
 	StackBarBg: compat.CompleteAdaptiveColor{
-		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#F59F00"), ANSI256: lipgloss.Color("208"), ANSI: lipgloss.Color("3")},
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#8F4E00"), ANSI256: lipgloss.Color("94"), ANSI: lipgloss.Color("1")},
 		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#F59F00"), ANSI256: lipgloss.Color("208"), ANSI: lipgloss.Color("3")},
 	},
 	StackBarText: compat.CompleteAdaptiveColor{
-		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#111827"), ANSI256: lipgloss.Color("0"), ANSI: lipgloss.Color("0")},
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#F8F9FA"), ANSI256: lipgloss.Color("255"), ANSI: lipgloss.Color("15")},
 		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#111827"), ANSI256: lipgloss.Color("0"), ANSI: lipgloss.Color("0")},
 	},
 
 	// JSON
 	JSONKey: compat.CompleteAdaptiveColor{
-		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#364FC7"), ANSI256: lipgloss.Color("62"), ANSI: lipgloss.Color("4")},
-		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#748FFC"), ANSI256: lipgloss.Color("69"), ANSI: lipgloss.Color("4")},
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#364FC7"), ANSI256: lipgloss.Color("25"), ANSI: lipgloss.Color("4")},
+		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#748FFC"), ANSI256: lipgloss.Color("69"), ANSI: lipgloss.Color("14")},
 	},
 	JSONString: compat.CompleteAdaptiveColor{
-		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#2B8A3E"), ANSI256: lipgloss.Color("28"), ANSI: lipgloss.Color("2")},
-		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#69DB7C"), ANSI256: lipgloss.Color("78"), ANSI: lipgloss.Color("2")},
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#236C34"), ANSI256: lipgloss.Color("22"), ANSI: lipgloss.Color("2")},
+		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#69DB7C"), ANSI256: lipgloss.Color("78"), ANSI: lipgloss.Color("10")},
 	},
 	JSONNumber: compat.CompleteAdaptiveColor{
-		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#D9480F"), ANSI256: lipgloss.Color("166"), ANSI: lipgloss.Color("3")},
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#B45309"), ANSI256: lipgloss.Color("94"), ANSI: lipgloss.Color("1")},
 		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#FFA94D"), ANSI256: lipgloss.Color("215"), ANSI: lipgloss.Color("3")},
 	},
 	JSONBool: compat.CompleteAdaptiveColor{
 		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#C92A2A"), ANSI256: lipgloss.Color("160"), ANSI: lipgloss.Color("1")},
-		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#FF6B6B"), ANSI256: lipgloss.Color("203"), ANSI: lipgloss.Color("1")},
+		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#FF6B6B"), ANSI256: lipgloss.Color("203"), ANSI: lipgloss.Color("9")},
 	},
 	JSONNull: compat.CompleteAdaptiveColor{
-		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#868E96"), ANSI256: lipgloss.Color("245"), ANSI: lipgloss.Color("8")},
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#868E96"), ANSI256: lipgloss.Color("242"), ANSI: lipgloss.Color("0")},
 		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#ADB5BD"), ANSI256: lipgloss.Color("249"), ANSI: lipgloss.Color("7")},
 	},
 	JSONPunctuation: compat.CompleteAdaptiveColor{
-		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#495057"), ANSI256: lipgloss.Color("240"), ANSI: lipgloss.Color("8")},
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#495057"), ANSI256: lipgloss.Color("240"), ANSI: lipgloss.Color("0")},
 		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#DEE2E6"), ANSI256: lipgloss.Color("253"), ANSI: lipgloss.Color("7")},
 	},
 
 	// Queues
 	QueueText: compat.CompleteAdaptiveColor{
-		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#1098AD"), ANSI256: lipgloss.Color("30"), ANSI: lipgloss.Color("6")},
-		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#66D9E8"), ANSI256: lipgloss.Color("81"), ANSI: lipgloss.Color("6")},
+		Light: compat.CompleteColor{TrueColor: lipgloss.Color("#0B7285"), ANSI256: lipgloss.Color("24"), ANSI: lipgloss.Color("6")},
+		Dark:  compat.CompleteColor{TrueColor: lipgloss.Color("#66D9E8"), ANSI256: lipgloss.Color("81"), ANSI: lipgloss.Color("14")},
 	},
 }
 
@@ -296,7 +296,7 @@ func NewStyles() Styles {
 			PaddingRight(1),
 
 		NavKey: lipgloss.NewStyle().
-			Foreground(t.Text).
+			Foreground(t.Bg).
 			Background(t.Border).
 			Padding(0, 1),
 
@@ -418,7 +418,7 @@ func NewStyles() Styles {
 			Foreground(t.Text),
 
 		ContextKey: lipgloss.NewStyle().
-			Foreground(t.Text).
+			Foreground(t.Bg).
 			Background(t.Border).
 			Padding(0, 1),
 

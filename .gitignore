@@ -3,6 +3,7 @@
 /bin
 /dist
 /lazykiq
+/artifacts
 
 # Temp files
 /tmp
