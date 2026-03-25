@@ -134,13 +134,6 @@ func (p *ProcessesList) View() string {
 		return p.renderMessage("Loading...")
 	}
 
-	if len(p.processes) == 0 {
-		if p.filter != "" {
-			return p.renderMessage("No processes matching filter")
-		}
-		return p.renderMessage("No processes")
-	}
-
 	return p.renderProcessesBox()
 }
 
@@ -380,6 +373,12 @@ func (p *ProcessesList) updateTableSize() {
 
 // updateTableRows converts process data to table rows.
 func (p *ProcessesList) updateTableRows() {
+	if p.filter != "" {
+		p.table.SetEmptyMessage("No matches")
+	} else {
+		p.table.SetEmptyMessage("No processes")
+	}
+
 	rows := make([]table.Row, 0, len(p.processes))
 	for _, process := range p.processes {
 		name := processIdentity(process)

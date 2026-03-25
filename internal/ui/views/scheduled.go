@@ -200,10 +200,6 @@ func (s *Scheduled) View() string {
 		return s.renderMessage("Loading...")
 	}
 
-	if len(s.jobs) == 0 && s.lazy.Total() == 0 && s.filter == "" {
-		return s.renderMessage("No scheduled jobs")
-	}
-
 	return s.renderJobsBox()
 }
 
