@@ -161,13 +161,6 @@ func (q *QueuesList) View() string {
 		return q.renderMessage("Loading...")
 	}
 
-	if len(q.queues) == 0 {
-		if q.filter != "" {
-			return q.renderMessage("No queues matching filter")
-		}
-		return q.renderMessage("No queues")
-	}
-
 	return q.renderQueuesBox()
 }
 
@@ -367,6 +360,12 @@ func (q *QueuesList) updateTableSize() {
 
 // updateTableRows converts queue data to table rows.
 func (q *QueuesList) updateTableRows() {
+	if q.filter != "" {
+		q.table.SetEmptyMessage("No matches")
+	} else {
+		q.table.SetEmptyMessage("No queues")
+	}
+
 	rows := make([]table.Row, 0, len(q.queues))
 	for _, queue := range q.queues {
 		oldestJobStr := ""

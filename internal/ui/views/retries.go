@@ -219,10 +219,6 @@ func (r *Retries) View() string {
 		return r.renderMessage("Loading...")
 	}
 
-	if len(r.jobs) == 0 && r.lazy.Total() == 0 && r.filter == "" {
-		return r.renderMessage("No retries")
-	}
-
 	return r.renderJobsBox()
 }
 

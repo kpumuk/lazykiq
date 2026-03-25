@@ -148,10 +148,6 @@ func (b *Busy) View() string {
 		return b.renderMessage("Loading...")
 	}
 
-	if len(b.data.Processes) == 0 && len(b.data.Jobs) == 0 {
-		return b.renderMessage("No active processes")
-	}
-
 	boxContent := b.renderJobsBox()
 	return boxContent
 }

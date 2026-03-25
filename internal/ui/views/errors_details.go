@@ -150,10 +150,6 @@ func (e *ErrorsDetails) View() string {
 		return e.renderMessage("Loading...")
 	}
 
-	if len(e.groupJobs) == 0 && e.lazy.Total() == 0 && e.filter == "" {
-		return e.renderMessage("No errors")
-	}
-
 	return e.renderDetailsBox()
 }
 

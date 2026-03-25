@@ -131,11 +131,6 @@ func (e *ErrorsSummary) View() string {
 		return e.renderMessage("Loading...")
 	}
 
-	total := e.meta.DeadCount + e.meta.RetryCount
-	if len(e.rows) == 0 && total == 0 && e.filter == "" {
-		return e.renderMessage("No errors")
-	}
-
 	return e.renderSummaryBox()
 }
 

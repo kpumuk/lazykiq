@@ -99,6 +99,7 @@ func (q *QueueDetails) Update(msg tea.Msg) (View, tea.Cmd) {
 		// Clear the queue key after successfully loading
 		q.selectedQueueKey = ""
 		q.ready = true
+		q.updateEmptyMessage()
 		var cmd tea.Cmd
 		q.lazy, cmd = q.lazy.Update(msg)
 		return q, cmd
@@ -169,10 +170,6 @@ func (q *QueueDetails) Update(msg tea.Msg) (View, tea.Cmd) {
 func (q *QueueDetails) View() string {
 	if !q.ready {
 		return q.renderMessage("Loading...")
-	}
-
-	if len(q.queues) == 0 {
-		return q.renderMessage("No queues")
 	}
 
 	return q.renderJobsBox()
@@ -640,7 +637,9 @@ func (q *QueueDetails) rowsMeta() string {
 
 func (q *QueueDetails) updateEmptyMessage() {
 	msg := "No jobs in queue"
-	if q.filter != "" {
+	if len(q.queues) == 0 {
+		msg = "No queues"
+	} else if q.filter != "" {
 		msg = "No matches"
 	}
 	q.lazy.SetEmptyMessage(msg)
@@ -672,11 +671,10 @@ func formatContext(ctx map[string]any) string {
 // renderJobsBox renders the bordered box containing the jobs table.
 func (q *QueueDetails) renderJobsBox() string {
 	// Build dynamic title with queue name
-	queueName := ""
-	if q.selectedQueue < len(q.queues) {
-		queueName = q.queues[q.selectedQueue].Name
+	title := "Jobs"
+	if q.selectedQueue >= 0 && q.selectedQueue < len(q.queues) {
+		title = "Jobs in " + q.queues[q.selectedQueue].Name
 	}
-	title := "Jobs in " + queueName
 
 	// Calculate box height
 	boxHeight := q.height

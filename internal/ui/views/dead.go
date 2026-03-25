@@ -200,10 +200,6 @@ func (d *Dead) View() string {
 		return d.renderMessage("Loading...")
 	}
 
-	if len(d.jobs) == 0 && d.lazy.Total() == 0 && d.filter == "" {
-		return d.renderMessage("No dead jobs")
-	}
-
 	return d.renderJobsBox()
 }
 
