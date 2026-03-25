@@ -336,15 +336,13 @@ func (s *Scheduled) fetchWindow(
 ) (lazytable.FetchResult, error) {
 	return fetchSortedEntriesWindow(ctx, sortedEntriesFetchConfig{
 		tracker:          "scheduled.fetchWindow",
+		client:           s.client,
+		kind:             sidekiq.SortedSetScheduled,
 		filter:           s.filter,
 		windowStart:      windowStart,
 		windowSize:       windowSize,
 		fallbackPageSize: scheduledFallbackPageSize,
 		windowPages:      scheduledWindowPages,
-		scanWindow:       s.client.ScanScheduledJobsWindow,
-		scan:             s.client.ScanScheduledJobs,
-		fetch:            s.client.GetScheduledJobs,
-		bounds:           s.client.GetScheduledBounds,
 		buildRows:        s.buildRows,
 	})
 }
@@ -504,7 +502,7 @@ func (s *Scheduled) openAddAllToQueueConfirm() tea.Cmd {
 func (s *Scheduled) deleteJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
 	return func() tea.Msg {
 		ctx := devtools.WithTracker(context.Background(), "scheduled.deleteJobCmd")
-		if err := s.client.DeleteScheduledJob(ctx, entry); err != nil {
+		if err := s.client.DeleteSortedEntry(ctx, sidekiq.SortedSetScheduled, entry); err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}
 		return RefreshMsg{}
@@ -514,7 +512,7 @@ func (s *Scheduled) deleteJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
 func (s *Scheduled) deleteAllCmd() tea.Cmd {
 	return func() tea.Msg {
 		ctx := devtools.WithTracker(context.Background(), "scheduled.deleteAllCmd")
-		if err := s.client.DeleteAllScheduledJobs(ctx); err != nil {
+		if err := s.client.DeleteAllSortedEntries(ctx, sidekiq.SortedSetScheduled); err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}
 		return RefreshMsg{}
@@ -524,7 +522,7 @@ func (s *Scheduled) deleteAllCmd() tea.Cmd {
 func (s *Scheduled) addToQueueJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
 	return func() tea.Msg {
 		ctx := devtools.WithTracker(context.Background(), "scheduled.addToQueueJobCmd")
-		if err := s.client.AddScheduledJobToQueue(ctx, entry); err != nil {
+		if err := s.client.EnqueueSortedEntry(ctx, sidekiq.SortedSetScheduled, entry); err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}
 		return RefreshMsg{}
@@ -534,7 +532,7 @@ func (s *Scheduled) addToQueueJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
 func (s *Scheduled) addAllToQueueCmd() tea.Cmd {
 	return func() tea.Msg {
 		ctx := devtools.WithTracker(context.Background(), "scheduled.addAllToQueueCmd")
-		if err := s.client.AddAllScheduledJobsToQueue(ctx); err != nil {
+		if err := s.client.EnqueueAllSortedEntries(ctx, sidekiq.SortedSetScheduled); err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}
 		return RefreshMsg{}

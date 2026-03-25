@@ -9,16 +9,24 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 )
 
+type sortedEntriesClient interface {
+	GetSortedEntries(context.Context, sidekiq.SortedSetKind, int, int) ([]*sidekiq.SortedEntry, int64, error)
+	ScanSortedEntries(context.Context, sidekiq.SortedSetKind, string) ([]*sidekiq.SortedEntry, error)
+	GetSortedEntryBounds(context.Context, sidekiq.SortedSetKind) (*sidekiq.SortedEntry, *sidekiq.SortedEntry, error)
+}
+
+type sortedEntriesWindowScanner interface {
+	ScanSortedEntriesWindow(context.Context, sidekiq.SortedSetKind, string, int, int) (sidekiq.SortedEntriesWindow, error)
+}
+
 type sortedWindowConfig struct {
+	client           sortedEntriesClient
+	kind             sidekiq.SortedSetKind
 	filter           string
 	windowStart      int
 	windowSize       int
 	fallbackPageSize int
 	windowPages      int
-	scanWindow       func(context.Context, string, int, int) (sidekiq.SortedEntriesWindow, error)
-	scan             func(context.Context, string) ([]*sidekiq.SortedEntry, error)
-	fetch            func(context.Context, int, int) ([]*sidekiq.SortedEntry, int64, error)
-	bounds           func(context.Context) (*sidekiq.SortedEntry, *sidekiq.SortedEntry, error)
 }
 
 type sortedWindowResult struct {
@@ -37,15 +45,13 @@ type sortedEntriesPayload struct {
 
 type sortedEntriesFetchConfig struct {
 	tracker          string
+	client           sortedEntriesClient
+	kind             sidekiq.SortedSetKind
 	filter           string
 	windowStart      int
 	windowSize       int
 	fallbackPageSize int
 	windowPages      int
-	scanWindow       func(context.Context, string, int, int) (sidekiq.SortedEntriesWindow, error)
-	scan             func(context.Context, string) ([]*sidekiq.SortedEntry, error)
-	fetch            func(context.Context, int, int) ([]*sidekiq.SortedEntry, int64, error)
-	bounds           func(context.Context) (*sidekiq.SortedEntry, *sidekiq.SortedEntry, error)
 	buildRows        func([]*sidekiq.SortedEntry) []table.Row
 }
 
@@ -54,15 +60,13 @@ func fetchSortedEntriesWindow(ctx context.Context, cfg sortedEntriesFetchConfig)
 		ctx = devtools.WithTracker(ctx, cfg.tracker)
 	}
 	result, err := fetchSortedWindow(ctx, sortedWindowConfig{
+		client:           cfg.client,
+		kind:             cfg.kind,
 		filter:           cfg.filter,
 		windowStart:      cfg.windowStart,
 		windowSize:       cfg.windowSize,
 		fallbackPageSize: cfg.fallbackPageSize,
 		windowPages:      cfg.windowPages,
-		scanWindow:       cfg.scanWindow,
-		scan:             cfg.scan,
-		fetch:            cfg.fetch,
-		bounds:           cfg.bounds,
 	})
 	if err != nil {
 		return lazytable.FetchResult{}, err
@@ -90,7 +94,7 @@ func fetchSortedWindow(ctx context.Context, cfg sortedWindowConfig) (sortedWindo
 		return fetchFilteredSortedWindow(ctx, cfg, windowSize)
 	}
 
-	jobs, totalSize, err := cfg.fetch(ctx, cfg.windowStart, windowSize)
+	jobs, totalSize, err := cfg.client.GetSortedEntries(ctx, cfg.kind, cfg.windowStart, windowSize)
 	if err != nil {
 		return sortedWindowResult{}, err
 	}
@@ -107,7 +111,7 @@ func fetchSortedWindow(ctx context.Context, cfg sortedWindowConfig) (sortedWindo
 	maxStart := max(int(totalSize)-windowSize, 0)
 	if windowStart > maxStart {
 		windowStart = maxStart
-		jobs, totalSize, err = cfg.fetch(ctx, windowStart, windowSize)
+		jobs, totalSize, err = cfg.client.GetSortedEntries(ctx, cfg.kind, windowStart, windowSize)
 		if err != nil {
 			return sortedWindowResult{}, err
 		}
@@ -116,7 +120,7 @@ func fetchSortedWindow(ctx context.Context, cfg sortedWindowConfig) (sortedWindo
 	var firstEntry *sidekiq.SortedEntry
 	var lastEntry *sidekiq.SortedEntry
 	if totalSize > 0 {
-		firstEntry, lastEntry, err = cfg.bounds(ctx)
+		firstEntry, lastEntry, err = cfg.client.GetSortedEntryBounds(ctx, cfg.kind)
 		if err != nil {
 			return sortedWindowResult{}, err
 		}
@@ -136,7 +140,7 @@ func fetchFilteredSortedWindow(
 	cfg sortedWindowConfig,
 	windowSize int,
 ) (sortedWindowResult, error) {
-	if cfg.scanWindow != nil {
+	if _, ok := cfg.client.(sortedEntriesWindowScanner); ok {
 		return fetchFilteredSortedWindowPage(ctx, cfg, windowSize)
 	}
 	return fetchFilteredSortedWindowFallback(ctx, cfg, windowSize)
@@ -147,8 +151,9 @@ func fetchFilteredSortedWindowPage(
 	cfg sortedWindowConfig,
 	windowSize int,
 ) (sortedWindowResult, error) {
+	scanner := cfg.client.(sortedEntriesWindowScanner)
 	windowStart := max(cfg.windowStart, 0)
-	window, err := cfg.scanWindow(ctx, cfg.filter, windowStart, windowSize)
+	window, err := scanner.ScanSortedEntriesWindow(ctx, cfg.kind, cfg.filter, windowStart, windowSize)
 	if err != nil {
 		return sortedWindowResult{}, err
 	}
@@ -159,7 +164,7 @@ func fetchFilteredSortedWindowPage(
 	maxStart := max(int(window.Total)-windowSize, 0)
 	if windowStart > maxStart {
 		windowStart = maxStart
-		window, err = cfg.scanWindow(ctx, cfg.filter, windowStart, windowSize)
+		window, err = scanner.ScanSortedEntriesWindow(ctx, cfg.kind, cfg.filter, windowStart, windowSize)
 		if err != nil {
 			return sortedWindowResult{}, err
 		}
@@ -179,7 +184,7 @@ func fetchFilteredSortedWindowFallback(
 	cfg sortedWindowConfig,
 	windowSize int,
 ) (sortedWindowResult, error) {
-	jobs, err := cfg.scan(ctx, cfg.filter)
+	jobs, err := cfg.client.ScanSortedEntries(ctx, cfg.kind, cfg.filter)
 	if err != nil {
 		return sortedWindowResult{}, err
 	}

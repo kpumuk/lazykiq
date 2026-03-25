@@ -31,7 +31,7 @@ func TestGetDeadJobs(t *testing.T) {
 	_, _ = mr.ZAdd("dead", testScoreB, job2)
 	_, _ = mr.ZAdd("dead", testScoreC, job3)
 
-	entries, size, err := client.GetDeadJobs(ctx, 0, 10)
+	entries, size, err := client.GetSortedEntries(ctx, SortedSetDead, 0, 10)
 	if err != nil {
 		t.Fatalf("GetDeadJobs failed: %v", err)
 	}
@@ -64,7 +64,7 @@ func TestGetDeadJobs(t *testing.T) {
 func TestGetDeadJobs_Empty(t *testing.T) {
 	_, client := setupTestRedis(t)
 
-	entries, size, err := client.GetDeadJobs(context.Background(), 0, 10)
+	entries, size, err := client.GetSortedEntries(context.Background(), SortedSetDead, 0, 10)
 	if err != nil {
 		t.Fatalf("GetDeadJobs failed: %v", err)
 	}
@@ -86,7 +86,7 @@ func TestGetDeadJobs_Pagination(t *testing.T) {
 		_, _ = mr.ZAdd("dead", testScoreBase+float64(i)*60, job)
 	}
 
-	entries, size, err := client.GetDeadJobs(ctx, 2, 3)
+	entries, size, err := client.GetSortedEntries(ctx, SortedSetDead, 2, 3)
 	if err != nil {
 		t.Fatalf("GetDeadJobs failed: %v", err)
 	}
@@ -118,7 +118,7 @@ func TestGetDeadJobs_CountZero(t *testing.T) {
 		_, _ = mr.ZAdd("dead", testScoreBase+float64(i)*60, job)
 	}
 
-	entries, size, err := client.GetDeadJobs(ctx, 0, 0)
+	entries, size, err := client.GetSortedEntries(ctx, SortedSetDead, 0, 0)
 	if err != nil {
 		t.Fatalf("GetDeadJobs failed: %v", err)
 	}
@@ -143,7 +143,7 @@ func TestGetRetryJobs(t *testing.T) {
 	_, _ = mr.ZAdd("retry", testScoreB, job2)
 	_, _ = mr.ZAdd("retry", testScoreC, job3)
 
-	entries, size, err := client.GetRetryJobs(ctx, 0, 10)
+	entries, size, err := client.GetSortedEntries(ctx, SortedSetRetry, 0, 10)
 	if err != nil {
 		t.Fatalf("GetRetryJobs failed: %v", err)
 	}
@@ -178,7 +178,7 @@ func TestGetScheduledJobs(t *testing.T) {
 	_, _ = mr.ZAdd("schedule", testScoreB, job2)
 	_, _ = mr.ZAdd("schedule", testScoreC, job3)
 
-	entries, size, err := client.GetScheduledJobs(ctx, 0, 10)
+	entries, size, err := client.GetSortedEntries(ctx, SortedSetScheduled, 0, 10)
 	if err != nil {
 		t.Fatalf("GetScheduledJobs failed: %v", err)
 	}
@@ -213,7 +213,7 @@ func TestGetDeadBounds(t *testing.T) {
 	_, _ = mr.ZAdd("dead", testScoreC, job3)
 	_, _ = mr.ZAdd("dead", testScoreB, job2)
 
-	oldest, newest, err := client.GetDeadBounds(ctx)
+	oldest, newest, err := client.GetSortedEntryBounds(ctx, SortedSetDead)
 	if err != nil {
 		t.Fatalf("GetDeadBounds failed: %v", err)
 	}
@@ -240,7 +240,7 @@ func TestGetRetryBounds(t *testing.T) {
 	_, _ = mr.ZAdd("retry", testScoreA, job1)
 	_, _ = mr.ZAdd("retry", testScoreB, job2)
 
-	first, last, err := client.GetRetryBounds(ctx)
+	first, last, err := client.GetSortedEntryBounds(ctx, SortedSetRetry)
 	if err != nil {
 		t.Fatalf("GetRetryBounds failed: %v", err)
 	}
@@ -267,7 +267,7 @@ func TestGetScheduledBounds(t *testing.T) {
 	_, _ = mr.ZAdd("schedule", testScoreC, job3)
 	_, _ = mr.ZAdd("schedule", testScoreA, job1)
 
-	first, last, err := client.GetScheduledBounds(ctx)
+	first, last, err := client.GetSortedEntryBounds(ctx, SortedSetScheduled)
 	if err != nil {
 		t.Fatalf("GetScheduledBounds failed: %v", err)
 	}
@@ -286,7 +286,7 @@ func TestGetBounds_Empty(t *testing.T) {
 	_, client := setupTestRedis(t)
 	ctx := context.Background()
 
-	first, last, err := client.GetRetryBounds(ctx)
+	first, last, err := client.GetSortedEntryBounds(ctx, SortedSetRetry)
 	if err != nil {
 		t.Fatalf("GetRetryBounds failed: %v", err)
 	}
@@ -307,7 +307,7 @@ func TestScanDeadJobs(t *testing.T) {
 	_, _ = mr.ZAdd("dead", testScoreB, job2)
 	_, _ = mr.ZAdd("dead", testScoreC, job3)
 
-	entries, err := client.ScanDeadJobs(ctx, "abc")
+	entries, err := client.ScanSortedEntries(ctx, SortedSetDead, "abc")
 	if err != nil {
 		t.Fatalf("ScanDeadJobs failed: %v", err)
 	}
@@ -334,7 +334,7 @@ func TestScanDeadJobs_ExactMatch(t *testing.T) {
 	_, _ = mr.ZAdd("dead", testScoreA, job1)
 	_, _ = mr.ZAdd("dead", testScoreB, job2)
 
-	entries, err := client.ScanDeadJobs(ctx, "test123")
+	entries, err := client.ScanSortedEntries(ctx, SortedSetDead, "test123")
 	if err != nil {
 		t.Fatalf("ScanDeadJobs failed: %v", err)
 	}
@@ -360,7 +360,7 @@ func TestScanDeadJobs_Wildcard(t *testing.T) {
 	_, _ = mr.ZAdd("dead", testScoreB, job2)
 	_, _ = mr.ZAdd("dead", testScoreC, job3)
 
-	entries, err := client.ScanDeadJobs(ctx, "*prefix*")
+	entries, err := client.ScanSortedEntries(ctx, SortedSetDead, "*prefix*")
 	if err != nil {
 		t.Fatalf("ScanDeadJobs failed: %v", err)
 	}
@@ -384,7 +384,7 @@ func TestScanDeadJobsWindow(t *testing.T) {
 	_, _ = mr.ZAdd("dead", testScoreC, job3)
 	_, _ = mr.ZAdd("dead", testScoreC+60, job4)
 
-	window, err := client.ScanDeadJobsWindow(ctx, "abc", 1, 2)
+	window, err := client.ScanSortedEntriesWindow(ctx, SortedSetDead, "abc", 1, 2)
 	if err != nil {
 		t.Fatalf("ScanDeadJobsWindow failed: %v", err)
 	}
@@ -421,7 +421,7 @@ func TestScanRetryJobs(t *testing.T) {
 	_, _ = mr.ZAdd("retry", testScoreA, job1)
 	_, _ = mr.ZAdd("retry", testScoreB, job3)
 
-	entries, err := client.ScanRetryJobs(ctx, "retry")
+	entries, err := client.ScanSortedEntries(ctx, SortedSetRetry, "retry")
 	if err != nil {
 		t.Fatalf("ScanRetryJobs failed: %v", err)
 	}
@@ -452,7 +452,7 @@ func TestScanRetryJobsWindow(t *testing.T) {
 	_, _ = mr.ZAdd("retry", testScoreB, job3)
 	_, _ = mr.ZAdd("retry", testScoreC+60, job4)
 
-	window, err := client.ScanRetryJobsWindow(ctx, "retry", 1, 2)
+	window, err := client.ScanSortedEntriesWindow(ctx, SortedSetRetry, "retry", 1, 2)
 	if err != nil {
 		t.Fatalf("ScanRetryJobsWindow failed: %v", err)
 	}
@@ -489,7 +489,7 @@ func TestScanScheduledJobs(t *testing.T) {
 	_, _ = mr.ZAdd("schedule", testScoreC, job3)
 	_, _ = mr.ZAdd("schedule", testScoreA, job1)
 
-	entries, err := client.ScanScheduledJobs(ctx, "sched")
+	entries, err := client.ScanSortedEntries(ctx, SortedSetScheduled, "sched")
 	if err != nil {
 		t.Fatalf("ScanScheduledJobs failed: %v", err)
 	}
@@ -510,7 +510,7 @@ func TestScanJobs_Empty(t *testing.T) {
 	_, client := setupTestRedis(t)
 	ctx := context.Background()
 
-	entries, err := client.ScanDeadJobs(ctx, "nonexistent")
+	entries, err := client.ScanSortedEntries(ctx, SortedSetDead, "nonexistent")
 	if err != nil {
 		t.Fatalf("ScanDeadJobs failed: %v", err)
 	}
@@ -530,7 +530,7 @@ func TestScanJobs_NoPattern(t *testing.T) {
 	_, _ = mr.ZAdd("dead", testScoreA, job1)
 	_, _ = mr.ZAdd("dead", testScoreB, job2)
 
-	entries, err := client.ScanDeadJobs(ctx, "")
+	entries, err := client.ScanSortedEntries(ctx, SortedSetDead, "")
 	if err != nil {
 		t.Fatalf("ScanDeadJobs failed: %v", err)
 	}
@@ -578,7 +578,7 @@ func TestDeleteRetryJob_RemovesOnly(t *testing.T) {
 	_, _ = mr.ZAdd("retry", testScoreA, jobJSON)
 
 	entry := NewSortedEntry(jobJSON, testScoreA)
-	if err := client.DeleteRetryJob(ctx, entry); err != nil {
+	if err := client.DeleteSortedEntry(ctx, SortedSetRetry, entry); err != nil {
 		t.Fatalf("DeleteRetryJob failed: %v", err)
 	}
 
@@ -599,7 +599,7 @@ func TestKillRetryJob_MovesToDead(t *testing.T) {
 
 	entry := NewSortedEntry(jobJSON, testScoreA)
 	start := time.Now()
-	if err := client.KillRetryJob(ctx, entry); err != nil {
+	if err := client.MoveSortedEntryToDead(ctx, SortedSetRetry, entry); err != nil {
 		t.Fatalf("KillRetryJob failed: %v", err)
 	}
 	end := time.Now()
@@ -642,7 +642,7 @@ func TestRetryNowRetryJob_Sidekiq7(t *testing.T) {
 	_, _ = mr.ZAdd("retry", testScoreA, jobJSON)
 
 	entry := NewSortedEntry(jobJSON, testScoreA)
-	if err := client.RetryNowRetryJob(ctx, entry); err != nil {
+	if err := client.EnqueueSortedEntry(ctx, SortedSetRetry, entry); err != nil {
 		t.Fatalf("RetryNowRetryJob failed: %v", err)
 	}
 
@@ -695,7 +695,7 @@ func TestRetryNowRetryJob_Sidekiq8(t *testing.T) {
 	_, _ = mr.ZAdd("retry", testScoreA, jobJSON)
 
 	entry := NewSortedEntry(jobJSON, testScoreA)
-	if err := client.RetryNowRetryJob(ctx, entry); err != nil {
+	if err := client.EnqueueSortedEntry(ctx, SortedSetRetry, entry); err != nil {
 		t.Fatalf("RetryNowRetryJob failed: %v", err)
 	}
 
@@ -735,7 +735,7 @@ func TestAddScheduledJobToQueue_RemovesAt(t *testing.T) {
 	_, _ = mr.ZAdd("schedule", testScoreA, jobJSON)
 
 	entry := NewSortedEntry(jobJSON, testScoreA)
-	if err := client.AddScheduledJobToQueue(ctx, entry); err != nil {
+	if err := client.EnqueueSortedEntry(ctx, SortedSetScheduled, entry); err != nil {
 		t.Fatalf("AddScheduledJobToQueue failed: %v", err)
 	}
 
@@ -767,7 +767,7 @@ func TestRetryNowDeadJob_MissingQueue(t *testing.T) {
 	_, _ = mr.ZAdd("dead", testScoreA, jobJSON)
 
 	entry := NewSortedEntry(jobJSON, testScoreA)
-	if err := client.RetryNowDeadJob(ctx, entry); err == nil {
+	if err := client.EnqueueSortedEntry(ctx, SortedSetDead, entry); err == nil {
 		t.Fatalf("RetryNowDeadJob should fail without queue")
 	}
 
@@ -784,7 +784,7 @@ func TestRetryNowRetryJob_InvalidJSON(t *testing.T) {
 	_, _ = mr.ZAdd("retry", testScoreA, jobJSON)
 
 	entry := NewSortedEntry(jobJSON, testScoreA)
-	if err := client.RetryNowRetryJob(ctx, entry); err == nil {
+	if err := client.EnqueueSortedEntry(ctx, SortedSetRetry, entry); err == nil {
 		t.Fatalf("RetryNowRetryJob should fail for invalid JSON")
 	}
 
@@ -801,7 +801,7 @@ func TestDeleteScheduledJob_RemovesOnly(t *testing.T) {
 	_, _ = mr.ZAdd("schedule", testScoreA, jobJSON)
 
 	entry := NewSortedEntry(jobJSON, testScoreA)
-	if err := client.DeleteScheduledJob(ctx, entry); err != nil {
+	if err := client.DeleteSortedEntry(ctx, SortedSetScheduled, entry); err != nil {
 		t.Fatalf("DeleteScheduledJob failed: %v", err)
 	}
 
@@ -818,7 +818,7 @@ func TestDeleteDeadJob_RemovesOnly(t *testing.T) {
 	_, _ = mr.ZAdd("dead", testScoreA, jobJSON)
 
 	entry := NewSortedEntry(jobJSON, testScoreA)
-	if err := client.DeleteDeadJob(ctx, entry); err != nil {
+	if err := client.DeleteSortedEntry(ctx, SortedSetDead, entry); err != nil {
 		t.Fatalf("DeleteDeadJob failed: %v", err)
 	}
 
@@ -834,7 +834,7 @@ func TestDeleteAllRetryJobs(t *testing.T) {
 	_, _ = mr.ZAdd("retry", testScoreA, `{"jid":"retry_all_delete1","class":"MyJob","queue":"default"}`)
 	_, _ = mr.ZAdd("retry", testScoreB, `{"jid":"retry_all_delete2","class":"MyJob","queue":"critical"}`)
 
-	if err := client.DeleteAllRetryJobs(ctx); err != nil {
+	if err := client.DeleteAllSortedEntries(ctx, SortedSetRetry); err != nil {
 		t.Fatalf("DeleteAllRetryJobs failed: %v", err)
 	}
 
@@ -856,7 +856,7 @@ func TestRetryAllRetryJobs(t *testing.T) {
 	_, _ = mr.ZAdd("retry", testScoreA, `{"jid":"retry_all1","class":"MyJob","queue":"default","retry_count":2,"created_at":1700000000.5}`)
 	_, _ = mr.ZAdd("retry", testScoreB, `{"jid":"retry_all2","class":"MyJob","queue":"critical","retry_count":1,"created_at":1700000000.5}`)
 
-	if err := client.RetryAllRetryJobs(ctx); err != nil {
+	if err := client.EnqueueAllSortedEntries(ctx, SortedSetRetry); err != nil {
 		t.Fatalf("RetryAllRetryJobs failed: %v", err)
 	}
 
@@ -919,7 +919,7 @@ func TestKillAllRetryJobs(t *testing.T) {
 	_, _ = mr.ZAdd("retry", testScoreB, job2)
 
 	start := time.Now()
-	if err := client.KillAllRetryJobs(ctx); err != nil {
+	if err := client.MoveAllSortedEntriesToDead(ctx, SortedSetRetry); err != nil {
 		t.Fatalf("KillAllRetryJobs failed: %v", err)
 	}
 	end := time.Now()
@@ -956,7 +956,7 @@ func TestDeleteAllScheduledJobs(t *testing.T) {
 	_, _ = mr.ZAdd("schedule", testScoreA, `{"jid":"sched_all_delete1","class":"MyJob","queue":"default"}`)
 	_, _ = mr.ZAdd("schedule", testScoreB, `{"jid":"sched_all_delete2","class":"MyJob","queue":"critical"}`)
 
-	if err := client.DeleteAllScheduledJobs(ctx); err != nil {
+	if err := client.DeleteAllSortedEntries(ctx, SortedSetScheduled); err != nil {
 		t.Fatalf("DeleteAllScheduledJobs failed: %v", err)
 	}
 
@@ -978,7 +978,7 @@ func TestAddAllScheduledJobsToQueue(t *testing.T) {
 	_, _ = mr.ZAdd("schedule", testScoreA, `{"jid":"sched_all1","class":"MyJob","queue":"default","created_at":1700000000.0,"at":1700000100.0}`)
 	_, _ = mr.ZAdd("schedule", testScoreB, `{"jid":"sched_all2","class":"MyJob","queue":"critical","created_at":1700000000.0,"at":1700000200.0}`)
 
-	if err := client.AddAllScheduledJobsToQueue(ctx); err != nil {
+	if err := client.EnqueueAllSortedEntries(ctx, SortedSetScheduled); err != nil {
 		t.Fatalf("AddAllScheduledJobsToQueue failed: %v", err)
 	}
 
@@ -1021,7 +1021,7 @@ func TestDeleteAllDeadJobs(t *testing.T) {
 	_, _ = mr.ZAdd("dead", testScoreA, `{"jid":"dead_all_delete1","class":"MyJob","queue":"default"}`)
 	_, _ = mr.ZAdd("dead", testScoreB, `{"jid":"dead_all_delete2","class":"MyJob","queue":"critical"}`)
 
-	if err := client.DeleteAllDeadJobs(ctx); err != nil {
+	if err := client.DeleteAllSortedEntries(ctx, SortedSetDead); err != nil {
 		t.Fatalf("DeleteAllDeadJobs failed: %v", err)
 	}
 
@@ -1043,7 +1043,7 @@ func TestRetryAllDeadJobs(t *testing.T) {
 	_, _ = mr.ZAdd("dead", testScoreA, `{"jid":"dead_retry1","class":"MyJob","queue":"default","retry_count":1,"created_at":1700000000.5}`)
 	_, _ = mr.ZAdd("dead", testScoreB, `{"jid":"dead_retry2","class":"MyJob","queue":"critical","retry_count":2,"created_at":1700000000.5}`)
 
-	if err := client.RetryAllDeadJobs(ctx); err != nil {
+	if err := client.EnqueueAllSortedEntries(ctx, SortedSetDead); err != nil {
 		t.Fatalf("RetryAllDeadJobs failed: %v", err)
 	}
 
