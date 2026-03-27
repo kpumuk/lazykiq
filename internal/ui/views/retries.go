@@ -118,7 +118,7 @@ func (r *Retries) Update(msg tea.Msg) (View, tea.Cmd) {
 
 		switch msg.String() {
 		case "c":
-			if entry, ok := r.selectedEntry(); ok {
+			if entry, ok := r.selectedSortedEntry(); ok {
 				return r, copyTextCmd(entry.JID())
 			}
 			return r, nil
@@ -135,19 +135,19 @@ func (r *Retries) Update(msg tea.Msg) (View, tea.Cmd) {
 		if r.dangerousActionsEnabled {
 			switch msg.String() {
 			case "D":
-				if entry, ok := r.selectedEntry(); ok {
+				if entry, ok := r.selectedSortedEntry(); ok {
 					r.pendingConfirm.SetForEntry(retriesJobActionDelete, entry)
 					return r, r.openDeleteConfirm(entry)
 				}
 				return r, nil
 			case "K":
-				if entry, ok := r.selectedEntry(); ok {
+				if entry, ok := r.selectedSortedEntry(); ok {
 					r.pendingConfirm.SetForEntry(retriesJobActionKill, entry)
 					return r, r.openKillConfirm(entry)
 				}
 				return r, nil
 			case "R":
-				if entry, ok := r.selectedEntry(); ok {
+				if entry, ok := r.selectedSortedEntry(); ok {
 					r.pendingConfirm.SetForEntry(retriesJobActionRetry, entry)
 					return r, r.openRetryNowConfirm(entry)
 				}
@@ -176,7 +176,7 @@ func (r *Retries) View() string {
 		return r.renderLoadingMessage()
 	}
 
-	return r.renderJobsBox()
+	return r.renderSortedJobsBox("Retries")
 }
 
 // Name implements View.
@@ -320,10 +320,6 @@ func (r *Retries) fetchWindow(
 
 func (r *Retries) reset() {
 	r.resetSortedJobs(r.updateEmptyMessage)
-}
-
-func (r *Retries) selectedEntry() (*sidekiq.SortedEntry, bool) {
-	return r.selectedSortedEntry()
 }
 
 // Table columns for retry job list.
@@ -531,8 +527,4 @@ func (r *Retries) retryNowJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
 }
 
 // renderJobsBox renders the bordered box containing the jobs table.
-func (r *Retries) renderJobsBox() string {
-	return r.renderSortedJobsBox("Retries")
-}
-
 // renderJobDetail renders the job detail view.

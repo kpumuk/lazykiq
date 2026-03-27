@@ -108,7 +108,7 @@ func (s *Scheduled) Update(msg tea.Msg) (View, tea.Cmd) {
 
 		switch msg.String() {
 		case "c":
-			if entry, ok := s.selectedEntry(); ok {
+			if entry, ok := s.selectedSortedEntry(); ok {
 				return s, copyTextCmd(entry.JID())
 			}
 			return s, nil
@@ -125,13 +125,13 @@ func (s *Scheduled) Update(msg tea.Msg) (View, tea.Cmd) {
 		if s.dangerousActionsEnabled {
 			switch msg.String() {
 			case "D":
-				if entry, ok := s.selectedEntry(); ok {
+				if entry, ok := s.selectedSortedEntry(); ok {
 					s.pendingConfirm.SetForEntry(scheduledJobActionDelete, entry)
 					return s, s.openDeleteConfirm(entry)
 				}
 				return s, nil
 			case "R":
-				if entry, ok := s.selectedEntry(); ok {
+				if entry, ok := s.selectedSortedEntry(); ok {
 					s.pendingConfirm.SetForEntry(scheduledJobActionAddToQueue, entry)
 					return s, s.openAddToQueueConfirm(entry)
 				}
@@ -157,7 +157,7 @@ func (s *Scheduled) View() string {
 		return s.renderLoadingMessage()
 	}
 
-	return s.renderJobsBox()
+	return s.renderSortedJobsBox("Scheduled")
 }
 
 // Name implements View.
@@ -299,10 +299,6 @@ func (s *Scheduled) reset() {
 	s.resetSortedJobs(s.updateEmptyMessage)
 }
 
-func (s *Scheduled) selectedEntry() (*sidekiq.SortedEntry, bool) {
-	return s.selectedSortedEntry()
-}
-
 // Table columns for scheduled job list.
 var scheduledJobColumns = []table.Column{
 	{Title: "When", Width: 12},
@@ -442,8 +438,4 @@ func (s *Scheduled) addAllToQueueCmd() tea.Cmd {
 }
 
 // renderJobsBox renders the bordered box containing the jobs table.
-func (s *Scheduled) renderJobsBox() string {
-	return s.renderSortedJobsBox("Scheduled")
-}
-
 // renderJobDetail renders the job detail view.

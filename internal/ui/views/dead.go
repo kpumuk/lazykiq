@@ -108,7 +108,7 @@ func (d *Dead) Update(msg tea.Msg) (View, tea.Cmd) {
 
 		switch msg.String() {
 		case "c":
-			if entry, ok := d.selectedEntry(); ok {
+			if entry, ok := d.selectedSortedEntry(); ok {
 				return d, copyTextCmd(entry.JID())
 			}
 			return d, nil
@@ -125,13 +125,13 @@ func (d *Dead) Update(msg tea.Msg) (View, tea.Cmd) {
 		if d.dangerousActionsEnabled {
 			switch msg.String() {
 			case "D":
-				if entry, ok := d.selectedEntry(); ok {
+				if entry, ok := d.selectedSortedEntry(); ok {
 					d.pendingConfirm.SetForEntry(deadJobActionDelete, entry)
 					return d, d.openDeleteConfirm(entry)
 				}
 				return d, nil
 			case "R":
-				if entry, ok := d.selectedEntry(); ok {
+				if entry, ok := d.selectedSortedEntry(); ok {
 					d.pendingConfirm.SetForEntry(deadJobActionRetry, entry)
 					return d, d.openRetryNowConfirm(entry)
 				}
@@ -157,7 +157,7 @@ func (d *Dead) View() string {
 		return d.renderLoadingMessage()
 	}
 
-	return d.renderJobsBox()
+	return d.renderSortedJobsBox("Dead Jobs")
 }
 
 // Name implements View.
@@ -297,10 +297,6 @@ func (d *Dead) fetchWindow(
 
 func (d *Dead) reset() {
 	d.resetSortedJobs(d.updateEmptyMessage)
-}
-
-func (d *Dead) selectedEntry() (*sidekiq.SortedEntry, bool) {
-	return d.selectedSortedEntry()
 }
 
 // Table columns for dead job list.
@@ -453,8 +449,4 @@ func (d *Dead) retryAllCmd() tea.Cmd {
 }
 
 // renderJobsBox renders the bordered box containing the jobs table.
-func (d *Dead) renderJobsBox() string {
-	return d.renderSortedJobsBox("Dead Jobs")
-}
-
 // renderJobDetail renders the job detail view.
