@@ -13,10 +13,8 @@ import (
 
 	"github.com/kpumuk/lazykiq/internal/devtools"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
-	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
 	"github.com/kpumuk/lazykiq/internal/ui/components/lazytable"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
-	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
 	"github.com/kpumuk/lazykiq/internal/ui/display"
 )
@@ -41,87 +39,66 @@ const (
 
 // QueueDetails shows the jobs in a specific Sidekiq queue.
 type QueueDetails struct {
-	client           sidekiq.API
-	width            int
-	height           int
-	styles           Styles
+	client sidekiq.API
+	detailListView
 	queues           []*QueueInfo
 	jobs             []*sidekiq.PositionedEntry
-	lazy             lazytable.Model
-	ready            bool
-	filter           string
 	selectedQueue    int
 	selectedQueueKey string // Queue name to select after loading
 	displayOrder     []int  // Maps ctrl+1-5 to queue indices
-	frameStyles      frame.Styles
-	filterStyle      filterdialog.Styles
 }
 
 // NewQueueDetails creates a new QueueDetails view.
 func NewQueueDetails(client sidekiq.API) *QueueDetails {
 	q := &QueueDetails{
-		client:        client,
-		selectedQueue: 0,
-		lazy: lazytable.New(
-			lazytable.WithTableOptions(
-				table.WithColumns(queueJobColumns),
-				table.WithEmptyMessage("No jobs in queue"),
-			),
-			lazytable.WithWindowPages(queuesWindowPages),
-			lazytable.WithFallbackPageSize(queuesFallbackPageSize),
+		client: client,
+		detailListView: newDetailListView(
+			"Jobs",
+			queueJobColumns,
+			"No jobs in queue",
+			queuesWindowPages,
+			queuesFallbackPageSize,
 		),
+		selectedQueue: 0,
 	}
 	q.lazy.SetFetcher(q.fetchWindow)
-	q.lazy.SetErrorHandler(func(err error) tea.Msg {
-		return ConnectionErrorMsg{Err: err}
-	})
 	return q
 }
 
 // Init implements View.
 func (q *QueueDetails) Init() tea.Cmd {
-	q.reset()
-	return requestLazyFromStart(&q.lazy)
+	return q.init(q.reset)
 }
 
 // Update implements View.
 func (q *QueueDetails) Update(msg tea.Msg) (View, tea.Cmd) {
 	switch msg := msg.(type) {
 	case lazytable.DataMsg:
-		if msg.RequestID != q.lazy.RequestID() {
-			return q, nil
+		if handled, cmd := q.handleData(msg, func(result lazytable.FetchResult) {
+			if payload, ok := result.Payload.(queueDetailsPayload); ok {
+				q.queues = payload.queues
+				q.jobs = payload.jobs
+				q.selectedQueue = payload.selectedQueue
+			}
+			q.selectedQueueKey = ""
+			q.updateEmptyMessage()
+		}); handled {
+			return q, cmd
 		}
-		if payload, ok := msg.Result.Payload.(queueDetailsPayload); ok {
-			q.queues = payload.queues
-			q.jobs = payload.jobs
-			q.selectedQueue = payload.selectedQueue
-		}
-		// Clear the queue key after successfully loading
-		q.selectedQueueKey = ""
-		q.ready = true
-		q.updateEmptyMessage()
-		var cmd tea.Cmd
-		q.lazy, cmd = q.lazy.Update(msg)
-		return q, cmd
+		return q, nil
 
 	case RefreshMsg:
 		return q, q.refreshWindow()
 
 	case filterdialog.ActionMsg:
-		if msg.Action == filterdialog.ActionNone || msg.Query == q.filter {
-			return q, nil
-		}
-		return q, q.setFilter(msg.Query)
+		return q, q.handleFilterAction(msg, q.updateEmptyMessage)
 
 	case tea.KeyPressMsg:
+		if handled, cmd := q.handleKeyPress(msg, q.updateEmptyMessage); handled {
+			return q, cmd
+		}
+
 		switch msg.String() {
-		case "/":
-			return q, q.openFilterDialog()
-		case "ctrl+u":
-			if q.filter == "" {
-				return q, nil
-			}
-			return q, q.setFilter("")
 		case "s":
 			// Switch to queues list view
 			return q, func() tea.Msg {
@@ -151,16 +128,7 @@ func (q *QueueDetails) Update(msg tea.Msg) (View, tea.Cmd) {
 			return q, nil
 		}
 
-		switch msg.String() {
-		case "alt+left", "[":
-			return q, q.page(-1)
-		case "alt+right", "]":
-			return q, q.page(1)
-		}
-
-		var cmd tea.Cmd
-		q.lazy, cmd = q.lazy.Update(msg)
-		return q, cmd
+		return q, q.updateKeyPress(msg)
 	}
 
 	return q, nil
@@ -169,7 +137,7 @@ func (q *QueueDetails) Update(msg tea.Msg) (View, tea.Cmd) {
 // View implements View.
 func (q *QueueDetails) View() string {
 	if !q.ready {
-		return q.renderMessage("Loading...")
+		return q.renderLoadingMessage()
 	}
 
 	return q.renderJobsBox()
@@ -258,37 +226,28 @@ func (q *QueueDetails) HelpSections() []HelpSection {
 
 // TableHelp implements TableHelpProvider.
 func (q *QueueDetails) TableHelp() []key.Binding {
-	return tableHelpBindings(q.lazy.Table().KeyMap)
+	return q.tableHelp()
 }
 
 // SetSize implements View.
 func (q *QueueDetails) SetSize(width, height int) View {
-	q.width = width
-	q.height = height
-	q.updateTableSize()
+	q.setSize(width, height)
 	return q
 }
 
 // Dispose clears cached data when the view is removed from the stack.
 func (q *QueueDetails) Dispose() {
-	q.reset()
-	q.filter = ""
-	q.SetStyles(q.styles)
-	q.updateTableSize()
+	q.dispose(q.reset)
 }
 
 // CancelRequests stops in-flight fetches when the view is hidden.
 func (q *QueueDetails) CancelRequests() {
-	q.lazy.CancelRequest()
+	q.cancelRequests()
 }
 
 // SetStyles implements View.
 func (q *QueueDetails) SetStyles(styles Styles) View {
-	q.styles = styles
-	q.frameStyles = frameStylesFromTheme(styles)
-	q.filterStyle = filterDialogStylesFromTheme(styles)
-	q.lazy.SetSpinnerStyle(styles.Muted)
-	q.lazy.SetTableStyles(tableStylesFromTheme(styles))
+	q.setStyles(styles)
 	return q
 }
 
@@ -354,7 +313,7 @@ func (q *QueueDetails) refreshWindow() tea.Cmd {
 	if q.selectedQueueKey != "" {
 		return q.reloadFromStart()
 	}
-	return refreshLazyWindow(&q.lazy)
+	return q.detailListView.refreshWindow()
 }
 
 func (q *QueueDetails) resolveSelectedQueue(queues []*sidekiq.Queue, selected int) int {
@@ -456,8 +415,7 @@ func (q *QueueDetails) fetchUnfilteredQueueJobs(
 }
 
 func (q *QueueDetails) reset() {
-	q.ready = false
-	q.lazy.Reset()
+	q.resetShell()
 	// Only reset selectedQueue if no queue key is set
 	if q.selectedQueueKey == "" {
 		q.selectedQueue = 0
@@ -468,24 +426,10 @@ func (q *QueueDetails) reset() {
 	q.updateEmptyMessage()
 }
 
-func (q *QueueDetails) reloadFromStart() tea.Cmd {
-	return reloadLazyFromStart(&q.lazy)
-}
-
-func (q *QueueDetails) setFilter(filter string) tea.Cmd {
-	q.filter = filter
-	q.updateEmptyMessage()
-	return q.reloadFromStart()
-}
-
 func (q *QueueDetails) selectQueue(queueIdx int) tea.Cmd {
 	q.selectedQueue = queueIdx
 	q.selectedQueueKey = ""
 	return q.reloadFromStart()
-}
-
-func (q *QueueDetails) page(delta int) tea.Cmd {
-	return moveLazyPage(&q.lazy, delta)
 }
 
 func (q *QueueDetails) selectedJob() (*sidekiq.PositionedEntry, bool) {
@@ -594,15 +538,6 @@ var queueJobColumns = []table.Column{
 	{Title: "Context", Width: 40},
 }
 
-// updateTableSize updates the table dimensions based on current view size.
-func (q *QueueDetails) updateTableSize() {
-	// Calculate table height: total height - box borders
-	tableHeight := max(q.height-2, 3)
-	// Table width: view width - box borders - padding
-	tableWidth := q.width - 4
-	q.lazy.SetSize(tableWidth, tableHeight)
-}
-
 func (q *QueueDetails) buildRows(jobs []*sidekiq.PositionedEntry) []table.Row {
 	rows := make([]table.Row, 0, len(jobs))
 	for _, job := range jobs {
@@ -619,22 +554,6 @@ func (q *QueueDetails) buildRows(jobs []*sidekiq.PositionedEntry) []table.Row {
 	return rows
 }
 
-func (q *QueueDetails) rowsMeta() string {
-	start, end, total := q.lazy.Range()
-	totalLabel := display.Number(total)
-	if total == 0 || len(q.jobs) == 0 {
-		return q.styles.MetricLabel.Render("rows: ") + q.styles.MetricValue.Render("0/0")
-	}
-
-	rangeLabel := fmt.Sprintf(
-		"%s-%s/%s",
-		display.Number(int64(start)),
-		display.Number(int64(end)),
-		totalLabel,
-	)
-	return q.styles.MetricLabel.Render("rows: ") + q.styles.MetricValue.Render(rangeLabel)
-}
-
 func (q *QueueDetails) updateEmptyMessage() {
 	msg := "No jobs in queue"
 	if len(q.queues) == 0 {
@@ -643,17 +562,6 @@ func (q *QueueDetails) updateEmptyMessage() {
 		msg = "No matches"
 	}
 	q.lazy.SetEmptyMessage(msg)
-}
-
-func (q *QueueDetails) openFilterDialog() tea.Cmd {
-	return func() tea.Msg {
-		return dialogs.OpenDialogMsg{
-			Model: filterdialog.New(
-				filterdialog.WithStyles(q.filterStyle),
-				filterdialog.WithQuery(q.filter),
-			),
-		}
-	}
 }
 
 // formatContext formats the context map as a string.
@@ -670,35 +578,11 @@ func formatContext(ctx map[string]any) string {
 
 // renderJobsBox renders the bordered box containing the jobs table.
 func (q *QueueDetails) renderJobsBox() string {
-	// Build dynamic title with queue name
 	title := "Jobs"
 	if q.selectedQueue >= 0 && q.selectedQueue < len(q.queues) {
 		title = "Jobs in " + q.queues[q.selectedQueue].Name
 	}
-
-	// Calculate box height
-	boxHeight := q.height
-
-	// Get table content
-	content := q.lazy.View()
-
-	box := frame.New(
-		frame.WithStyles(q.frameStyles),
-		frame.WithTitle(title),
-		frame.WithFilter(q.filter),
-		frame.WithTitlePadding(0),
-		frame.WithMeta(q.rowsMeta()),
-		frame.WithContent(content),
-		frame.WithPadding(1),
-		frame.WithSize(q.width, boxHeight),
-		frame.WithMinHeight(5),
-		frame.WithFocused(true),
-	)
-	return box.View()
-}
-
-func (q *QueueDetails) renderMessage(msg string) string {
-	return renderStatusMessage("Jobs", msg, q.styles, q.width, q.height)
+	return q.renderBox(title, len(q.jobs))
 }
 
 // renderJobDetail renders the job detail view.
