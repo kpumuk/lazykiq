@@ -10,7 +10,6 @@ import (
 
 	"github.com/kpumuk/lazykiq/internal/devtools"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
-	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
 	"github.com/kpumuk/lazykiq/internal/ui/components/lazytable"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
@@ -36,19 +35,9 @@ const (
 
 // Dead shows dead/morgue jobs.
 type Dead struct {
-	client                  sidekiq.API
-	width                   int
-	height                  int
-	styles                  Styles
-	jobs                    []*sidekiq.SortedEntry
-	firstEntry              *sidekiq.SortedEntry
-	lastEntry               *sidekiq.SortedEntry
-	lazy                    lazytable.Model
-	ready                   bool
-	filter                  string
+	client sidekiq.API
+	sortedJobsView
 	dangerousActionsEnabled bool
-	frameStyles             frame.Styles
-	filterStyle             filterdialog.Styles
 	pendingConfirm          pendingConfirm[deadJobAction]
 }
 
@@ -56,55 +45,37 @@ type Dead struct {
 func NewDead(client sidekiq.API) *Dead {
 	d := &Dead{
 		client: client,
-		lazy: lazytable.New(
-			lazytable.WithTableOptions(
-				table.WithColumns(deadJobColumns),
-				table.WithEmptyMessage("No dead jobs"),
-			),
-			lazytable.WithWindowPages(deadWindowPages),
-			lazytable.WithFallbackPageSize(deadFallbackPageSize),
+		sortedJobsView: newSortedJobsView(
+			"Dead Jobs",
+			deadJobColumns,
+			"No dead jobs",
+			deadWindowPages,
+			deadFallbackPageSize,
 		),
 	}
 	d.lazy.SetFetcher(d.fetchWindow)
-	d.lazy.SetErrorHandler(func(err error) tea.Msg {
-		return ConnectionErrorMsg{Err: err}
-	})
 	return d
 }
 
 // Init implements View.
 func (d *Dead) Init() tea.Cmd {
-	d.reset()
-	return requestLazyFromStart(&d.lazy)
+	return d.init(d.reset)
 }
 
 // Update implements View.
 func (d *Dead) Update(msg tea.Msg) (View, tea.Cmd) {
 	switch msg := msg.(type) {
 	case lazytable.DataMsg:
-		if msg.RequestID != d.lazy.RequestID() {
-			return d, nil
+		if handled, cmd := d.handleSortedEntriesData(msg); handled {
+			return d, cmd
 		}
-		if payload, ok := msg.Result.Payload.(sortedEntriesPayload); ok {
-			d.jobs = payload.jobs
-			d.firstEntry = payload.firstEntry
-			d.lastEntry = payload.lastEntry
-		}
-		d.ready = true
-		var cmd tea.Cmd
-		d.lazy, cmd = d.lazy.Update(msg)
-		return d, cmd
+		return d, nil
 
 	case RefreshMsg:
-		return d, refreshLazyWindow(&d.lazy)
+		return d, d.refreshWindow()
 
 	case filterdialog.ActionMsg:
-		if msg.Action == filterdialog.ActionNone || msg.Query == d.filter {
-			return d, nil
-		}
-		d.filter = msg.Query
-		d.updateEmptyMessage()
-		return d, reloadLazyFromStart(&d.lazy)
+		return d, d.handleFilterAction(msg, d.updateEmptyMessage)
 
 	case confirmdialog.ActionMsg:
 		action, entry, ok := d.pendingConfirm.Confirm(msg, d.dangerousActionsEnabled, deadJobActionNone)
@@ -131,28 +102,16 @@ func (d *Dead) Update(msg tea.Msg) (View, tea.Cmd) {
 		}
 
 	case tea.KeyPressMsg:
-		switch msg.String() {
-		case "/":
-			return d, d.openFilterDialog()
-		case "ctrl+u":
-			if d.filter == "" {
-				return d, nil
-			}
-			d.filter = ""
-			d.updateEmptyMessage()
-			return d, reloadLazyFromStart(&d.lazy)
-		case "c":
-			if entry, ok := d.selectedEntry(); ok {
-				return d, copyTextCmd(entry.JID())
-			}
-			return d, nil
+		if handled, cmd := d.handleKeyPress(msg, d.updateEmptyMessage); handled {
+			return d, cmd
 		}
 
 		switch msg.String() {
-		case "alt+left", "[":
-			return d, moveLazyPage(&d.lazy, -1)
-		case "alt+right", "]":
-			return d, moveLazyPage(&d.lazy, 1)
+		case "c":
+			if entry, ok := d.selectedSortedEntry(); ok {
+				return d, copyTextCmd(entry.JID())
+			}
+			return d, nil
 		case "enter":
 			// Show detail for selected job
 			if idx := d.lazy.Table().Cursor(); idx >= 0 && idx < len(d.jobs) {
@@ -166,13 +125,13 @@ func (d *Dead) Update(msg tea.Msg) (View, tea.Cmd) {
 		if d.dangerousActionsEnabled {
 			switch msg.String() {
 			case "D":
-				if entry, ok := d.selectedEntry(); ok {
+				if entry, ok := d.selectedSortedEntry(); ok {
 					d.pendingConfirm.SetForEntry(deadJobActionDelete, entry)
 					return d, d.openDeleteConfirm(entry)
 				}
 				return d, nil
 			case "R":
-				if entry, ok := d.selectedEntry(); ok {
+				if entry, ok := d.selectedSortedEntry(); ok {
 					d.pendingConfirm.SetForEntry(deadJobActionRetry, entry)
 					return d, d.openRetryNowConfirm(entry)
 				}
@@ -186,9 +145,7 @@ func (d *Dead) Update(msg tea.Msg) (View, tea.Cmd) {
 			}
 		}
 
-		var cmd tea.Cmd
-		d.lazy, cmd = d.lazy.Update(msg)
-		return d, cmd
+		return d, d.updateKeyPress(msg)
 	}
 
 	return d, nil
@@ -197,10 +154,10 @@ func (d *Dead) Update(msg tea.Msg) (View, tea.Cmd) {
 // View implements View.
 func (d *Dead) View() string {
 	if !d.ready {
-		return d.renderMessage("Loading...")
+		return d.renderLoadingMessage()
 	}
 
-	return d.renderJobsBox()
+	return d.renderSortedJobsBox("Dead Jobs")
 }
 
 // Name implements View.
@@ -289,14 +246,12 @@ func (d *Dead) HelpSections() []HelpSection {
 
 // TableHelp implements TableHelpProvider.
 func (d *Dead) TableHelp() []key.Binding {
-	return tableHelpBindings(d.lazy.Table().KeyMap)
+	return d.tableHelp()
 }
 
 // SetSize implements View.
 func (d *Dead) SetSize(width, height int) View {
-	d.width = width
-	d.height = height
-	d.updateTableSize()
+	d.setSize(width, height)
 	return d
 }
 
@@ -307,24 +262,17 @@ func (d *Dead) SetDangerousActionsEnabled(enabled bool) {
 
 // Dispose clears cached data when the view is removed from the stack.
 func (d *Dead) Dispose() {
-	d.reset()
-	d.filter = ""
-	d.SetStyles(d.styles)
-	d.updateTableSize()
+	d.dispose(d.reset)
 }
 
 // CancelRequests stops in-flight fetches when the view is hidden.
 func (d *Dead) CancelRequests() {
-	d.lazy.CancelRequest()
+	d.cancelRequests()
 }
 
 // SetStyles implements View.
 func (d *Dead) SetStyles(styles Styles) View {
-	d.styles = styles
-	d.frameStyles = frameStylesFromTheme(styles)
-	d.filterStyle = filterDialogStylesFromTheme(styles)
-	d.lazy.SetSpinnerStyle(styles.Muted)
-	d.lazy.SetTableStyles(tableStylesFromTheme(styles))
+	d.setStyles(styles)
 	return d
 }
 
@@ -347,25 +295,8 @@ func (d *Dead) fetchWindow(
 	})
 }
 
-func (d *Dead) renderMessage(msg string) string {
-	return renderStatusMessage("Dead Jobs", msg, d.styles, d.width, d.height)
-}
-
 func (d *Dead) reset() {
-	d.jobs = nil
-	d.firstEntry = nil
-	d.lastEntry = nil
-	d.ready = false
-	d.lazy.Reset()
-	d.updateEmptyMessage()
-}
-
-func (d *Dead) selectedEntry() (*sidekiq.SortedEntry, bool) {
-	idx := d.lazy.Table().Cursor()
-	if idx < 0 || idx >= len(d.jobs) {
-		return nil, false
-	}
-	return d.jobs[idx], true
+	d.resetSortedJobs(d.updateEmptyMessage)
 }
 
 // Table columns for dead job list.
@@ -375,12 +306,6 @@ var deadJobColumns = []table.Column{
 	{Title: "Job", Width: 30},
 	{Title: "Arguments", Width: 40},
 	{Title: "Error", Width: 60},
-}
-
-// updateTableSize updates the table dimensions based on current view size.
-func (d *Dead) updateTableSize() {
-	tableWidth, tableHeight := framedTableSize(d.width, d.height)
-	d.lazy.SetSize(tableWidth, tableHeight)
 }
 
 func (d *Dead) updateEmptyMessage() {
@@ -417,17 +342,6 @@ func (d *Dead) buildRows(jobs []*sidekiq.SortedEntry) []table.Row {
 		})
 	}
 	return rows
-}
-
-func (d *Dead) openFilterDialog() tea.Cmd {
-	return func() tea.Msg {
-		return dialogs.OpenDialogMsg{
-			Model: filterdialog.New(
-				filterdialog.WithStyles(d.filterStyle),
-				filterdialog.WithQuery(d.filter),
-			),
-		}
-	}
 }
 
 func (d *Dead) openDeleteConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
@@ -534,43 +448,5 @@ func (d *Dead) retryAllCmd() tea.Cmd {
 	}
 }
 
-func (d *Dead) rowsMeta() string {
-	start, end, total := d.lazy.Range()
-	label := d.styles.MetricLabel.Render("rows: ")
-	if total == 0 || len(d.jobs) == 0 {
-		return label + d.styles.MetricValue.Render("0/0")
-	}
-
-	rangeLabel := fmt.Sprintf(
-		"%s-%s/%s",
-		display.Number(int64(start)),
-		display.Number(int64(end)),
-		display.Number(total),
-	)
-	return label + d.styles.MetricValue.Render(rangeLabel)
-}
-
 // renderJobsBox renders the bordered box containing the jobs table.
-func (d *Dead) renderJobsBox() string {
-	return frame.New(
-		frame.WithStyles(d.frameStyles),
-		frame.WithTitle("Dead Jobs"),
-		frame.WithFilter(d.filter),
-		frame.WithTitlePadding(0),
-		frame.WithMeta(d.rowsMeta()),
-		frame.WithContent(d.lazy.View()),
-		frame.WithPadding(1),
-		frame.WithSize(d.width, d.height),
-		frame.WithMinHeight(5),
-		frame.WithFocused(true),
-	).View()
-}
-
-func (d *Dead) jobName(entry *sidekiq.SortedEntry) string {
-	if name := entry.DisplayClass(); name != "" {
-		return name
-	}
-	return "selected"
-}
-
 // renderJobDetail renders the job detail view.

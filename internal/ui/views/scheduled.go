@@ -10,7 +10,6 @@ import (
 
 	"github.com/kpumuk/lazykiq/internal/devtools"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
-	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
 	"github.com/kpumuk/lazykiq/internal/ui/components/lazytable"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
@@ -36,19 +35,9 @@ const (
 
 // Scheduled shows jobs scheduled for future execution.
 type Scheduled struct {
-	client                  sidekiq.API
-	width                   int
-	height                  int
-	styles                  Styles
-	jobs                    []*sidekiq.SortedEntry
-	firstEntry              *sidekiq.SortedEntry
-	lastEntry               *sidekiq.SortedEntry
-	lazy                    lazytable.Model
-	ready                   bool
-	filter                  string
+	client sidekiq.API
+	sortedJobsView
 	dangerousActionsEnabled bool
-	frameStyles             frame.Styles
-	filterStyle             filterdialog.Styles
 	pendingConfirm          pendingConfirm[scheduledJobAction]
 }
 
@@ -56,55 +45,37 @@ type Scheduled struct {
 func NewScheduled(client sidekiq.API) *Scheduled {
 	s := &Scheduled{
 		client: client,
-		lazy: lazytable.New(
-			lazytable.WithTableOptions(
-				table.WithColumns(scheduledJobColumns),
-				table.WithEmptyMessage("No scheduled jobs"),
-			),
-			lazytable.WithWindowPages(scheduledWindowPages),
-			lazytable.WithFallbackPageSize(scheduledFallbackPageSize),
+		sortedJobsView: newSortedJobsView(
+			"Scheduled",
+			scheduledJobColumns,
+			"No scheduled jobs",
+			scheduledWindowPages,
+			scheduledFallbackPageSize,
 		),
 	}
 	s.lazy.SetFetcher(s.fetchWindow)
-	s.lazy.SetErrorHandler(func(err error) tea.Msg {
-		return ConnectionErrorMsg{Err: err}
-	})
 	return s
 }
 
 // Init implements View.
 func (s *Scheduled) Init() tea.Cmd {
-	s.reset()
-	return requestLazyFromStart(&s.lazy)
+	return s.init(s.reset)
 }
 
 // Update implements View.
 func (s *Scheduled) Update(msg tea.Msg) (View, tea.Cmd) {
 	switch msg := msg.(type) {
 	case lazytable.DataMsg:
-		if msg.RequestID != s.lazy.RequestID() {
-			return s, nil
+		if handled, cmd := s.handleSortedEntriesData(msg); handled {
+			return s, cmd
 		}
-		if payload, ok := msg.Result.Payload.(sortedEntriesPayload); ok {
-			s.jobs = payload.jobs
-			s.firstEntry = payload.firstEntry
-			s.lastEntry = payload.lastEntry
-		}
-		s.ready = true
-		var cmd tea.Cmd
-		s.lazy, cmd = s.lazy.Update(msg)
-		return s, cmd
+		return s, nil
 
 	case RefreshMsg:
-		return s, refreshLazyWindow(&s.lazy)
+		return s, s.refreshWindow()
 
 	case filterdialog.ActionMsg:
-		if msg.Action == filterdialog.ActionNone || msg.Query == s.filter {
-			return s, nil
-		}
-		s.filter = msg.Query
-		s.updateEmptyMessage()
-		return s, reloadLazyFromStart(&s.lazy)
+		return s, s.handleFilterAction(msg, s.updateEmptyMessage)
 
 	case confirmdialog.ActionMsg:
 		action, entry, ok := s.pendingConfirm.Confirm(msg, s.dangerousActionsEnabled, scheduledJobActionNone)
@@ -131,28 +102,16 @@ func (s *Scheduled) Update(msg tea.Msg) (View, tea.Cmd) {
 		}
 
 	case tea.KeyPressMsg:
-		switch msg.String() {
-		case "/":
-			return s, s.openFilterDialog()
-		case "ctrl+u":
-			if s.filter == "" {
-				return s, nil
-			}
-			s.filter = ""
-			s.updateEmptyMessage()
-			return s, reloadLazyFromStart(&s.lazy)
-		case "c":
-			if entry, ok := s.selectedEntry(); ok {
-				return s, copyTextCmd(entry.JID())
-			}
-			return s, nil
+		if handled, cmd := s.handleKeyPress(msg, s.updateEmptyMessage); handled {
+			return s, cmd
 		}
 
 		switch msg.String() {
-		case "alt+left", "[":
-			return s, moveLazyPage(&s.lazy, -1)
-		case "alt+right", "]":
-			return s, moveLazyPage(&s.lazy, 1)
+		case "c":
+			if entry, ok := s.selectedSortedEntry(); ok {
+				return s, copyTextCmd(entry.JID())
+			}
+			return s, nil
 		case "enter":
 			// Show detail for selected job
 			if idx := s.lazy.Table().Cursor(); idx >= 0 && idx < len(s.jobs) {
@@ -166,13 +125,13 @@ func (s *Scheduled) Update(msg tea.Msg) (View, tea.Cmd) {
 		if s.dangerousActionsEnabled {
 			switch msg.String() {
 			case "D":
-				if entry, ok := s.selectedEntry(); ok {
+				if entry, ok := s.selectedSortedEntry(); ok {
 					s.pendingConfirm.SetForEntry(scheduledJobActionDelete, entry)
 					return s, s.openDeleteConfirm(entry)
 				}
 				return s, nil
 			case "R":
-				if entry, ok := s.selectedEntry(); ok {
+				if entry, ok := s.selectedSortedEntry(); ok {
 					s.pendingConfirm.SetForEntry(scheduledJobActionAddToQueue, entry)
 					return s, s.openAddToQueueConfirm(entry)
 				}
@@ -186,9 +145,7 @@ func (s *Scheduled) Update(msg tea.Msg) (View, tea.Cmd) {
 			}
 		}
 
-		var cmd tea.Cmd
-		s.lazy, cmd = s.lazy.Update(msg)
-		return s, cmd
+		return s, s.updateKeyPress(msg)
 	}
 
 	return s, nil
@@ -197,10 +154,10 @@ func (s *Scheduled) Update(msg tea.Msg) (View, tea.Cmd) {
 // View implements View.
 func (s *Scheduled) View() string {
 	if !s.ready {
-		return s.renderMessage("Loading...")
+		return s.renderLoadingMessage()
 	}
 
-	return s.renderJobsBox()
+	return s.renderSortedJobsBox("Scheduled")
 }
 
 // Name implements View.
@@ -289,14 +246,12 @@ func (s *Scheduled) HelpSections() []HelpSection {
 
 // TableHelp implements TableHelpProvider.
 func (s *Scheduled) TableHelp() []key.Binding {
-	return tableHelpBindings(s.lazy.Table().KeyMap)
+	return s.tableHelp()
 }
 
 // SetSize implements View.
 func (s *Scheduled) SetSize(width, height int) View {
-	s.width = width
-	s.height = height
-	s.updateTableSize()
+	s.setSize(width, height)
 	return s
 }
 
@@ -307,24 +262,17 @@ func (s *Scheduled) SetDangerousActionsEnabled(enabled bool) {
 
 // Dispose clears cached data when the view is removed from the stack.
 func (s *Scheduled) Dispose() {
-	s.reset()
-	s.filter = ""
-	s.SetStyles(s.styles)
-	s.updateTableSize()
+	s.dispose(s.reset)
 }
 
 // CancelRequests stops in-flight fetches when the view is hidden.
 func (s *Scheduled) CancelRequests() {
-	s.lazy.CancelRequest()
+	s.cancelRequests()
 }
 
 // SetStyles implements View.
 func (s *Scheduled) SetStyles(styles Styles) View {
-	s.styles = styles
-	s.frameStyles = frameStylesFromTheme(styles)
-	s.filterStyle = filterDialogStylesFromTheme(styles)
-	s.lazy.SetSpinnerStyle(styles.Muted)
-	s.lazy.SetTableStyles(tableStylesFromTheme(styles))
+	s.setStyles(styles)
 	return s
 }
 
@@ -347,25 +295,8 @@ func (s *Scheduled) fetchWindow(
 	})
 }
 
-func (s *Scheduled) renderMessage(msg string) string {
-	return renderStatusMessage("Scheduled", msg, s.styles, s.width, s.height)
-}
-
 func (s *Scheduled) reset() {
-	s.jobs = nil
-	s.firstEntry = nil
-	s.lastEntry = nil
-	s.ready = false
-	s.lazy.Reset()
-	s.updateEmptyMessage()
-}
-
-func (s *Scheduled) selectedEntry() (*sidekiq.SortedEntry, bool) {
-	idx := s.lazy.Table().Cursor()
-	if idx < 0 || idx >= len(s.jobs) {
-		return nil, false
-	}
-	return s.jobs[idx], true
+	s.resetSortedJobs(s.updateEmptyMessage)
 }
 
 // Table columns for scheduled job list.
@@ -374,12 +305,6 @@ var scheduledJobColumns = []table.Column{
 	{Title: "Queue", Width: 15},
 	{Title: "Job", Width: 30},
 	{Title: "Arguments", Width: 60},
-}
-
-// updateTableSize updates the table dimensions based on current view size.
-func (s *Scheduled) updateTableSize() {
-	tableWidth, tableHeight := framedTableSize(s.width, s.height)
-	s.lazy.SetSize(tableWidth, tableHeight)
 }
 
 func (s *Scheduled) updateEmptyMessage() {
@@ -406,33 +331,6 @@ func (s *Scheduled) buildRows(jobs []*sidekiq.SortedEntry) []table.Row {
 		})
 	}
 	return rows
-}
-
-func (s *Scheduled) rowsMeta() string {
-	start, end, total := s.lazy.Range()
-	label := s.styles.MetricLabel.Render("rows: ")
-	if total == 0 || len(s.jobs) == 0 {
-		return label + s.styles.MetricValue.Render("0/0")
-	}
-
-	rangeLabel := fmt.Sprintf(
-		"%s-%s/%s",
-		display.Number(int64(start)),
-		display.Number(int64(end)),
-		display.Number(total),
-	)
-	return label + s.styles.MetricValue.Render(rangeLabel)
-}
-
-func (s *Scheduled) openFilterDialog() tea.Cmd {
-	return func() tea.Msg {
-		return dialogs.OpenDialogMsg{
-			Model: filterdialog.New(
-				filterdialog.WithStyles(s.filterStyle),
-				filterdialog.WithQuery(s.filter),
-			),
-		}
-	}
 }
 
 func (s *Scheduled) openDeleteConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
@@ -540,26 +438,4 @@ func (s *Scheduled) addAllToQueueCmd() tea.Cmd {
 }
 
 // renderJobsBox renders the bordered box containing the jobs table.
-func (s *Scheduled) renderJobsBox() string {
-	return frame.New(
-		frame.WithStyles(s.frameStyles),
-		frame.WithTitle("Scheduled"),
-		frame.WithFilter(s.filter),
-		frame.WithTitlePadding(0),
-		frame.WithMeta(s.rowsMeta()),
-		frame.WithContent(s.lazy.View()),
-		frame.WithPadding(1),
-		frame.WithSize(s.width, s.height),
-		frame.WithMinHeight(5),
-		frame.WithFocused(true),
-	).View()
-}
-
-func (s *Scheduled) jobName(entry *sidekiq.SortedEntry) string {
-	if name := entry.DisplayClass(); name != "" {
-		return name
-	}
-	return "selected"
-}
-
 // renderJobDetail renders the job detail view.

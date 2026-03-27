@@ -10,10 +10,8 @@ import (
 
 	"github.com/kpumuk/lazykiq/internal/devtools"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
-	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
 	"github.com/kpumuk/lazykiq/internal/ui/components/lazytable"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
-	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
 	"github.com/kpumuk/lazykiq/internal/ui/display"
 )
@@ -30,36 +28,24 @@ type errorDetailsPayload struct {
 // ErrorsDetails shows all jobs for a selected error group.
 type ErrorsDetails struct {
 	client sidekiq.API
-	width  int
-	height int
-	styles Styles
-
-	ready       bool
-	groupKey    sidekiq.ErrorGroupKey
-	groupJobs   []sidekiq.ErrorGroupEntry
-	lazy        lazytable.Model
-	filter      string
-	frameStyles frame.Styles
-	filterStyle filterdialog.Styles
+	detailListView
+	groupKey  sidekiq.ErrorGroupKey
+	groupJobs []sidekiq.ErrorGroupEntry
 }
 
 // NewErrorsDetails creates a new ErrorsDetails view.
 func NewErrorsDetails(client sidekiq.API) *ErrorsDetails {
 	e := &ErrorsDetails{
 		client: client,
-		lazy: lazytable.New(
-			lazytable.WithTableOptions(
-				table.WithColumns(errorDetailsColumns),
-				table.WithEmptyMessage("No errors"),
-			),
-			lazytable.WithWindowPages(errorsDetailsWindowPages),
-			lazytable.WithFallbackPageSize(errorsDetailsFallbackPageSize),
+		detailListView: newDetailListView(
+			"Errors",
+			errorDetailsColumns,
+			"No errors",
+			errorsDetailsWindowPages,
+			errorsDetailsFallbackPageSize,
 		),
 	}
 	e.lazy.SetFetcher(e.fetchWindow)
-	e.lazy.SetErrorHandler(func(err error) tea.Msg {
-		return ConnectionErrorMsg{Err: err}
-	})
 	return e
 }
 
@@ -71,50 +57,34 @@ func (e *ErrorsDetails) SetErrorGroup(key sidekiq.ErrorGroupKey, query string) {
 
 // Init implements View.
 func (e *ErrorsDetails) Init() tea.Cmd {
-	e.resetData()
-	return requestLazyFromStart(&e.lazy)
+	return e.init(e.resetData)
 }
 
 // Update implements View.
 func (e *ErrorsDetails) Update(msg tea.Msg) (View, tea.Cmd) {
 	switch msg := msg.(type) {
 	case lazytable.DataMsg:
-		if msg.RequestID != e.lazy.RequestID() {
-			return e, nil
+		if handled, cmd := e.handleData(msg, func(result lazytable.FetchResult) {
+			if payload, ok := result.Payload.(errorDetailsPayload); ok {
+				e.groupJobs = payload.jobs
+			}
+		}); handled {
+			return e, cmd
 		}
-		if payload, ok := msg.Result.Payload.(errorDetailsPayload); ok {
-			e.groupJobs = payload.jobs
-		}
-		e.ready = true
-		var cmd tea.Cmd
-		e.lazy, cmd = e.lazy.Update(msg)
-		return e, cmd
+		return e, nil
 
 	case RefreshMsg:
-		return e, refreshLazyWindow(&e.lazy)
+		return e, e.refreshWindow()
 
 	case filterdialog.ActionMsg:
-		if msg.Action == filterdialog.ActionNone {
-			return e, nil
-		}
-		if msg.Query == e.filter {
-			return e, nil
-		}
-		e.filter = msg.Query
-		e.updateEmptyMessage()
-		return e, reloadLazyFromStart(&e.lazy)
+		return e, e.handleFilterAction(msg, e.updateEmptyMessage)
 
 	case tea.KeyPressMsg:
+		if handled, cmd := e.handleKeyPress(msg, e.updateEmptyMessage); handled {
+			return e, cmd
+		}
+
 		switch msg.String() {
-		case "/":
-			return e, e.openFilterDialog()
-		case "ctrl+u":
-			if e.filter != "" {
-				e.filter = ""
-				e.updateEmptyMessage()
-				return e, reloadLazyFromStart(&e.lazy)
-			}
-			return e, nil
 		case "c":
 			if job, ok := e.selectedEntry(); ok && job.Entry != nil {
 				return e, copyTextCmd(job.Entry.JID())
@@ -123,10 +93,6 @@ func (e *ErrorsDetails) Update(msg tea.Msg) (View, tea.Cmd) {
 		}
 
 		switch msg.String() {
-		case "alt+left", "[":
-			return e, moveLazyPage(&e.lazy, -1)
-		case "alt+right", "]":
-			return e, moveLazyPage(&e.lazy, 1)
 		case "enter":
 			if job, ok := e.selectedEntry(); ok && job.Entry != nil {
 				return e, func() tea.Msg {
@@ -136,9 +102,7 @@ func (e *ErrorsDetails) Update(msg tea.Msg) (View, tea.Cmd) {
 			return e, nil
 		}
 
-		var cmd tea.Cmd
-		e.lazy, cmd = e.lazy.Update(msg)
-		return e, cmd
+		return e, e.updateKeyPress(msg)
 	}
 
 	return e, nil
@@ -147,7 +111,7 @@ func (e *ErrorsDetails) Update(msg tea.Msg) (View, tea.Cmd) {
 // View implements View.
 func (e *ErrorsDetails) View() string {
 	if !e.ready {
-		return e.renderMessage("Loading...")
+		return e.renderLoadingMessage()
 	}
 
 	return e.renderDetailsBox()
@@ -216,48 +180,34 @@ func (e *ErrorsDetails) HelpSections() []HelpSection {
 
 // TableHelp implements TableHelpProvider.
 func (e *ErrorsDetails) TableHelp() []key.Binding {
-	return tableHelpBindings(e.lazy.Table().KeyMap)
+	return e.tableHelp()
 }
 
 // SetSize implements View.
 func (e *ErrorsDetails) SetSize(width, height int) View {
-	e.width = width
-	e.height = height
-	e.updateTableSize()
+	e.setSize(width, height)
 	return e
 }
 
 // Dispose clears cached data when the view is removed from the stack.
 func (e *ErrorsDetails) Dispose() {
-	e.reset()
-	e.filter = ""
-	e.SetStyles(e.styles)
-	e.updateTableSize()
+	e.dispose(e.reset)
 }
 
 // SetStyles implements View.
 func (e *ErrorsDetails) SetStyles(styles Styles) View {
-	e.styles = styles
-	e.frameStyles = frameStylesFromTheme(styles)
-	e.filterStyle = filterDialogStylesFromTheme(styles)
-	e.lazy.SetSpinnerStyle(styles.Muted)
-	e.lazy.SetTableStyles(tableStylesFromTheme(styles))
+	e.setStyles(styles)
 	return e
 }
 
 // CancelRequests stops in-flight fetches when the view is hidden.
 func (e *ErrorsDetails) CancelRequests() {
-	e.lazy.CancelRequest()
-}
-
-func (e *ErrorsDetails) renderMessage(msg string) string {
-	return renderStatusMessage("Errors", msg, e.styles, e.width, e.height)
+	e.cancelRequests()
 }
 
 func (e *ErrorsDetails) resetData() {
-	e.ready = false
+	e.resetShell()
 	e.groupJobs = nil
-	e.lazy.Reset()
 	e.lazy.Table().SetColumns(errorDetailsColumns)
 	e.lazy.Table().ScrollToStart()
 	e.updateEmptyMessage()
@@ -275,12 +225,6 @@ var errorDetailsColumns = []table.Column{
 	{Title: "Job", Width: 30},
 	{Title: "Arguments", Width: 40},
 	{Title: "Error", Width: 60},
-}
-
-// updateTableSize updates the table dimensions based on current view size.
-func (e *ErrorsDetails) updateTableSize() {
-	tableWidth, tableHeight := framedTableSize(e.width, e.height)
-	e.lazy.SetSize(tableWidth, tableHeight)
 }
 
 func (e *ErrorsDetails) updateEmptyMessage() {
@@ -320,33 +264,6 @@ func (e *ErrorsDetails) buildRows(jobs []sidekiq.ErrorGroupEntry) []table.Row {
 	return rows
 }
 
-func (e *ErrorsDetails) rowsMeta() string {
-	start, end, total := e.lazy.Range()
-	label := e.styles.MetricLabel.Render("rows: ")
-	if total == 0 || len(e.groupJobs) == 0 {
-		return label + e.styles.MetricValue.Render("0/0")
-	}
-
-	rangeLabel := fmt.Sprintf(
-		"%s-%s/%s",
-		display.Number(int64(start)),
-		display.Number(int64(end)),
-		display.Number(total),
-	)
-	return label + e.styles.MetricValue.Render(rangeLabel)
-}
-
-func (e *ErrorsDetails) openFilterDialog() tea.Cmd {
-	return func() tea.Msg {
-		return dialogs.OpenDialogMsg{
-			Model: filterdialog.New(
-				filterdialog.WithStyles(e.filterStyle),
-				filterdialog.WithQuery(e.filter),
-			),
-		}
-	}
-}
-
 func (e *ErrorsDetails) fetchWindow(
 	ctx context.Context,
 	windowStart int,
@@ -380,19 +297,8 @@ func (e *ErrorsDetails) selectedEntry() (sidekiq.ErrorGroupEntry, bool) {
 
 // renderDetailsBox renders the bordered box containing the detail table.
 func (e *ErrorsDetails) renderDetailsBox() string {
-	content := e.lazy.View()
-
-	box := frame.New(
-		frame.WithStyles(e.frameStyles),
-		frame.WithTitle(fmt.Sprintf("Error %s in %s", e.groupKey.ErrorClass, e.groupKey.DisplayClass)),
-		frame.WithFilter(e.filter),
-		frame.WithTitlePadding(0),
-		frame.WithMeta(e.rowsMeta()),
-		frame.WithContent(content),
-		frame.WithPadding(1),
-		frame.WithSize(e.width, e.height),
-		frame.WithMinHeight(5),
-		frame.WithFocused(true),
+	return e.renderBox(
+		fmt.Sprintf("Error %s in %s", e.groupKey.ErrorClass, e.groupKey.DisplayClass),
+		len(e.groupJobs),
 	)
-	return box.View()
 }

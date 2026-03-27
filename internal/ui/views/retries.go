@@ -11,7 +11,6 @@ import (
 
 	"github.com/kpumuk/lazykiq/internal/devtools"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
-	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
 	"github.com/kpumuk/lazykiq/internal/ui/components/lazytable"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
@@ -39,19 +38,9 @@ const (
 
 // Retries shows failed jobs pending retry.
 type Retries struct {
-	client                  sidekiq.API
-	width                   int
-	height                  int
-	styles                  Styles
-	jobs                    []*sidekiq.SortedEntry
-	firstEntry              *sidekiq.SortedEntry
-	lastEntry               *sidekiq.SortedEntry
-	lazy                    lazytable.Model
-	ready                   bool
-	filter                  string
+	client sidekiq.API
+	sortedJobsView
 	dangerousActionsEnabled bool
-	frameStyles             frame.Styles
-	filterStyle             filterdialog.Styles
 	pendingConfirm          pendingConfirm[retriesJobAction]
 }
 
@@ -59,55 +48,37 @@ type Retries struct {
 func NewRetries(client sidekiq.API) *Retries {
 	r := &Retries{
 		client: client,
-		lazy: lazytable.New(
-			lazytable.WithTableOptions(
-				table.WithColumns(retryJobColumns),
-				table.WithEmptyMessage("No retries"),
-			),
-			lazytable.WithWindowPages(retriesWindowPages),
-			lazytable.WithFallbackPageSize(retriesFallbackPageSize),
+		sortedJobsView: newSortedJobsView(
+			"Retries",
+			retryJobColumns,
+			"No retries",
+			retriesWindowPages,
+			retriesFallbackPageSize,
 		),
 	}
 	r.lazy.SetFetcher(r.fetchWindow)
-	r.lazy.SetErrorHandler(func(err error) tea.Msg {
-		return ConnectionErrorMsg{Err: err}
-	})
 	return r
 }
 
 // Init implements View.
 func (r *Retries) Init() tea.Cmd {
-	r.reset()
-	return requestLazyFromStart(&r.lazy)
+	return r.init(r.reset)
 }
 
 // Update implements View.
 func (r *Retries) Update(msg tea.Msg) (View, tea.Cmd) {
 	switch msg := msg.(type) {
 	case lazytable.DataMsg:
-		if msg.RequestID != r.lazy.RequestID() {
-			return r, nil
+		if handled, cmd := r.handleSortedEntriesData(msg); handled {
+			return r, cmd
 		}
-		if payload, ok := msg.Result.Payload.(sortedEntriesPayload); ok {
-			r.jobs = payload.jobs
-			r.firstEntry = payload.firstEntry
-			r.lastEntry = payload.lastEntry
-		}
-		r.ready = true
-		var cmd tea.Cmd
-		r.lazy, cmd = r.lazy.Update(msg)
-		return r, cmd
+		return r, nil
 
 	case RefreshMsg:
-		return r, refreshLazyWindow(&r.lazy)
+		return r, r.refreshWindow()
 
 	case filterdialog.ActionMsg:
-		if msg.Action == filterdialog.ActionNone || msg.Query == r.filter {
-			return r, nil
-		}
-		r.filter = msg.Query
-		r.updateEmptyMessage()
-		return r, reloadLazyFromStart(&r.lazy)
+		return r, r.handleFilterAction(msg, r.updateEmptyMessage)
 
 	case confirmdialog.ActionMsg:
 		action, entry, ok := r.pendingConfirm.Confirm(msg, r.dangerousActionsEnabled, retriesJobActionNone)
@@ -141,28 +112,16 @@ func (r *Retries) Update(msg tea.Msg) (View, tea.Cmd) {
 		}
 
 	case tea.KeyPressMsg:
-		switch msg.String() {
-		case "/":
-			return r, r.openFilterDialog()
-		case "ctrl+u":
-			if r.filter == "" {
-				return r, nil
-			}
-			r.filter = ""
-			r.updateEmptyMessage()
-			return r, reloadLazyFromStart(&r.lazy)
-		case "c":
-			if entry, ok := r.selectedEntry(); ok {
-				return r, copyTextCmd(entry.JID())
-			}
-			return r, nil
+		if handled, cmd := r.handleKeyPress(msg, r.updateEmptyMessage); handled {
+			return r, cmd
 		}
 
 		switch msg.String() {
-		case "alt+left", "[":
-			return r, moveLazyPage(&r.lazy, -1)
-		case "alt+right", "]":
-			return r, moveLazyPage(&r.lazy, 1)
+		case "c":
+			if entry, ok := r.selectedSortedEntry(); ok {
+				return r, copyTextCmd(entry.JID())
+			}
+			return r, nil
 		case "enter":
 			// Show detail for selected job
 			if idx := r.lazy.Table().Cursor(); idx >= 0 && idx < len(r.jobs) {
@@ -176,19 +135,19 @@ func (r *Retries) Update(msg tea.Msg) (View, tea.Cmd) {
 		if r.dangerousActionsEnabled {
 			switch msg.String() {
 			case "D":
-				if entry, ok := r.selectedEntry(); ok {
+				if entry, ok := r.selectedSortedEntry(); ok {
 					r.pendingConfirm.SetForEntry(retriesJobActionDelete, entry)
 					return r, r.openDeleteConfirm(entry)
 				}
 				return r, nil
 			case "K":
-				if entry, ok := r.selectedEntry(); ok {
+				if entry, ok := r.selectedSortedEntry(); ok {
 					r.pendingConfirm.SetForEntry(retriesJobActionKill, entry)
 					return r, r.openKillConfirm(entry)
 				}
 				return r, nil
 			case "R":
-				if entry, ok := r.selectedEntry(); ok {
+				if entry, ok := r.selectedSortedEntry(); ok {
 					r.pendingConfirm.SetForEntry(retriesJobActionRetry, entry)
 					return r, r.openRetryNowConfirm(entry)
 				}
@@ -205,9 +164,7 @@ func (r *Retries) Update(msg tea.Msg) (View, tea.Cmd) {
 			}
 		}
 
-		var cmd tea.Cmd
-		r.lazy, cmd = r.lazy.Update(msg)
-		return r, cmd
+		return r, r.updateKeyPress(msg)
 	}
 
 	return r, nil
@@ -216,10 +173,10 @@ func (r *Retries) Update(msg tea.Msg) (View, tea.Cmd) {
 // View implements View.
 func (r *Retries) View() string {
 	if !r.ready {
-		return r.renderMessage("Loading...")
+		return r.renderLoadingMessage()
 	}
 
-	return r.renderJobsBox()
+	return r.renderSortedJobsBox("Retries")
 }
 
 // Name implements View.
@@ -312,14 +269,12 @@ func (r *Retries) HelpSections() []HelpSection {
 
 // TableHelp implements TableHelpProvider.
 func (r *Retries) TableHelp() []key.Binding {
-	return tableHelpBindings(r.lazy.Table().KeyMap)
+	return r.tableHelp()
 }
 
 // SetSize implements View.
 func (r *Retries) SetSize(width, height int) View {
-	r.width = width
-	r.height = height
-	r.updateTableSize()
+	r.setSize(width, height)
 	return r
 }
 
@@ -330,24 +285,17 @@ func (r *Retries) SetDangerousActionsEnabled(enabled bool) {
 
 // Dispose clears cached data when the view is removed from the stack.
 func (r *Retries) Dispose() {
-	r.reset()
-	r.filter = ""
-	r.SetStyles(r.styles)
-	r.updateTableSize()
+	r.dispose(r.reset)
 }
 
 // CancelRequests stops in-flight fetches when the view is hidden.
 func (r *Retries) CancelRequests() {
-	r.lazy.CancelRequest()
+	r.cancelRequests()
 }
 
 // SetStyles implements View.
 func (r *Retries) SetStyles(styles Styles) View {
-	r.styles = styles
-	r.frameStyles = frameStylesFromTheme(styles)
-	r.filterStyle = filterDialogStylesFromTheme(styles)
-	r.lazy.SetSpinnerStyle(styles.Muted)
-	r.lazy.SetTableStyles(tableStylesFromTheme(styles))
+	r.setStyles(styles)
 	return r
 }
 
@@ -370,25 +318,8 @@ func (r *Retries) fetchWindow(
 	})
 }
 
-func (r *Retries) renderMessage(msg string) string {
-	return renderStatusMessage("Retries", msg, r.styles, r.width, r.height)
-}
-
 func (r *Retries) reset() {
-	r.jobs = nil
-	r.firstEntry = nil
-	r.lastEntry = nil
-	r.ready = false
-	r.lazy.Reset()
-	r.updateEmptyMessage()
-}
-
-func (r *Retries) selectedEntry() (*sidekiq.SortedEntry, bool) {
-	idx := r.lazy.Table().Cursor()
-	if idx < 0 || idx >= len(r.jobs) {
-		return nil, false
-	}
-	return r.jobs[idx], true
+	r.resetSortedJobs(r.updateEmptyMessage)
 }
 
 // Table columns for retry job list.
@@ -399,12 +330,6 @@ var retryJobColumns = []table.Column{
 	{Title: "Job", Width: 30},
 	{Title: "Arguments", Width: 40},
 	{Title: "Error", Width: 60},
-}
-
-// updateTableSize updates the table dimensions based on current view size.
-func (r *Retries) updateTableSize() {
-	tableWidth, tableHeight := framedTableSize(r.width, r.height)
-	r.lazy.SetSize(tableWidth, tableHeight)
 }
 
 func (r *Retries) updateEmptyMessage() {
@@ -443,33 +368,6 @@ func (r *Retries) buildRows(jobs []*sidekiq.SortedEntry) []table.Row {
 		})
 	}
 	return rows
-}
-
-func (r *Retries) rowsMeta() string {
-	start, end, total := r.lazy.Range()
-	label := r.styles.MetricLabel.Render("rows: ")
-	if total == 0 || len(r.jobs) == 0 {
-		return label + r.styles.MetricValue.Render("0/0")
-	}
-
-	rangeLabel := fmt.Sprintf(
-		"%s-%s/%s",
-		display.Number(int64(start)),
-		display.Number(int64(end)),
-		display.Number(total),
-	)
-	return label + r.styles.MetricValue.Render(rangeLabel)
-}
-
-func (r *Retries) openFilterDialog() tea.Cmd {
-	return func() tea.Msg {
-		return dialogs.OpenDialogMsg{
-			Model: filterdialog.New(
-				filterdialog.WithStyles(r.filterStyle),
-				filterdialog.WithQuery(r.filter),
-			),
-		}
-	}
 }
 
 func (r *Retries) openDeleteConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
@@ -629,26 +527,4 @@ func (r *Retries) retryNowJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
 }
 
 // renderJobsBox renders the bordered box containing the jobs table.
-func (r *Retries) renderJobsBox() string {
-	return frame.New(
-		frame.WithStyles(r.frameStyles),
-		frame.WithTitle("Retries"),
-		frame.WithFilter(r.filter),
-		frame.WithTitlePadding(0),
-		frame.WithMeta(r.rowsMeta()),
-		frame.WithContent(r.lazy.View()),
-		frame.WithPadding(1),
-		frame.WithSize(r.width, r.height),
-		frame.WithMinHeight(5),
-		frame.WithFocused(true),
-	).View()
-}
-
-func (r *Retries) jobName(entry *sidekiq.SortedEntry) string {
-	if name := entry.DisplayClass(); name != "" {
-		return name
-	}
-	return "selected"
-}
-
 // renderJobDetail renders the job detail view.
