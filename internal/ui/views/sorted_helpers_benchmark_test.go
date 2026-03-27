@@ -23,6 +23,33 @@ const (
 
 var benchmarkSortedWindowSink sortedWindowResult
 
+type benchmarkLegacySortedClient struct {
+	client *sidekiq.Client
+}
+
+func (c benchmarkLegacySortedClient) GetSortedEntries(
+	ctx context.Context,
+	kind sidekiq.SortedSetKind,
+	start, size int,
+) ([]*sidekiq.SortedEntry, int64, error) {
+	return c.client.GetSortedEntries(ctx, kind, start, size)
+}
+
+func (c benchmarkLegacySortedClient) ScanSortedEntries(
+	ctx context.Context,
+	kind sidekiq.SortedSetKind,
+	query string,
+) ([]*sidekiq.SortedEntry, error) {
+	return c.client.ScanSortedEntries(ctx, kind, query)
+}
+
+func (c benchmarkLegacySortedClient) GetSortedEntryBounds(
+	ctx context.Context,
+	kind sidekiq.SortedSetKind,
+) (*sidekiq.SortedEntry, *sidekiq.SortedEntry, error) {
+	return c.client.GetSortedEntryBounds(ctx, kind)
+}
+
 func BenchmarkFilteredSortedScroll(b *testing.B) {
 	client := setupSortedWindowBenchmarkRedis(b)
 	ctx := context.Background()
@@ -44,7 +71,7 @@ func benchmarkFilteredSortedWindow(
 ) {
 	b.Run("LegacyFullScan", func(b *testing.B) {
 		cfg := baseCfg
-		cfg.scanWindow = nil
+		cfg.client = benchmarkLegacySortedClient{client: cfg.client.(*sidekiq.Client)}
 		benchmarkFilteredSortedVariant(ctx, b, cfg, windowStarts)
 	})
 
@@ -77,14 +104,12 @@ func benchmarkFilteredSortedVariant(
 
 func benchmarkSortedWindowConfig(client *sidekiq.Client) sortedWindowConfig {
 	return sortedWindowConfig{
+		client:           client,
+		kind:             sidekiq.SortedSetDead,
 		filter:           benchmarkSortedFilterNeedle,
 		windowSize:       benchmarkSortedWindowSize,
 		fallbackPageSize: benchmarkSortedFallbackSize,
 		windowPages:      benchmarkSortedWindowPages,
-		scanWindow:       client.ScanDeadJobsWindow,
-		scan:             client.ScanDeadJobs,
-		fetch:            client.GetDeadJobs,
-		bounds:           client.GetDeadBounds,
 	}
 }
 

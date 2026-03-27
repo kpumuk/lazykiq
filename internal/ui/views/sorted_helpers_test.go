@@ -21,6 +21,61 @@ type fetchCalls struct {
 	bounds     int
 }
 
+type fakeSortedEntriesClient struct {
+	getSortedEntries     func(context.Context, sidekiq.SortedSetKind, int, int) ([]*sidekiq.SortedEntry, int64, error)
+	scanSortedEntries    func(context.Context, sidekiq.SortedSetKind, string) ([]*sidekiq.SortedEntry, error)
+	getSortedEntryBounds func(context.Context, sidekiq.SortedSetKind) (*sidekiq.SortedEntry, *sidekiq.SortedEntry, error)
+}
+
+func (c fakeSortedEntriesClient) GetSortedEntries(
+	ctx context.Context,
+	kind sidekiq.SortedSetKind,
+	start, size int,
+) ([]*sidekiq.SortedEntry, int64, error) {
+	if c.getSortedEntries == nil {
+		panic("unexpected GetSortedEntries call")
+	}
+	return c.getSortedEntries(ctx, kind, start, size)
+}
+
+func (c fakeSortedEntriesClient) ScanSortedEntries(
+	ctx context.Context,
+	kind sidekiq.SortedSetKind,
+	query string,
+) ([]*sidekiq.SortedEntry, error) {
+	if c.scanSortedEntries == nil {
+		panic("unexpected ScanSortedEntries call")
+	}
+	return c.scanSortedEntries(ctx, kind, query)
+}
+
+func (c fakeSortedEntriesClient) GetSortedEntryBounds(
+	ctx context.Context,
+	kind sidekiq.SortedSetKind,
+) (*sidekiq.SortedEntry, *sidekiq.SortedEntry, error) {
+	if c.getSortedEntryBounds == nil {
+		panic("unexpected GetSortedEntryBounds call")
+	}
+	return c.getSortedEntryBounds(ctx, kind)
+}
+
+type fakeSortedEntriesWindowClient struct {
+	fakeSortedEntriesClient
+	scanSortedEntriesWindow func(context.Context, sidekiq.SortedSetKind, string, int, int) (sidekiq.SortedEntriesWindow, error)
+}
+
+func (c fakeSortedEntriesWindowClient) ScanSortedEntriesWindow(
+	ctx context.Context,
+	kind sidekiq.SortedSetKind,
+	query string,
+	start, size int,
+) (sidekiq.SortedEntriesWindow, error) {
+	if c.scanSortedEntriesWindow == nil {
+		panic("unexpected ScanSortedEntriesWindow call")
+	}
+	return c.scanSortedEntriesWindow(ctx, kind, query, start, size)
+}
+
 func TestFetchSortedWindow(t *testing.T) {
 	cases := map[string]struct {
 		setup  func(t *testing.T) (sortedWindowConfig, *fetchCalls)
@@ -30,30 +85,35 @@ func TestFetchSortedWindow(t *testing.T) {
 			setup: func(t *testing.T) (sortedWindowConfig, *fetchCalls) {
 				calls := &fetchCalls{}
 				cfg := sortedWindowConfig{
+					client: fakeSortedEntriesWindowClient{
+						fakeSortedEntriesClient: fakeSortedEntriesClient{
+							scanSortedEntries: func(_ context.Context, _ sidekiq.SortedSetKind, _ string) ([]*sidekiq.SortedEntry, error) {
+								calls.scan++
+								return nil, nil
+							},
+							getSortedEntries: func(context.Context, sidekiq.SortedSetKind, int, int) ([]*sidekiq.SortedEntry, int64, error) {
+								t.Fatalf("unexpected fetch call")
+								return nil, 0, nil
+							},
+							getSortedEntryBounds: func(context.Context, sidekiq.SortedSetKind) (*sidekiq.SortedEntry, *sidekiq.SortedEntry, error) {
+								t.Fatalf("unexpected bounds call")
+								return nil, nil, nil
+							},
+						},
+						scanSortedEntriesWindow: func(_ context.Context, _ sidekiq.SortedSetKind, _ string, start, size int) (sidekiq.SortedEntriesWindow, error) {
+							calls.scanWindow = append(calls.scanWindow, fetchCall{start: start, size: size})
+							return sidekiq.SortedEntriesWindow{
+								Entries:    []*sidekiq.SortedEntry{{Score: 8}, {Score: 7}, {Score: 6}},
+								Total:      9,
+								FirstEntry: &sidekiq.SortedEntry{Score: 10},
+								LastEntry:  &sidekiq.SortedEntry{Score: 1},
+							}, nil
+						},
+					},
+					kind:        sidekiq.SortedSetDead,
 					filter:      "boom",
 					windowStart: 2,
 					windowSize:  3,
-					scanWindow: func(_ context.Context, _ string, start, size int) (sidekiq.SortedEntriesWindow, error) {
-						calls.scanWindow = append(calls.scanWindow, fetchCall{start: start, size: size})
-						return sidekiq.SortedEntriesWindow{
-							Entries:    []*sidekiq.SortedEntry{{Score: 8}, {Score: 7}, {Score: 6}},
-							Total:      9,
-							FirstEntry: &sidekiq.SortedEntry{Score: 10},
-							LastEntry:  &sidekiq.SortedEntry{Score: 1},
-						}, nil
-					},
-					scan: func(_ context.Context, _ string) ([]*sidekiq.SortedEntry, error) {
-						calls.scan++
-						return nil, nil
-					},
-					fetch: func(context.Context, int, int) ([]*sidekiq.SortedEntry, int64, error) {
-						t.Fatalf("unexpected fetch call")
-						return nil, 0, nil
-					},
-					bounds: func(context.Context) (*sidekiq.SortedEntry, *sidekiq.SortedEntry, error) {
-						t.Fatalf("unexpected bounds call")
-						return nil, nil, nil
-					},
 				}
 				return cfg, calls
 			},
@@ -88,21 +148,24 @@ func TestFetchSortedWindow(t *testing.T) {
 			setup: func(t *testing.T) (sortedWindowConfig, *fetchCalls) {
 				calls := &fetchCalls{}
 				cfg := sortedWindowConfig{
+					client: fakeSortedEntriesClient{
+						scanSortedEntries: func(_ context.Context, _ sidekiq.SortedSetKind, _ string) ([]*sidekiq.SortedEntry, error) {
+							calls.scan++
+							return []*sidekiq.SortedEntry{{Score: 9}, {Score: 7}, {Score: 3}, {Score: 1}}, nil
+						},
+						getSortedEntries: func(context.Context, sidekiq.SortedSetKind, int, int) ([]*sidekiq.SortedEntry, int64, error) {
+							t.Fatalf("unexpected fetch call")
+							return nil, 0, nil
+						},
+						getSortedEntryBounds: func(context.Context, sidekiq.SortedSetKind) (*sidekiq.SortedEntry, *sidekiq.SortedEntry, error) {
+							t.Fatalf("unexpected bounds call")
+							return nil, nil, nil
+						},
+					},
+					kind:        sidekiq.SortedSetDead,
 					filter:      "boom",
 					windowStart: 1,
 					windowSize:  2,
-					scan: func(_ context.Context, _ string) ([]*sidekiq.SortedEntry, error) {
-						calls.scan++
-						return []*sidekiq.SortedEntry{{Score: 9}, {Score: 7}, {Score: 3}, {Score: 1}}, nil
-					},
-					fetch: func(context.Context, int, int) ([]*sidekiq.SortedEntry, int64, error) {
-						t.Fatalf("unexpected fetch call")
-						return nil, 0, nil
-					},
-					bounds: func(context.Context) (*sidekiq.SortedEntry, *sidekiq.SortedEntry, error) {
-						t.Fatalf("unexpected bounds call")
-						return nil, nil, nil
-					},
 				}
 				return cfg, calls
 			},
@@ -128,30 +191,35 @@ func TestFetchSortedWindow(t *testing.T) {
 			setup: func(t *testing.T) (sortedWindowConfig, *fetchCalls) {
 				calls := &fetchCalls{}
 				cfg := sortedWindowConfig{
+					client: fakeSortedEntriesWindowClient{
+						fakeSortedEntriesClient: fakeSortedEntriesClient{
+							scanSortedEntries: func(context.Context, sidekiq.SortedSetKind, string) ([]*sidekiq.SortedEntry, error) {
+								t.Fatalf("unexpected scan call")
+								return nil, nil
+							},
+							getSortedEntries: func(context.Context, sidekiq.SortedSetKind, int, int) ([]*sidekiq.SortedEntry, int64, error) {
+								t.Fatalf("unexpected fetch call")
+								return nil, 0, nil
+							},
+							getSortedEntryBounds: func(context.Context, sidekiq.SortedSetKind) (*sidekiq.SortedEntry, *sidekiq.SortedEntry, error) {
+								t.Fatalf("unexpected bounds call")
+								return nil, nil, nil
+							},
+						},
+						scanSortedEntriesWindow: func(_ context.Context, _ sidekiq.SortedSetKind, _ string, start, size int) (sidekiq.SortedEntriesWindow, error) {
+							calls.scanWindow = append(calls.scanWindow, fetchCall{start: start, size: size})
+							return sidekiq.SortedEntriesWindow{
+								Entries:    []*sidekiq.SortedEntry{{Score: float64(start)}},
+								Total:      5,
+								FirstEntry: &sidekiq.SortedEntry{Score: 5},
+								LastEntry:  &sidekiq.SortedEntry{Score: 1},
+							}, nil
+						},
+					},
+					kind:        sidekiq.SortedSetDead,
 					filter:      "boom",
 					windowStart: 9,
 					windowSize:  3,
-					scanWindow: func(_ context.Context, _ string, start, size int) (sidekiq.SortedEntriesWindow, error) {
-						calls.scanWindow = append(calls.scanWindow, fetchCall{start: start, size: size})
-						return sidekiq.SortedEntriesWindow{
-							Entries:    []*sidekiq.SortedEntry{{Score: float64(start)}},
-							Total:      5,
-							FirstEntry: &sidekiq.SortedEntry{Score: 5},
-							LastEntry:  &sidekiq.SortedEntry{Score: 1},
-						}, nil
-					},
-					scan: func(context.Context, string) ([]*sidekiq.SortedEntry, error) {
-						t.Fatalf("unexpected scan call")
-						return nil, nil
-					},
-					fetch: func(context.Context, int, int) ([]*sidekiq.SortedEntry, int64, error) {
-						t.Fatalf("unexpected fetch call")
-						return nil, 0, nil
-					},
-					bounds: func(context.Context) (*sidekiq.SortedEntry, *sidekiq.SortedEntry, error) {
-						t.Fatalf("unexpected bounds call")
-						return nil, nil, nil
-					},
 				}
 				return cfg, calls
 			},
@@ -171,22 +239,25 @@ func TestFetchSortedWindow(t *testing.T) {
 			setup: func(t *testing.T) (sortedWindowConfig, *fetchCalls) {
 				calls := &fetchCalls{}
 				cfg := sortedWindowConfig{
+					client: fakeSortedEntriesClient{
+						scanSortedEntries: func(context.Context, sidekiq.SortedSetKind, string) ([]*sidekiq.SortedEntry, error) {
+							t.Fatalf("unexpected scan call")
+							return nil, nil
+						},
+						getSortedEntries: func(_ context.Context, _ sidekiq.SortedSetKind, start, size int) ([]*sidekiq.SortedEntry, int64, error) {
+							calls.fetch = append(calls.fetch, fetchCall{start: start, size: size})
+							return []*sidekiq.SortedEntry{{Score: 2}}, 2, nil
+						},
+						getSortedEntryBounds: func(context.Context, sidekiq.SortedSetKind) (*sidekiq.SortedEntry, *sidekiq.SortedEntry, error) {
+							calls.bounds++
+							return &sidekiq.SortedEntry{Score: 1}, &sidekiq.SortedEntry{Score: 2}, nil
+						},
+					},
+					kind:             sidekiq.SortedSetDead,
 					windowStart:      0,
 					windowSize:       0,
 					fallbackPageSize: 5,
 					windowPages:      2,
-					scan: func(context.Context, string) ([]*sidekiq.SortedEntry, error) {
-						t.Fatalf("unexpected scan call")
-						return nil, nil
-					},
-					fetch: func(_ context.Context, start, size int) ([]*sidekiq.SortedEntry, int64, error) {
-						calls.fetch = append(calls.fetch, fetchCall{start: start, size: size})
-						return []*sidekiq.SortedEntry{{Score: 2}}, 2, nil
-					},
-					bounds: func(context.Context) (*sidekiq.SortedEntry, *sidekiq.SortedEntry, error) {
-						calls.bounds++
-						return &sidekiq.SortedEntry{Score: 1}, &sidekiq.SortedEntry{Score: 2}, nil
-					},
 				}
 				return cfg, calls
 			},
@@ -209,20 +280,23 @@ func TestFetchSortedWindow(t *testing.T) {
 			setup: func(t *testing.T) (sortedWindowConfig, *fetchCalls) {
 				calls := &fetchCalls{}
 				cfg := sortedWindowConfig{
+					client: fakeSortedEntriesClient{
+						scanSortedEntries: func(context.Context, sidekiq.SortedSetKind, string) ([]*sidekiq.SortedEntry, error) {
+							t.Fatalf("unexpected scan call")
+							return nil, nil
+						},
+						getSortedEntries: func(_ context.Context, _ sidekiq.SortedSetKind, start, size int) ([]*sidekiq.SortedEntry, int64, error) {
+							calls.fetch = append(calls.fetch, fetchCall{start: start, size: size})
+							return []*sidekiq.SortedEntry{{Score: float64(start)}}, 10, nil
+						},
+						getSortedEntryBounds: func(context.Context, sidekiq.SortedSetKind) (*sidekiq.SortedEntry, *sidekiq.SortedEntry, error) {
+							calls.bounds++
+							return &sidekiq.SortedEntry{Score: 1}, &sidekiq.SortedEntry{Score: 10}, nil
+						},
+					},
+					kind:        sidekiq.SortedSetDead,
 					windowStart: 9,
 					windowSize:  3,
-					scan: func(context.Context, string) ([]*sidekiq.SortedEntry, error) {
-						t.Fatalf("unexpected scan call")
-						return nil, nil
-					},
-					fetch: func(_ context.Context, start, size int) ([]*sidekiq.SortedEntry, int64, error) {
-						calls.fetch = append(calls.fetch, fetchCall{start: start, size: size})
-						return []*sidekiq.SortedEntry{{Score: float64(start)}}, 10, nil
-					},
-					bounds: func(context.Context) (*sidekiq.SortedEntry, *sidekiq.SortedEntry, error) {
-						calls.bounds++
-						return &sidekiq.SortedEntry{Score: 1}, &sidekiq.SortedEntry{Score: 10}, nil
-					},
 				}
 				return cfg, calls
 			},
@@ -242,20 +316,23 @@ func TestFetchSortedWindow(t *testing.T) {
 			setup: func(t *testing.T) (sortedWindowConfig, *fetchCalls) {
 				calls := &fetchCalls{}
 				cfg := sortedWindowConfig{
+					client: fakeSortedEntriesClient{
+						scanSortedEntries: func(context.Context, sidekiq.SortedSetKind, string) ([]*sidekiq.SortedEntry, error) {
+							t.Fatalf("unexpected scan call")
+							return nil, nil
+						},
+						getSortedEntries: func(_ context.Context, _ sidekiq.SortedSetKind, start, size int) ([]*sidekiq.SortedEntry, int64, error) {
+							calls.fetch = append(calls.fetch, fetchCall{start: start, size: size})
+							return nil, 0, nil
+						},
+						getSortedEntryBounds: func(context.Context, sidekiq.SortedSetKind) (*sidekiq.SortedEntry, *sidekiq.SortedEntry, error) {
+							calls.bounds++
+							return nil, nil, nil
+						},
+					},
+					kind:        sidekiq.SortedSetDead,
 					windowStart: 4,
 					windowSize:  2,
-					scan: func(context.Context, string) ([]*sidekiq.SortedEntry, error) {
-						t.Fatalf("unexpected scan call")
-						return nil, nil
-					},
-					fetch: func(_ context.Context, start, size int) ([]*sidekiq.SortedEntry, int64, error) {
-						calls.fetch = append(calls.fetch, fetchCall{start: start, size: size})
-						return nil, 0, nil
-					},
-					bounds: func(context.Context) (*sidekiq.SortedEntry, *sidekiq.SortedEntry, error) {
-						calls.bounds++
-						return nil, nil, nil
-					},
 				}
 				return cfg, calls
 			},
@@ -303,28 +380,33 @@ func TestFetchSortedEntriesWindow(t *testing.T) {
 			setup: func(t *testing.T) (sortedEntriesFetchConfig, *sortedEntriesCalls) {
 				calls := &sortedEntriesCalls{}
 				cfg := sortedEntriesFetchConfig{
+					client: fakeSortedEntriesWindowClient{
+						fakeSortedEntriesClient: fakeSortedEntriesClient{
+							scanSortedEntries: func(_ context.Context, _ sidekiq.SortedSetKind, _ string) ([]*sidekiq.SortedEntry, error) {
+								calls.scan++
+								return nil, nil
+							},
+							getSortedEntries: func(context.Context, sidekiq.SortedSetKind, int, int) ([]*sidekiq.SortedEntry, int64, error) {
+								t.Fatalf("unexpected fetch call")
+								return nil, 0, nil
+							},
+							getSortedEntryBounds: func(context.Context, sidekiq.SortedSetKind) (*sidekiq.SortedEntry, *sidekiq.SortedEntry, error) {
+								t.Fatalf("unexpected bounds call")
+								return nil, nil, nil
+							},
+						},
+						scanSortedEntriesWindow: func(_ context.Context, _ sidekiq.SortedSetKind, _ string, start, size int) (sidekiq.SortedEntriesWindow, error) {
+							calls.scanWindow = append(calls.scanWindow, fetchCall{start: start, size: size})
+							return sidekiq.SortedEntriesWindow{
+								Entries:    []*sidekiq.SortedEntry{{Score: 8}, {Score: 7}},
+								Total:      5,
+								FirstEntry: &sidekiq.SortedEntry{Score: 9},
+								LastEntry:  &sidekiq.SortedEntry{Score: 1},
+							}, nil
+						},
+					},
+					kind:   sidekiq.SortedSetDead,
 					filter: "boom",
-					scanWindow: func(_ context.Context, _ string, start, size int) (sidekiq.SortedEntriesWindow, error) {
-						calls.scanWindow = append(calls.scanWindow, fetchCall{start: start, size: size})
-						return sidekiq.SortedEntriesWindow{
-							Entries:    []*sidekiq.SortedEntry{{Score: 8}, {Score: 7}},
-							Total:      5,
-							FirstEntry: &sidekiq.SortedEntry{Score: 9},
-							LastEntry:  &sidekiq.SortedEntry{Score: 1},
-						}, nil
-					},
-					scan: func(_ context.Context, _ string) ([]*sidekiq.SortedEntry, error) {
-						calls.scan++
-						return nil, nil
-					},
-					fetch: func(context.Context, int, int) ([]*sidekiq.SortedEntry, int64, error) {
-						t.Fatalf("unexpected fetch call")
-						return nil, 0, nil
-					},
-					bounds: func(context.Context) (*sidekiq.SortedEntry, *sidekiq.SortedEntry, error) {
-						t.Fatalf("unexpected bounds call")
-						return nil, nil, nil
-					},
 					buildRows: func(jobs []*sidekiq.SortedEntry) []table.Row {
 						calls.buildRows++
 						calls.jobs = jobs
@@ -368,20 +450,23 @@ func TestFetchSortedEntriesWindow(t *testing.T) {
 			setup: func(t *testing.T) (sortedEntriesFetchConfig, *sortedEntriesCalls) {
 				calls := &sortedEntriesCalls{}
 				cfg := sortedEntriesFetchConfig{
+					client: fakeSortedEntriesClient{
+						scanSortedEntries: func(context.Context, sidekiq.SortedSetKind, string) ([]*sidekiq.SortedEntry, error) {
+							t.Fatalf("unexpected scan call")
+							return nil, nil
+						},
+						getSortedEntries: func(_ context.Context, _ sidekiq.SortedSetKind, start, size int) ([]*sidekiq.SortedEntry, int64, error) {
+							calls.fetch = append(calls.fetch, fetchCall{start: start, size: size})
+							return []*sidekiq.SortedEntry{{Score: 2}}, 10, nil
+						},
+						getSortedEntryBounds: func(context.Context, sidekiq.SortedSetKind) (*sidekiq.SortedEntry, *sidekiq.SortedEntry, error) {
+							calls.bounds++
+							return &sidekiq.SortedEntry{Score: 1}, &sidekiq.SortedEntry{Score: 9}, nil
+						},
+					},
+					kind:        sidekiq.SortedSetDead,
 					windowStart: 5,
 					windowSize:  3,
-					scan: func(context.Context, string) ([]*sidekiq.SortedEntry, error) {
-						t.Fatalf("unexpected scan call")
-						return nil, nil
-					},
-					fetch: func(_ context.Context, start, size int) ([]*sidekiq.SortedEntry, int64, error) {
-						calls.fetch = append(calls.fetch, fetchCall{start: start, size: size})
-						return []*sidekiq.SortedEntry{{Score: 2}}, 10, nil
-					},
-					bounds: func(context.Context) (*sidekiq.SortedEntry, *sidekiq.SortedEntry, error) {
-						calls.bounds++
-						return &sidekiq.SortedEntry{Score: 1}, &sidekiq.SortedEntry{Score: 9}, nil
-					},
 					buildRows: func(_ []*sidekiq.SortedEntry) []table.Row {
 						calls.buildRows++
 						return []table.Row{{ID: "row"}}

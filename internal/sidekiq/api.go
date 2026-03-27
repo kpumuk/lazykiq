@@ -48,29 +48,17 @@ type API interface {
 	// If filter is non-empty, only jobs whose raw payload contains the substring are returned.
 	GetBusyData(ctx context.Context, filter string) (BusyData, error)
 
-	// GetDeadJobs fetches dead jobs with pagination (newest first).
-	GetDeadJobs(ctx context.Context, start, count int) ([]*SortedEntry, int64, error)
+	// GetSortedEntries fetches sorted-set jobs with pagination.
+	GetSortedEntries(ctx context.Context, kind SortedSetKind, start, count int) ([]*SortedEntry, int64, error)
 
-	// ScanDeadJobs scans dead jobs using a match pattern (no paging).
-	ScanDeadJobs(ctx context.Context, match string) ([]*SortedEntry, error)
+	// ScanSortedEntries scans sorted-set jobs using a match pattern (no paging).
+	ScanSortedEntries(ctx context.Context, kind SortedSetKind, match string) ([]*SortedEntry, error)
 
-	// ScanDeadJobsWindow scans dead jobs using a match pattern and returns one window.
-	ScanDeadJobsWindow(ctx context.Context, match string, start, count int) (SortedEntriesWindow, error)
+	// ScanSortedEntriesWindow scans sorted-set jobs using a match pattern and returns one window.
+	ScanSortedEntriesWindow(ctx context.Context, kind SortedSetKind, match string, start, count int) (SortedEntriesWindow, error)
 
-	// GetDeadBounds fetches the oldest and newest dead jobs.
-	GetDeadBounds(ctx context.Context) (*SortedEntry, *SortedEntry, error)
-
-	// GetRetryJobs fetches retry jobs with pagination (earliest retry first).
-	GetRetryJobs(ctx context.Context, start, count int) ([]*SortedEntry, int64, error)
-
-	// ScanRetryJobs scans retry jobs using a match pattern (no paging).
-	ScanRetryJobs(ctx context.Context, match string) ([]*SortedEntry, error)
-
-	// ScanRetryJobsWindow scans retry jobs using a match pattern and returns one window.
-	ScanRetryJobsWindow(ctx context.Context, match string, start, count int) (SortedEntriesWindow, error)
-
-	// GetRetryBounds fetches the earliest and latest retry jobs.
-	GetRetryBounds(ctx context.Context) (*SortedEntry, *SortedEntry, error)
+	// GetSortedEntryBounds fetches the oldest and newest entries for a sorted set.
+	GetSortedEntryBounds(ctx context.Context, kind SortedSetKind) (*SortedEntry, *SortedEntry, error)
 
 	// GetErrorSummary fetches exact error summary rows across dead and retry sets.
 	GetErrorSummary(ctx context.Context, query string) ([]ErrorSummaryRow, ErrorSummaryMeta, error)
@@ -78,59 +66,23 @@ type API interface {
 	// GetErrorGroupWindow fetches one exact paged error group window across dead and retry sets.
 	GetErrorGroupWindow(ctx context.Context, key ErrorGroupKey, query string, start, count int) (ErrorGroupWindow, error)
 
-	// GetScheduledJobs fetches scheduled jobs with pagination (earliest execution time first).
-	GetScheduledJobs(ctx context.Context, start, count int) ([]*SortedEntry, int64, error)
+	// DeleteSortedEntry removes a job from a sorted set.
+	DeleteSortedEntry(ctx context.Context, kind SortedSetKind, entry *SortedEntry) error
 
-	// ScanScheduledJobs scans scheduled jobs using a match pattern (no paging).
-	ScanScheduledJobs(ctx context.Context, match string) ([]*SortedEntry, error)
+	// DeleteAllSortedEntries removes all jobs from a sorted set.
+	DeleteAllSortedEntries(ctx context.Context, kind SortedSetKind) error
 
-	// ScanScheduledJobsWindow scans scheduled jobs using a match pattern and returns one window.
-	ScanScheduledJobsWindow(ctx context.Context, match string, start, count int) (SortedEntriesWindow, error)
+	// EnqueueSortedEntry moves a sorted-set job to its queue immediately.
+	EnqueueSortedEntry(ctx context.Context, kind SortedSetKind, entry *SortedEntry) error
 
-	// GetScheduledBounds fetches the earliest and latest scheduled jobs.
-	GetScheduledBounds(ctx context.Context) (*SortedEntry, *SortedEntry, error)
+	// EnqueueAllSortedEntries moves all sorted-set jobs to their queues immediately.
+	EnqueueAllSortedEntries(ctx context.Context, kind SortedSetKind) error
 
-	// DeleteRetryJob removes a retry job from the retry set.
-	DeleteRetryJob(ctx context.Context, entry *SortedEntry) error
+	// MoveSortedEntryToDead moves a supported sorted-set job to the dead set.
+	MoveSortedEntryToDead(ctx context.Context, kind SortedSetKind, entry *SortedEntry) error
 
-	// KillRetryJob moves a retry job to the dead set.
-	KillRetryJob(ctx context.Context, entry *SortedEntry) error
-
-	// RetryNowRetryJob moves a retry job to its queue immediately.
-	RetryNowRetryJob(ctx context.Context, entry *SortedEntry) error
-
-	// DeleteAllRetryJobs removes all jobs from the retry set.
-	DeleteAllRetryJobs(ctx context.Context) error
-
-	// RetryAllRetryJobs moves all retry jobs to their queues immediately.
-	RetryAllRetryJobs(ctx context.Context) error
-
-	// KillAllRetryJobs moves all retry jobs into the dead set.
-	KillAllRetryJobs(ctx context.Context) error
-
-	// AddScheduledJobToQueue moves a scheduled job to its queue immediately.
-	AddScheduledJobToQueue(ctx context.Context, entry *SortedEntry) error
-
-	// DeleteScheduledJob removes a scheduled job from the scheduled set.
-	DeleteScheduledJob(ctx context.Context, entry *SortedEntry) error
-
-	// DeleteAllScheduledJobs removes all jobs from the scheduled set.
-	DeleteAllScheduledJobs(ctx context.Context) error
-
-	// AddAllScheduledJobsToQueue moves all scheduled jobs to their queues immediately.
-	AddAllScheduledJobsToQueue(ctx context.Context) error
-
-	// RetryNowDeadJob moves a dead job to its queue immediately.
-	RetryNowDeadJob(ctx context.Context, entry *SortedEntry) error
-
-	// DeleteDeadJob removes a dead job from the dead set.
-	DeleteDeadJob(ctx context.Context, entry *SortedEntry) error
-
-	// DeleteAllDeadJobs removes all jobs from the dead set.
-	DeleteAllDeadJobs(ctx context.Context) error
-
-	// RetryAllDeadJobs moves all dead jobs to their queues immediately.
-	RetryAllDeadJobs(ctx context.Context) error
+	// MoveAllSortedEntriesToDead moves all supported sorted-set jobs to the dead set.
+	MoveAllSortedEntriesToDead(ctx context.Context, kind SortedSetKind) error
 
 	// Do executes a raw Redis command.
 	Do(ctx context.Context, args ...any) (any, error)

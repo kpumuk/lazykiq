@@ -26,6 +26,61 @@ const (
 	queuePrefixKey = "queue:"
 )
 
+// SortedSetKind identifies one of Sidekiq's time-ordered job sets.
+type SortedSetKind int
+
+const (
+	// SortedSetRetry identifies the retry set.
+	SortedSetRetry SortedSetKind = iota
+	// SortedSetScheduled identifies the scheduled set.
+	SortedSetScheduled
+	// SortedSetDead identifies the dead set.
+	SortedSetDead
+)
+
+func (k SortedSetKind) String() string {
+	switch k {
+	case SortedSetRetry:
+		return "retry"
+	case SortedSetScheduled:
+		return "scheduled"
+	case SortedSetDead:
+		return "dead"
+	default:
+		return "unknown"
+	}
+}
+
+type sortedSetSpec struct {
+	key                 string
+	reverse             bool
+	decrementRetryCount bool
+	canMoveToDead       bool
+}
+
+func sortedSetSpecFor(kind SortedSetKind) (sortedSetSpec, error) {
+	switch kind {
+	case SortedSetRetry:
+		return sortedSetSpec{
+			key:                 retrySetKey,
+			decrementRetryCount: true,
+			canMoveToDead:       true,
+		}, nil
+	case SortedSetScheduled:
+		return sortedSetSpec{
+			key: scheduleSetKey,
+		}, nil
+	case SortedSetDead:
+		return sortedSetSpec{
+			key:                 deadSetKey,
+			reverse:             true,
+			decrementRetryCount: true,
+		}, nil
+	default:
+		return sortedSetSpec{}, errors.New("unsupported sorted set kind")
+	}
+}
+
 // SortedEntry represents a job stored in a Sidekiq sorted set (dead, retry, schedule).
 // It embeds a JobRecord for the job data and adds the sorted set score (timestamp).
 type SortedEntry struct {
@@ -195,85 +250,76 @@ func (c *Client) getSortedSetBounds(ctx context.Context, key string) (*SortedEnt
 	return NewSortedEntry(minValue, minResults[0].Score), NewSortedEntry(maxValue, maxResults[0].Score), nil
 }
 
-// GetDeadJobs fetches dead jobs with pagination (newest first).
-func (c *Client) GetDeadJobs(ctx context.Context, start, count int) ([]*SortedEntry, int64, error) {
-	return c.getSortedSetJobs(ctx, deadSetKey, start, count, true)
-}
-
-// ScanDeadJobs scans dead jobs using a match pattern (no paging).
-func (c *Client) ScanDeadJobs(ctx context.Context, match string) ([]*SortedEntry, error) {
-	return c.scanSortedSetJobs(ctx, deadSetKey, match, true)
-}
-
-// ScanDeadJobsWindow scans dead jobs using a match pattern and returns one window.
-func (c *Client) ScanDeadJobsWindow(
+// GetSortedEntries fetches sorted-set jobs with pagination.
+func (c *Client) GetSortedEntries(
 	ctx context.Context,
+	kind SortedSetKind,
+	start, count int,
+) ([]*SortedEntry, int64, error) {
+	spec, err := sortedSetSpecFor(kind)
+	if err != nil {
+		return nil, 0, err
+	}
+	return c.getSortedSetJobs(ctx, spec.key, start, count, spec.reverse)
+}
+
+// ScanSortedEntries scans sorted-set jobs using a match pattern (no paging).
+func (c *Client) ScanSortedEntries(ctx context.Context, kind SortedSetKind, match string) ([]*SortedEntry, error) {
+	spec, err := sortedSetSpecFor(kind)
+	if err != nil {
+		return nil, err
+	}
+	return c.scanSortedSetJobs(ctx, spec.key, match, spec.reverse)
+}
+
+// ScanSortedEntriesWindow scans sorted-set jobs using a match pattern and returns one window.
+func (c *Client) ScanSortedEntriesWindow(
+	ctx context.Context,
+	kind SortedSetKind,
 	match string,
 	start, count int,
 ) (SortedEntriesWindow, error) {
-	return c.scanSortedSetWindow(ctx, deadSetKey, match, start, count, true)
+	spec, err := sortedSetSpecFor(kind)
+	if err != nil {
+		return SortedEntriesWindow{}, err
+	}
+	return c.scanSortedSetWindow(ctx, spec.key, match, start, count, spec.reverse)
 }
 
-// GetDeadBounds fetches the oldest and newest dead jobs.
-func (c *Client) GetDeadBounds(ctx context.Context) (*SortedEntry, *SortedEntry, error) {
-	return c.getSortedSetBounds(ctx, deadSetKey)
-}
-
-// GetRetryJobs fetches retry jobs with pagination (earliest retry first).
-func (c *Client) GetRetryJobs(ctx context.Context, start, count int) ([]*SortedEntry, int64, error) {
-	return c.getSortedSetJobs(ctx, retrySetKey, start, count, false)
-}
-
-// ScanRetryJobs scans retry jobs using a match pattern (no paging).
-func (c *Client) ScanRetryJobs(ctx context.Context, match string) ([]*SortedEntry, error) {
-	return c.scanSortedSetJobs(ctx, retrySetKey, match, false)
-}
-
-// ScanRetryJobsWindow scans retry jobs using a match pattern and returns one window.
-func (c *Client) ScanRetryJobsWindow(
+// GetSortedEntryBounds fetches the oldest and newest entries for a sorted set.
+func (c *Client) GetSortedEntryBounds(
 	ctx context.Context,
-	match string,
-	start, count int,
-) (SortedEntriesWindow, error) {
-	return c.scanSortedSetWindow(ctx, retrySetKey, match, start, count, false)
+	kind SortedSetKind,
+) (*SortedEntry, *SortedEntry, error) {
+	spec, err := sortedSetSpecFor(kind)
+	if err != nil {
+		return nil, nil, err
+	}
+	return c.getSortedSetBounds(ctx, spec.key)
 }
 
-// GetRetryBounds fetches the earliest and latest retry jobs.
-func (c *Client) GetRetryBounds(ctx context.Context) (*SortedEntry, *SortedEntry, error) {
-	return c.getSortedSetBounds(ctx, retrySetKey)
+// DeleteSortedEntry removes one job from a sorted set.
+func (c *Client) DeleteSortedEntry(ctx context.Context, kind SortedSetKind, entry *SortedEntry) error {
+	spec, err := sortedSetSpecFor(kind)
+	if err != nil {
+		return err
+	}
+	return c.deleteSortedEntry(ctx, spec.key, entry)
 }
 
-// GetScheduledJobs fetches scheduled jobs with pagination (earliest execution time first).
-func (c *Client) GetScheduledJobs(ctx context.Context, start, count int) ([]*SortedEntry, int64, error) {
-	return c.getSortedSetJobs(ctx, scheduleSetKey, start, count, false)
+// MoveSortedEntryToDead moves a supported sorted-set job into the dead set.
+func (c *Client) MoveSortedEntryToDead(ctx context.Context, kind SortedSetKind, entry *SortedEntry) error {
+	spec, err := sortedSetSpecFor(kind)
+	if err != nil {
+		return err
+	}
+	if !spec.canMoveToDead {
+		return errors.New("sorted set does not support move to dead: " + kind.String())
+	}
+	return c.moveSortedEntryToDead(ctx, spec.key, entry)
 }
 
-// ScanScheduledJobs scans scheduled jobs using a match pattern (no paging).
-func (c *Client) ScanScheduledJobs(ctx context.Context, match string) ([]*SortedEntry, error) {
-	return c.scanSortedSetJobs(ctx, scheduleSetKey, match, false)
-}
-
-// ScanScheduledJobsWindow scans scheduled jobs using a match pattern and returns one window.
-func (c *Client) ScanScheduledJobsWindow(
-	ctx context.Context,
-	match string,
-	start, count int,
-) (SortedEntriesWindow, error) {
-	return c.scanSortedSetWindow(ctx, scheduleSetKey, match, start, count, false)
-}
-
-// GetScheduledBounds fetches the earliest and latest scheduled jobs.
-func (c *Client) GetScheduledBounds(ctx context.Context) (*SortedEntry, *SortedEntry, error) {
-	return c.getSortedSetBounds(ctx, scheduleSetKey)
-}
-
-// DeleteRetryJob removes a job from the retry set.
-func (c *Client) DeleteRetryJob(ctx context.Context, entry *SortedEntry) error {
-	return c.deleteSortedEntry(ctx, retrySetKey, entry)
-}
-
-// KillRetryJob moves a retry job into the dead set.
-func (c *Client) KillRetryJob(ctx context.Context, entry *SortedEntry) error {
+func (c *Client) moveSortedEntryToDead(ctx context.Context, key string, entry *SortedEntry) error {
 	if entry == nil || entry.JobRecord == nil {
 		return errors.New("sorted entry is nil")
 	}
@@ -283,9 +329,9 @@ func (c *Client) KillRetryJob(ctx context.Context, entry *SortedEntry) error {
 	}
 
 	_, err := c.redis.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
-		pipe.ZRem(ctx, retrySetKey, value)
+		pipe.ZRem(ctx, key, value)
 		pipe.ZAdd(ctx, deadSetKey, redis.Z{
-			Score:  float64(time.Now().Truncate(time.Microsecond).UnixNano()) / float64(time.Second),
+			Score:  nowSortedSetScore(),
 			Member: value,
 		})
 		return nil
@@ -293,19 +339,13 @@ func (c *Client) KillRetryJob(ctx context.Context, entry *SortedEntry) error {
 	return err
 }
 
-// RetryNowRetryJob moves a retry job to its queue immediately (Sidekiq "Retry Now").
-func (c *Client) RetryNowRetryJob(ctx context.Context, entry *SortedEntry) error {
-	return c.moveSortedEntryToQueue(ctx, retrySetKey, entry, true)
-}
-
-// RetryNowDeadJob moves a dead job to its queue immediately (Sidekiq "Retry Now").
-func (c *Client) RetryNowDeadJob(ctx context.Context, entry *SortedEntry) error {
-	return c.moveSortedEntryToQueue(ctx, deadSetKey, entry, true)
-}
-
-// AddScheduledJobToQueue moves a scheduled job to its queue immediately (Sidekiq "Add to queue").
-func (c *Client) AddScheduledJobToQueue(ctx context.Context, entry *SortedEntry) error {
-	return c.moveSortedEntryToQueue(ctx, scheduleSetKey, entry, false)
+// EnqueueSortedEntry moves a sorted-set job to its queue immediately.
+func (c *Client) EnqueueSortedEntry(ctx context.Context, kind SortedSetKind, entry *SortedEntry) error {
+	spec, err := sortedSetSpecFor(kind)
+	if err != nil {
+		return err
+	}
+	return c.moveSortedEntryToQueue(ctx, spec.key, entry, spec.decrementRetryCount)
 }
 
 func (c *Client) moveSortedEntryToQueue(ctx context.Context, key string, entry *SortedEntry, decrementRetryCount bool) error {
@@ -338,49 +378,34 @@ func (c *Client) moveSortedEntryToQueue(ctx context.Context, key string, entry *
 	return err
 }
 
-// DeleteAllRetryJobs removes all jobs from the retry set.
-func (c *Client) DeleteAllRetryJobs(ctx context.Context) error {
-	return c.clearSortedSet(ctx, retrySetKey)
+// DeleteAllSortedEntries removes all jobs from a sorted set.
+func (c *Client) DeleteAllSortedEntries(ctx context.Context, kind SortedSetKind) error {
+	spec, err := sortedSetSpecFor(kind)
+	if err != nil {
+		return err
+	}
+	return c.clearSortedSet(ctx, spec.key)
 }
 
-// RetryAllRetryJobs moves all retry jobs to their queues immediately.
-func (c *Client) RetryAllRetryJobs(ctx context.Context) error {
-	return c.moveAllSortedEntriesToQueue(ctx, retrySetKey, true)
+// EnqueueAllSortedEntries moves all jobs from a sorted set to their queues immediately.
+func (c *Client) EnqueueAllSortedEntries(ctx context.Context, kind SortedSetKind) error {
+	spec, err := sortedSetSpecFor(kind)
+	if err != nil {
+		return err
+	}
+	return c.moveAllSortedEntriesToQueue(ctx, spec.key, spec.decrementRetryCount)
 }
 
-// KillAllRetryJobs moves all retry jobs into the dead set.
-func (c *Client) KillAllRetryJobs(ctx context.Context) error {
-	return c.moveAllSortedEntriesToDead(ctx, retrySetKey)
-}
-
-// DeleteScheduledJob removes a job from the scheduled set.
-func (c *Client) DeleteScheduledJob(ctx context.Context, entry *SortedEntry) error {
-	return c.deleteSortedEntry(ctx, scheduleSetKey, entry)
-}
-
-// DeleteAllScheduledJobs removes all jobs from the scheduled set.
-func (c *Client) DeleteAllScheduledJobs(ctx context.Context) error {
-	return c.clearSortedSet(ctx, scheduleSetKey)
-}
-
-// AddAllScheduledJobsToQueue moves all scheduled jobs to their queues immediately.
-func (c *Client) AddAllScheduledJobsToQueue(ctx context.Context) error {
-	return c.moveAllSortedEntriesToQueue(ctx, scheduleSetKey, false)
-}
-
-// DeleteDeadJob removes a job from the dead set.
-func (c *Client) DeleteDeadJob(ctx context.Context, entry *SortedEntry) error {
-	return c.deleteSortedEntry(ctx, deadSetKey, entry)
-}
-
-// DeleteAllDeadJobs removes all jobs from the dead set.
-func (c *Client) DeleteAllDeadJobs(ctx context.Context) error {
-	return c.clearSortedSet(ctx, deadSetKey)
-}
-
-// RetryAllDeadJobs moves all dead jobs to their queues immediately.
-func (c *Client) RetryAllDeadJobs(ctx context.Context) error {
-	return c.moveAllSortedEntriesToQueue(ctx, deadSetKey, true)
+// MoveAllSortedEntriesToDead moves all jobs from a supported sorted set into the dead set.
+func (c *Client) MoveAllSortedEntriesToDead(ctx context.Context, kind SortedSetKind) error {
+	spec, err := sortedSetSpecFor(kind)
+	if err != nil {
+		return err
+	}
+	if !spec.canMoveToDead {
+		return errors.New("sorted set does not support move to dead: " + kind.String())
+	}
+	return c.moveAllSortedEntriesToDead(ctx, spec.key)
 }
 
 func (c *Client) deleteSortedEntry(ctx context.Context, key string, entry *SortedEntry) error {
@@ -501,9 +526,8 @@ func (c *Client) moveAllSortedEntriesToDead(ctx context.Context, key string) err
 				if rawValue == "" {
 					continue
 				}
-				now := time.Now().Truncate(time.Microsecond)
 				pipe.ZAdd(ctx, deadSetKey, redis.Z{
-					Score:  float64(now.UnixNano()) / float64(time.Second),
+					Score:  nowSortedSetScore(),
 					Member: rawValue,
 				})
 			}
@@ -516,6 +540,10 @@ func (c *Client) moveAllSortedEntriesToDead(ctx context.Context, key string) err
 }
 
 var nowFuncSidekiq = time.Now
+
+func nowSortedSetScore() float64 {
+	return float64(nowFuncSidekiq().Truncate(time.Microsecond).UnixNano()) / float64(time.Second)
+}
 
 func nowTimestamp(format timestampFormat) json.Number {
 	now := nowFuncSidekiq()

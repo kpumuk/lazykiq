@@ -336,15 +336,13 @@ func (d *Dead) fetchWindow(
 ) (lazytable.FetchResult, error) {
 	return fetchSortedEntriesWindow(ctx, sortedEntriesFetchConfig{
 		tracker:          "dead.fetchWindow",
+		client:           d.client,
+		kind:             sidekiq.SortedSetDead,
 		filter:           d.filter,
 		windowStart:      windowStart,
 		windowSize:       windowSize,
 		fallbackPageSize: deadFallbackPageSize,
 		windowPages:      deadWindowPages,
-		scanWindow:       d.client.ScanDeadJobsWindow,
-		scan:             d.client.ScanDeadJobs,
-		fetch:            d.client.GetDeadJobs,
-		bounds:           d.client.GetDeadBounds,
 		buildRows:        d.buildRows,
 	})
 }
@@ -499,7 +497,7 @@ func (d *Dead) openRetryAllConfirm() tea.Cmd {
 func (d *Dead) deleteJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
 	return func() tea.Msg {
 		ctx := devtools.WithTracker(context.Background(), "dead.deleteJobCmd")
-		if err := d.client.DeleteDeadJob(ctx, entry); err != nil {
+		if err := d.client.DeleteSortedEntry(ctx, sidekiq.SortedSetDead, entry); err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}
 		return RefreshMsg{}
@@ -509,7 +507,7 @@ func (d *Dead) deleteJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
 func (d *Dead) deleteAllCmd() tea.Cmd {
 	return func() tea.Msg {
 		ctx := devtools.WithTracker(context.Background(), "dead.deleteAllCmd")
-		if err := d.client.DeleteAllDeadJobs(ctx); err != nil {
+		if err := d.client.DeleteAllSortedEntries(ctx, sidekiq.SortedSetDead); err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}
 		return RefreshMsg{}
@@ -519,7 +517,7 @@ func (d *Dead) deleteAllCmd() tea.Cmd {
 func (d *Dead) retryNowJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
 	return func() tea.Msg {
 		ctx := devtools.WithTracker(context.Background(), "dead.retryNowJobCmd")
-		if err := d.client.RetryNowDeadJob(ctx, entry); err != nil {
+		if err := d.client.EnqueueSortedEntry(ctx, sidekiq.SortedSetDead, entry); err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}
 		return RefreshMsg{}
@@ -529,7 +527,7 @@ func (d *Dead) retryNowJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
 func (d *Dead) retryAllCmd() tea.Cmd {
 	return func() tea.Msg {
 		ctx := devtools.WithTracker(context.Background(), "dead.retryAllCmd")
-		if err := d.client.RetryAllDeadJobs(ctx); err != nil {
+		if err := d.client.EnqueueAllSortedEntries(ctx, sidekiq.SortedSetDead); err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}
 		return RefreshMsg{}
