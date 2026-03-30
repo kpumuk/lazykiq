@@ -3,7 +3,7 @@ module github.com/kpumuk/lazykiq
 go 1.26.1
 
 require (
-	charm.land/bubbles/v2 v2.0.0
+	charm.land/bubbles/v2 v2.1.0
 	charm.land/bubbletea/v2 v2.0.2
 	charm.land/fang/v2 v2.0.1
 	charm.land/lipgloss/v2 v2.0.2
