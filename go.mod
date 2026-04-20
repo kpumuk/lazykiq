@@ -10,7 +10,7 @@ require (
 	github.com/NimbleMarkets/ntcharts/v2 v2.0.0
 	github.com/alicebob/miniredis/v2 v2.37.0
 	github.com/atotto/clipboard v0.1.4
-	github.com/charmbracelet/x/ansi v0.11.6
+	github.com/charmbracelet/x/ansi v0.11.7
 	github.com/charmbracelet/x/exp/golden v0.0.0-20251215102626-e0db08df7383
 	github.com/redis/go-redis/v9 v9.18.0
 	github.com/spf13/cobra v1.10.2
@@ -31,8 +31,8 @@ require (
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/lrstanley/bubblezone/v2 v2.0.0 // indirect
-	github.com/lucasb-eyer/go-colorful v1.3.0 // indirect
-	github.com/mattn/go-runewidth v0.0.21 // indirect
+	github.com/lucasb-eyer/go-colorful v1.4.0 // indirect
+	github.com/mattn/go-runewidth v0.0.23 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/muesli/mango v0.2.0 // indirect
 	github.com/muesli/mango-cobra v1.3.0 // indirect
