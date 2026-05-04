@@ -7,7 +7,7 @@ require (
 	charm.land/bubbletea/v2 v2.0.6
 	charm.land/fang/v2 v2.0.1
 	charm.land/lipgloss/v2 v2.0.3
-	github.com/NimbleMarkets/ntcharts/v2 v2.0.1
+	github.com/NimbleMarkets/ntcharts/v2 v2.0.3
 	github.com/alicebob/miniredis/v2 v2.37.0
 	github.com/atotto/clipboard v0.1.4
 	github.com/charmbracelet/x/ansi v0.11.7
@@ -21,7 +21,7 @@ require (
 	github.com/aymanbagabas/go-udiff v0.4.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/charmbracelet/colorprofile v0.4.3 // indirect
-	github.com/charmbracelet/ultraviolet v0.0.0-20260416155717-489999b90468 // indirect
+	github.com/charmbracelet/ultraviolet v0.0.0-20260428153724-66037269d7be // indirect
 	github.com/charmbracelet/x/exp/charmtone v0.0.0-20260309091332-e8ca31595cc4 // indirect
 	github.com/charmbracelet/x/term v0.2.2 // indirect
 	github.com/charmbracelet/x/termios v0.1.1 // indirect
