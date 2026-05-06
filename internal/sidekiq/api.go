@@ -83,9 +83,6 @@ type API interface {
 
 	// MoveAllSortedEntriesToDead moves all supported sorted-set jobs to the dead set.
 	MoveAllSortedEntriesToDead(ctx context.Context, kind SortedSetKind) error
-
-	// Do executes a raw Redis command.
-	Do(ctx context.Context, args ...any) (any, error)
 }
 
 // Ensure Client implements API at compile time.

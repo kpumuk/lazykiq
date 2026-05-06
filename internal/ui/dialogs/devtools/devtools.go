@@ -14,7 +14,6 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/kpumuk/lazykiq/internal/devtools"
-	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
@@ -58,11 +57,15 @@ type commandResultMsg struct {
 	err    error
 }
 
+type redisCommander interface {
+	Do(ctx context.Context, args ...any) (any, error)
+}
+
 // Model defines state for the dev tools console.
 type Model struct {
 	styles         Styles
 	title          string
-	client         sidekiq.API
+	client         redisCommander
 	tracker        *devtools.Tracker
 	table          table.Model
 	input          textinput.Model
@@ -121,8 +124,8 @@ func WithTracker(tracker *devtools.Tracker) Option {
 	return func(m *Model) { m.tracker = tracker }
 }
 
-// WithClient sets the Sidekiq client used to execute Redis commands.
-func WithClient(client sidekiq.API) Option {
+// WithClient sets the Redis command client used to execute console commands.
+func WithClient(client redisCommander) Option {
 	return func(m *Model) { m.client = client }
 }
 

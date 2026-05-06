@@ -631,26 +631,32 @@ func (a App) toggleDevToolsDialog() tea.Cmd {
 	}
 
 	return func() tea.Msg {
+		opts := []devtoolsdialog.Option{
+			devtoolsdialog.WithStyles(devtoolsdialog.Styles{
+				Title:          a.styles.ViewTitle,
+				Border:         a.styles.FocusBorder,
+				Text:           a.styles.ViewText,
+				Muted:          a.styles.ViewMuted,
+				Prompt:         a.styles.MetricLabel,
+				Placeholder:    a.styles.ViewMuted,
+				Cursor:         a.styles.ViewText,
+				TableHeader:    a.styles.TableHeader,
+				TableSelected:  a.styles.TableSelected,
+				TableSeparator: a.styles.TableSeparator,
+				ScrollbarTrack: a.styles.ScrollbarTrack,
+				ScrollbarThumb: a.styles.ScrollbarThumb,
+			}),
+			devtoolsdialog.WithTitle("Dev Console"),
+			devtoolsdialog.WithTracker(a.devTracker),
+		}
+		if commander, ok := a.sidekiq.(interface {
+			Do(context.Context, ...any) (any, error)
+		}); ok {
+			opts = append(opts, devtoolsdialog.WithClient(commander))
+		}
+
 		return dialogs.OpenDialogMsg{
-			Model: devtoolsdialog.New(
-				devtoolsdialog.WithStyles(devtoolsdialog.Styles{
-					Title:          a.styles.ViewTitle,
-					Border:         a.styles.FocusBorder,
-					Text:           a.styles.ViewText,
-					Muted:          a.styles.ViewMuted,
-					Prompt:         a.styles.MetricLabel,
-					Placeholder:    a.styles.ViewMuted,
-					Cursor:         a.styles.ViewText,
-					TableHeader:    a.styles.TableHeader,
-					TableSelected:  a.styles.TableSelected,
-					TableSeparator: a.styles.TableSeparator,
-					ScrollbarTrack: a.styles.ScrollbarTrack,
-					ScrollbarThumb: a.styles.ScrollbarThumb,
-				}),
-				devtoolsdialog.WithTitle("Dev Console"),
-				devtoolsdialog.WithTracker(a.devTracker),
-				devtoolsdialog.WithClient(a.sidekiq),
-			),
+			Model: devtoolsdialog.New(opts...),
 		}
 	}
 }
