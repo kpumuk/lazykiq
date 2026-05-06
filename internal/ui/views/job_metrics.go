@@ -15,7 +15,6 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/charts"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
 	"github.com/kpumuk/lazykiq/internal/ui/components/histogram"
-	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/scatter"
 	"github.com/kpumuk/lazykiq/internal/ui/display"
 	"github.com/kpumuk/lazykiq/internal/ui/requestctx"
@@ -105,11 +104,7 @@ func (j *JobMetrics) View() string {
 
 	// Check if we have data (no need for separate ready flag)
 	if j.processed == nil || len(j.processed.SortedBuckets) == 0 {
-		return messagebox.Render(messagebox.Styles{
-			Title:  j.styles.Title,
-			Muted:  j.styles.Muted,
-			Border: j.styles.FocusBorder,
-		}, title, "Loading...", j.width, j.height)
+		return renderStatusMessage(title, "Loading...", j.styles, j.width, j.height)
 	}
 
 	contentWidth := max(j.width-4, 0)
