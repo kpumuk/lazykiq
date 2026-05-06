@@ -8,15 +8,19 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   goreleaser:
     name: release
     runs-on: ubuntu-latest
     environment: release
     permissions:
-      contents: write
-      attestations: write
-      id-token: write
+      contents: write # Create and update GitHub releases.
+      attestations: write # Publish build provenance attestations.
+      id-token: write # Sign artifacts and attestations with OIDC.
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -35,14 +39,16 @@ jobs:
         with:
           syft-version: v1.42.2
       - name: Configure SSH for AUR
+        env:
+          AUR_KNOWN_HOSTS: ${{ secrets.AUR_KNOWN_HOSTS }}
         run: |
-          if [ -z "${{ secrets.AUR_KNOWN_HOSTS }}" ]; then
+          if [ -z "$AUR_KNOWN_HOSTS" ]; then
             echo "AUR_KNOWN_HOSTS secret is required" >&2
             exit 1
           fi
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          echo "${{ secrets.AUR_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          echo "$AUR_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 644 ~/.ssh/known_hosts
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@1a80836c5c9d9e5755a25cb59ec6f45a3b5f41a8 # v7

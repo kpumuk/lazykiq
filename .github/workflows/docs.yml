@@ -18,6 +18,7 @@ concurrency:
 
 jobs:
   build:
+    name: build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -56,11 +57,12 @@ jobs:
         with:
           path: website/public
   deploy:
+    name: deploy
     needs: build
     runs-on: ubuntu-latest
     permissions:
-      pages: write
-      id-token: write
+      pages: write # Deploy the uploaded Pages artifact.
+      id-token: write # Authenticate the Pages deployment.
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
