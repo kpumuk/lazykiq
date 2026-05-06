@@ -3,10 +3,11 @@ golang = "1.26.2"
 golangci-lint = "2.11.2"
 hugo-extended = "0.152.2"
 lefthook = "2.0.13"
+zizmor = "1.24.1"
 
 [tasks.ci]
 description = "Format code and run all CI checks"
-depends = ["format", "lint", "test"]
+depends = ["format", "lint", "test", "zizmor"]
 
 [tasks.build]
 description = "Build lazykiq"
@@ -19,6 +20,10 @@ run = "mkdir -p bin && CGO_ENABLED=0 go build -trimpath -tags=nodbus -ldflags='-
 [tasks.lint]
 description = "Run golangci-lint"
 run = "golangci-lint run"
+
+[tasks.zizmor]
+description = "Run zizmor"
+run = "zizmor --pedantic ."
 
 [tasks.format]
 description = "Format with golangci-lint"
