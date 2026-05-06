@@ -146,6 +146,23 @@ func TestDetectVersion_Caching(t *testing.T) {
 	}
 }
 
+func TestDetectVersion_CachesUnknown(t *testing.T) {
+	mr, client := setupTestRedis(t)
+	ctx := testContext(t)
+
+	version1 := client.DetectVersion(ctx)
+	if version1 != VersionUnknown {
+		t.Errorf("First call: DetectVersion() = %v, want VersionUnknown", version1)
+	}
+
+	_ = mr.Set("j|250102|12:00", "data")
+
+	version2 := client.DetectVersion(ctx)
+	if version2 != VersionUnknown {
+		t.Errorf("Second call: DetectVersion() = %v, want VersionUnknown (cached)", version2)
+	}
+}
+
 func TestDetectVersion_MultipleKeys(t *testing.T) {
 	mr, client := setupTestRedis(t)
 
