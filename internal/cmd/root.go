@@ -92,6 +92,8 @@ func Execute(version, commit, date, builtBy string) error {
 	})
 
 	rootCmd.RunE = func(cmd *cobra.Command, _ []string) error {
+		sidekiq.DisableRedisLogging()
+
 		cpuprofile, err := cmd.Flags().GetString("cpuprofile")
 		if err != nil {
 			return fmt.Errorf("parse cpuprofile flag: %w", err)

@@ -27,8 +27,8 @@ const (
 	uiRedisPoolSize = 4
 )
 
-func init() {
-	// Disable all Redis logging globally using the built-in VoidLogger
+// DisableRedisLogging silences go-redis process-level logging for the TUI.
+func DisableRedisLogging() {
 	redis.SetLogger(&logging.VoidLogger{})
 }
 
@@ -37,6 +37,7 @@ type Client struct {
 	redis           *redis.Client
 	displayRedisURL string
 	version         Version
+	versionDetected bool
 }
 
 // NewClient creates a new Sidekiq client configured from a Redis URL.
@@ -124,7 +125,7 @@ func (c *Client) AddHook(h redis.Hook) {
 // Uses SCAN to efficiently find any existing metrics key.
 // This should be called once at startup and the result is cached.
 func (c *Client) DetectVersion(ctx context.Context) Version {
-	if c.version != VersionUnknown {
+	if c.versionDetected {
 		return c.version
 	}
 
@@ -143,6 +144,7 @@ func (c *Client) DetectVersion(ctx context.Context) Version {
 		// Redis can return zero keys and a cursor for the next scan.
 		keys, nextCursor, err := c.redis.Scan(ctx, cursor, "j|*", 100).Result()
 		if err != nil {
+			c.versionDetected = true
 			return VersionUnknown
 		}
 
@@ -151,6 +153,7 @@ func (c *Client) DetectVersion(ctx context.Context) Version {
 			switch metricsKeyVersion(key) {
 			case Version8:
 				c.version = Version8
+				c.versionDetected = true
 				return c.version
 			case Version7:
 				found7 = true
@@ -165,14 +168,17 @@ func (c *Client) DetectVersion(ctx context.Context) Version {
 	}
 
 	if processed == 0 {
+		c.versionDetected = true
 		return VersionUnknown
 	}
 	if found7 {
 		c.version = Version7
+		c.versionDetected = true
 		return c.version
 	}
 
 	c.version = VersionUnknown
+	c.versionDetected = true
 	return c.version
 }
 
