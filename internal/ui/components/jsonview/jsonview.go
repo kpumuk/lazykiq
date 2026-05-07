@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/kpumuk/lazykiq/internal/mathutil"
+	"github.com/kpumuk/lazykiq/internal/ui/display"
 )
 
 // Styles holds styles for JSON tokens.
@@ -236,17 +237,7 @@ func (m Model) styleForToken(token token) lipgloss.Style {
 }
 
 func applyHorizontalScroll(line string, offset, visibleWidth int) string {
-	if visibleWidth <= 0 {
-		return ""
-	}
-	offset = max(offset, 0)
-
-	cut := ansi.Cut(line, offset, offset+visibleWidth)
-	cutWidth := lipgloss.Width(cut)
-	if cutWidth < visibleWidth {
-		cut += strings.Repeat(" ", visibleWidth-cutWidth)
-	}
-	return cut
+	return display.HorizontalScroll(line, offset, visibleWidth)
 }
 
 func tokenizeJSONLines(jsonText string) [][]token {

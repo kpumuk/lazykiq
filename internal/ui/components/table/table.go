@@ -12,6 +12,7 @@ import (
 
 	"github.com/kpumuk/lazykiq/internal/mathutil"
 	"github.com/kpumuk/lazykiq/internal/ui/components/scrollbar"
+	"github.com/kpumuk/lazykiq/internal/ui/display"
 )
 
 // Row represents one line in the table. ID is used to preserve selection across refreshes.
@@ -733,17 +734,7 @@ func (m Model) getVisibleContent() []string {
 
 // applyHorizontalScroll applies horizontal scroll offset to a plain text line.
 func applyHorizontalScroll(line string, offset, visibleWidth int) string {
-	if visibleWidth <= 0 {
-		return ""
-	}
-	offset = max(offset, 0)
-
-	cut := ansi.Cut(line, offset, offset+visibleWidth)
-	cutWidth := lipgloss.Width(cut)
-	if cutWidth < visibleWidth {
-		cut += strings.Repeat(" ", visibleWidth-cutWidth)
-	}
-	return cut
+	return display.HorizontalScroll(line, offset, visibleWidth)
 }
 
 func applySelection(line string, span SelectionSpan, maxWidth, xOffset, visibleWidth int, style lipgloss.Style) string {

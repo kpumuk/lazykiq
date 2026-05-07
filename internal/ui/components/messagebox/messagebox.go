@@ -166,15 +166,3 @@ func (m Model) View() string {
 
 	return box.View()
 }
-
-// Render is a convenience function for one-off rendering without creating a Model.
-// It exists for backward compatibility and simpler use cases.
-func Render(styles Styles, title, message string, width, height int) string {
-	m := New(
-		WithStyles(styles),
-		WithTitle(title),
-		WithMessage(message),
-		WithSize(width, height),
-	)
-	return m.View()
-}

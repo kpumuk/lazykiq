@@ -866,9 +866,9 @@ func (a *App) pushView(id viewID) tea.Cmd {
 	return nil
 }
 
-func (a *App) popTopView() bool {
+func (a *App) popTopView() {
 	if len(a.viewStack) <= 1 {
-		return false
+		return
 	}
 
 	popped := a.viewStack[len(a.viewStack)-1]
@@ -880,7 +880,6 @@ func (a *App) popTopView() bool {
 		}
 	}
 	a.stackbar.SetStack(a.stackNames())
-	return true
 }
 
 func (a *App) popView() {
@@ -888,8 +887,6 @@ func (a *App) popView() {
 }
 
 func (a *App) popAndRefresh(id viewID) tea.Cmd {
-	if !a.popTopView() {
-		return a.updateView(id, views.RefreshMsg{})
-	}
+	a.popTopView()
 	return a.updateView(id, views.RefreshMsg{})
 }

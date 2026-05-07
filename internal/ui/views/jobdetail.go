@@ -218,11 +218,16 @@ func (j *JobDetail) Update(msg tea.Msg) (View, tea.Cmd) {
 // View implements View.
 func (j *JobDetail) View() string {
 	if j.job == nil {
-		return messagebox.Render(messagebox.Styles{
-			Title:  j.styles.Title,
-			Muted:  j.styles.Muted,
-			Border: j.styles.FocusBorder,
-		}, "Job Detail", "No job selected", j.width, j.height)
+		return messagebox.New(
+			messagebox.WithStyles(messagebox.Styles{
+				Title:  j.styles.Title,
+				Muted:  j.styles.Muted,
+				Border: j.styles.FocusBorder,
+			}),
+			messagebox.WithTitle("Job Detail"),
+			messagebox.WithMessage("No job selected"),
+			messagebox.WithSize(j.width, j.height),
+		).View()
 	}
 
 	leftPanel := j.renderLeftPanel()

@@ -38,29 +38,42 @@ internal/
   ui/
     app.go                   - main model, view stack + stackbar, tick + RefreshMsg, error overlay
     keys.go                  - KeyMap struct, DefaultKeyMap()
+    display/display.go       - Duration, Bytes, Args, Number, ANSI-safe text helpers
+    requestctx/requestctx.go - cancelable request controller for view fetches
     theme/theme.go           - Theme (Dark/Light), Styles, NewStyles(), stackbar styles
     components/
+      contextbar/            - contextual header rows and action hints
       errorpopup/            - centered overlay for connection errors
-      filterinput/           - /-activated filter input + ActionMsg
       frame/                 - titled bordered box with optional meta (replaces renderBorderedBox)
+      histogram/             - reusable histogram chart component
       jsonview/              - syntax-highlighted JSON renderer
+      lazytable/             - lazy-loading table wrapper with paging/prefetch
       messagebox/            - centered empty-state box
-      metrics/               - top bar: Processed|Failed|Busy|Enqueued|Retries|Scheduled|Dead
       navbar/                - bottom bar: view keys + quit
+      scatter/               - reusable scatter chart component
+      scrollbar/             - reusable scrollbar renderer
       stackbar/              - breadcrumb for stacked views
+      stats/                 - top bar: Processed|Failed|Busy|Enqueued|Retries|Scheduled|Dead
       table/                 - reusable scrollable table with selection
-    format/format.go         - Duration, Bytes, Args, Number formatters
+      timeseries/            - reusable time-series chart component
+    dialogs/
+      confirm/               - confirmation dialog + ActionMsg
+      devtools/              - development Redis console dialog
+      filter/                - /-activated filter input + ActionMsg
+      help/                  - help dialog renderer
     views/
       view.go                - View interface + msgs + Disposable/Setter interfaces
-      dashboard.go, queues.go, busy.go, retries.go, scheduled.go, dead.go
+      dashboard.go, queues.go, queue_details.go, processes.go, busy.go
+      retries.go, scheduled.go, dead.go
       errors_summary.go, errors_details.go, errors_data.go
+      metrics.go, job_metrics.go
       jobdetail.go           - stacked job detail view
 ```
 
 ## Patterns
 
 - Views implement `views.View` interface
-- Components take `*theme.Styles`, have SetStyles()
+- Components own package-local `Styles`, `DefaultStyles()`, `WithStyles()`, and `SetStyles()`; compose them from `theme.NewStyles()` at app/view boundaries
 - Theme uses AdaptiveColor; no runtime toggle
 - All color values must live in `theme.DefaultTheme`; no inline colors outside it (dashboard charts are the only temporary exception while ntcharts uses lipgloss v1)
 - Border title/meta: use `components/frame` (title is on the top border line)

@@ -7,6 +7,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // Duration formats elapsed seconds as "2m3s", "1h30m", etc. (max 2 segments).
@@ -152,4 +155,20 @@ func CompactNumber(n int64) string {
 	default:
 		return fmt.Sprintf("%dB", n/1_000_000_000)
 	}
+}
+
+// HorizontalScroll cuts a plain text line by display width and pads it to the
+// requested visible width without breaking ANSI escape sequences.
+func HorizontalScroll(line string, offset, visibleWidth int) string {
+	if visibleWidth <= 0 {
+		return ""
+	}
+	offset = max(offset, 0)
+
+	cut := ansi.Cut(line, offset, offset+visibleWidth)
+	cutWidth := lipgloss.Width(cut)
+	if cutWidth < visibleWidth {
+		cut += strings.Repeat(" ", visibleWidth-cutWidth)
+	}
+	return cut
 }

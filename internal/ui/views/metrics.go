@@ -14,7 +14,6 @@ import (
 	"github.com/kpumuk/lazykiq/internal/mathutil"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
-	"github.com/kpumuk/lazykiq/internal/ui/components/messagebox"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
@@ -141,11 +140,7 @@ func (m *Metrics) View() string {
 	}
 
 	if !m.ready {
-		return messagebox.Render(messagebox.Styles{
-			Title:  m.styles.Title,
-			Muted:  m.styles.Muted,
-			Border: m.styles.FocusBorder,
-		}, "Metrics", "Loading...", m.width, m.height)
+		return renderStatusMessage("Metrics", "Loading...", m.styles, m.width, m.height)
 	}
 
 	meta := m.listMeta()
