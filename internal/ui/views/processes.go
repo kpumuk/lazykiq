@@ -2,6 +2,7 @@ package views
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
+	confirmdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/confirm"
 	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
 	"github.com/kpumuk/lazykiq/internal/ui/display"
 	"github.com/kpumuk/lazykiq/internal/ui/requestctx"
@@ -80,6 +82,23 @@ func (p *ProcessesList) Update(msg tea.Msg) (View, tea.Cmd) {
 		p.table.SetCursor(0)
 		return p, p.fetchDataCmd()
 
+	case confirmdialog.ActionMsg:
+		if !p.dangerousActionsEnabled || !msg.Confirmed {
+			return p, nil
+		}
+		action, identity, ok := strings.Cut(msg.Target, ":")
+		if !ok || identity == "" {
+			return p, nil
+		}
+		switch action {
+		case processActionPause:
+			return p, p.pauseProcessCmd(identity)
+		case processActionStop:
+			return p, p.stopProcessCmd(identity)
+		default:
+			return p, nil
+		}
+
 	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "/":
@@ -110,12 +129,12 @@ func (p *ProcessesList) Update(msg tea.Msg) (View, tea.Cmd) {
 			switch msg.String() {
 			case "p":
 				if identity, ok := p.selectedProcessIdentity(); ok {
-					return p, p.pauseProcessCmd(identity)
+					return p, p.openPauseProcessConfirm(identity)
 				}
 				return p, nil
 			case "s":
 				if identity, ok := p.selectedProcessIdentity(); ok {
-					return p, p.stopProcessCmd(identity)
+					return p, p.openStopProcessConfirm(identity)
 				}
 				return p, nil
 			}
@@ -331,6 +350,49 @@ func (p *ProcessesList) selectedProcessIdentity() (string, bool) {
 		return "", false
 	}
 	return p.processes[idx].Identity, true
+}
+
+const (
+	processActionPause = "pause"
+	processActionStop  = "stop"
+)
+
+func (p *ProcessesList) openPauseProcessConfirm(identity string) tea.Cmd {
+	return p.confirmProcessActionCmd(
+		"Pause process",
+		fmt.Sprintf(
+			"Are you sure you want to pause the %s process?\n\nThis will stop the process from pulling new jobs until it is quieted or resumed externally.",
+			p.styles.Text.Bold(true).Render(identity),
+		),
+		processActionPause,
+		identity,
+	)
+}
+
+func (p *ProcessesList) openStopProcessConfirm(identity string) tea.Cmd {
+	return p.confirmProcessActionCmd(
+		"Stop process",
+		fmt.Sprintf(
+			"Are you sure you want to stop the %s process?\n\nThis asks the Sidekiq process to shut down gracefully.",
+			p.styles.Text.Bold(true).Render(identity),
+		),
+		processActionStop,
+		identity,
+	)
+}
+
+func (p *ProcessesList) confirmProcessActionCmd(title, message, action, identity string) tea.Cmd {
+	return func() tea.Msg {
+		return dialogs.OpenDialogMsg{
+			Model: newConfirmDialog(
+				p.styles,
+				title,
+				message,
+				action+":"+identity,
+				p.styles.DangerAction,
+			),
+		}
+	}
 }
 
 func (p *ProcessesList) pauseProcessCmd(identity string) tea.Cmd {
