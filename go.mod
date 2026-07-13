@@ -4,7 +4,7 @@ go 1.26.5
 
 require (
 	charm.land/bubbles/v2 v2.1.1
-	charm.land/bubbletea/v2 v2.0.7
+	charm.land/bubbletea/v2 v2.0.8
 	charm.land/fang/v2 v2.0.1
 	charm.land/lipgloss/v2 v2.0.5
 	github.com/NimbleMarkets/ntcharts/v2 v2.2.0
@@ -21,7 +21,7 @@ require (
 	github.com/aymanbagabas/go-udiff v0.4.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/charmbracelet/colorprofile v0.4.3 // indirect
-	github.com/charmbracelet/ultraviolet v0.0.0-20260525132238-948f4557a654 // indirect
+	github.com/charmbracelet/ultraviolet v0.0.0-20260703014108-f5a850f9c2b7 // indirect
 	github.com/charmbracelet/x/exp/charmtone v0.0.0-20260309091332-e8ca31595cc4 // indirect
 	github.com/charmbracelet/x/term v0.2.2 // indirect
 	github.com/charmbracelet/x/termios v0.1.1 // indirect
@@ -42,7 +42,7 @@ require (
 	github.com/yuin/gopher-lua v1.1.1 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	golang.org/x/mod v0.32.0 // indirect
-	golang.org/x/sync v0.20.0 // indirect
+	golang.org/x/sync v0.21.0 // indirect
 	golang.org/x/sys v0.46.0 // indirect
 	golang.org/x/telemetry v0.0.0-20260109210033-bd525da824e2 // indirect
 	golang.org/x/text v0.34.0 // indirect
