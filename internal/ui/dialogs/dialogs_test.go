@@ -121,8 +121,8 @@ func TestDialogCmpCloseCallback(t *testing.T) {
 
 	cmp := NewDialogCmp()
 	dialog := &closeDialog{
-		testDialog: testDialog{id: "close"},
-		msg:        tea.QuitMsg{},
+		id:  "close",
+		msg: tea.QuitMsg{},
 	}
 
 	cmp, _ = cmp.Update(OpenDialogMsg{Model: dialog})

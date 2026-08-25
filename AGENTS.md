@@ -2,7 +2,7 @@
 
 ## What
 
-Bubble Tea TUI for Sidekiq monitoring. Go 1.26.
+Bubble Tea TUI for Sidekiq monitoring. Go 1.27 development toolchain.
 
 ## Git
 

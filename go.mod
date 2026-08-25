@@ -1,6 +1,8 @@
 module github.com/kpumuk/lazykiq
 
-go 1.26.5
+go 1.27
+
+toolchain go1.27.0
 
 require (
 	charm.land/bubbles/v2 v2.1.1
@@ -41,12 +43,12 @@ require (
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/yuin/gopher-lua v1.1.1 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
-	golang.org/x/mod v0.32.0 // indirect
+	golang.org/x/mod v0.37.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/telemetry v0.0.0-20260109210033-bd525da824e2 // indirect
-	golang.org/x/text v0.34.0 // indirect
-	golang.org/x/tools v0.41.0 // indirect
+	golang.org/x/telemetry v0.0.0-20260625142307-59b4966ccb57 // indirect
+	golang.org/x/text v0.39.0 // indirect
+	golang.org/x/tools v0.47.0 // indirect
 	golang.org/x/tools/go/packages/packagestest v0.1.1-deprecated // indirect
 	golang.org/x/vuln v1.1.4 // indirect
 )
