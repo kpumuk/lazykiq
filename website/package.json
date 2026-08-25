@@ -24,8 +24,6 @@
     "thulite": "^2.6.3"
   },
   "devDependencies": {
-    "@changesets/changelog-github": "^1.0.0",
-    "@changesets/cli": "^3.0.0",
     "prettier": "^3.6.2",
     "purgecss-whitelister": "^2.4.0",
     "vite": "^8.2.1"
