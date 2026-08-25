@@ -36,7 +36,7 @@ jobs:
       - name: Setup Hugo
         uses: peaceiris/actions-hugo@2752ce1d29631191ea3f27c23495fa06139a5b78 # v3.2.1
         with:
-          hugo-version: 0.152.2
+          hugo-version: 0.165.0
           extended: true
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0

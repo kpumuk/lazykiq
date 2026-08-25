@@ -32,7 +32,7 @@ yay -S --noconfirm lazykiq-bin
 
 ## Install from source
 
-Install the current development version with Go 1.25:
+Install the current development version with Go 1.27 or newer:
 
 ```bash
 go install github.com/kpumuk/lazykiq/cmd/lazykiq@latest

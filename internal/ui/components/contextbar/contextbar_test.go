@@ -228,7 +228,7 @@ func TestViewHintsMixed(t *testing.T) {
 	}
 
 	// Check they're on the same line (two-column layout)
-	firstLine := strings.Split(output, "\n")[0]
+	firstLine, _, _ := strings.Cut(output, "\n")
 	if !strings.Contains(firstLine, "quit") || !strings.Contains(firstLine, "delete") {
 		t.Error("hints should be on same line in two columns")
 	}
@@ -251,7 +251,7 @@ func TestViewCombined(t *testing.T) {
 	}
 
 	// Items should appear before hints (left vs right)
-	firstLine := strings.Split(output, "\n")[0]
+	firstLine, _, _ := strings.Cut(output, "\n")
 	statusPos := strings.Index(firstLine, "Status")
 	quitPos := strings.Index(firstLine, "quit")
 

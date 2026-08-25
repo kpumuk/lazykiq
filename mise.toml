@@ -1,9 +1,11 @@
 [tools]
-golang = "1.26.5"
-golangci-lint = "2.11.2"
-hugo-extended = "0.152.2"
-lefthook = "2.0.13"
-zizmor = "1.24.1"
+golangci-lint = "2.13.1"
+hugo-extended = "0.165.0"
+lefthook = "2.1.11"
+zizmor = "1.29.0"
+
+[settings]
+idiomatic_version_file_enable_tools = ["go"]
 
 [tasks.ci]
 description = "Format code and run all CI checks"
