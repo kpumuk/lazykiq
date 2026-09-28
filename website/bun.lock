@@ -5,7 +5,7 @@
     "": {
       "name": "website",
       "dependencies": {
-        "@tabler/icons": "^3.34.1",
+        "@tabler/icons": "^3.47.0",
         "@thulite/doks-core": "^1.8.3",
         "@thulite/images": "^3.3.1",
         "@thulite/inline-svg": "^1.2.0",
@@ -261,7 +261,7 @@
 
     "@rolldown/pluginutils": ["@rolldown/pluginutils@1.0.1", "", {}, "sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw=="],
 
-    "@tabler/icons": ["@tabler/icons@3.46.0", "", {}, "sha512-f2RYFl3fzPwj5WO82x6en0dmkjefxEfOm16D1ByM6cj/McNiwOkL4VaPUoP9VVIrXAD9WnTSVFr70px703b//A=="],
+    "@tabler/icons": ["@tabler/icons@3.47.0", "", {}, "sha512-aCbSemVrGvSA3w0sJi8mka6QrnQCN8wCD1jKNXXIR/h6Q4ffov/yFPyzjTULDM8ETtK4DABUZhWdYlygqy3npA=="],
 
     "@thulite/bootstrap": ["@thulite/bootstrap@1.2.3", "", { "dependencies": { "@popperjs/core": "^2.11.8", "bootstrap": "^5.3.8" } }, "sha512-230kXC1QwBESDP2ye7hlfVs6OHvLFKxlb9NJxjTLzMnE5cDGTjR3Tf+2PQftVERBmItpgXTL559ZE3zo6CKZSw=="],
 
