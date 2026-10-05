@@ -40,9 +40,17 @@ jobs:
           hugo-version: 0.165.0
           extended: true
       - name: Setup Dart Sass
-        uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
-        with:
-          install_args: github:sass/dart-sass
+        shell: ruby {0}
+        run: |
+          require "open-uri"
+          version = "1.105.1"
+          temp_dir = ENV.fetch("RUNNER_TEMP")
+          archive = File.join(temp_dir, "dart-sass.tar.gz")
+          URI.open("https://github.com/sass/dart-sass/releases/download/#{version}/dart-sass-#{version}-linux-x64.tar.gz") do |release|
+            File.binwrite(archive, release.read)
+          end
+          abort "Dart Sass extraction failed" unless system("tar", "-xzf", archive, "-C", temp_dir)
+          File.open(ENV.fetch("GITHUB_PATH"), "a") { |file| file.puts(File.join(temp_dir, "dart-sass")) }
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
