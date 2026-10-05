@@ -140,9 +140,10 @@ go run ./cmd/lazykiq --redis redis://localhost:6379/1
 
 ### Website
 
-The documentation website is built with [Hugo](https://gohugo.io/). To run it locally:
+The documentation website uses [Hugo](https://gohugo.io/) and Dart Sass. Install the build tools, then start the site:
 
 ```bash
+mise install
 mise run website-dev
 ```
 

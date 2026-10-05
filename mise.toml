@@ -1,6 +1,7 @@
 [tools]
 golangci-lint = "2.13.1"
 hugo-extended = "0.165.0"
+"github:sass/dart-sass" = "1.105.1"
 lefthook = "2.1.11"
 zizmor = "1.29.0"
 
