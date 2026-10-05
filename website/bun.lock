@@ -6,7 +6,7 @@
       "name": "website",
       "dependencies": {
         "@tabler/icons": "^3.34.1",
-        "@thulite/doks-core": "^1.8.3",
+        "@thulite/doks-core": "^1.9.4",
         "@thulite/images": "^3.3.1",
         "@thulite/inline-svg": "^1.2.0",
         "@thulite/seo": "^2.4.4",
@@ -251,11 +251,11 @@
 
     "@tabler/icons": ["@tabler/icons@3.46.0", "", {}, "sha512-f2RYFl3fzPwj5WO82x6en0dmkjefxEfOm16D1ByM6cj/McNiwOkL4VaPUoP9VVIrXAD9WnTSVFr70px703b//A=="],
 
-    "@thulite/bootstrap": ["@thulite/bootstrap@1.2.3", "", { "dependencies": { "@popperjs/core": "^2.11.8", "bootstrap": "^5.3.8" } }, "sha512-230kXC1QwBESDP2ye7hlfVs6OHvLFKxlb9NJxjTLzMnE5cDGTjR3Tf+2PQftVERBmItpgXTL559ZE3zo6CKZSw=="],
+    "@thulite/bootstrap": ["@thulite/bootstrap@1.2.4", "", { "dependencies": { "@popperjs/core": "^2.11.8", "bootstrap": "^5.3.8" } }, "sha512-Mhkq3P3/s9zYJqI5v6Td3uaWscyZSeqVOXs2b5a+vuJn9R4ntAKwWE52kYdeuHC12xCFVL5uwnXjeH22b0SnAA=="],
 
     "@thulite/core": ["@thulite/core@2.0.4", "", { "dependencies": { "@babel/cli": "^8.0.6", "@babel/core": "^8.0.6", "@babel/preset-env": "^8.0.6", "@fullhuman/postcss-purgecss": "^8.0.0", "autoprefixer": "^10.6.1", "lazysizes": "^5.3.2", "postcss": "^8.5.28", "postcss-cli": "^12.0.0", "quicklink": "^3.0.2" }, "bin": { "thulite-portless": "scripts/portless.js" } }, "sha512-Eq3NzrepAJ8aazoyk73Dn55yye9Vjv397ohQ1nD03I2Nei+mbFt3v86eZuPQvOrbNOu4cqpEqis+/NSZV5Vafw=="],
 
-    "@thulite/doks-core": ["@thulite/doks-core@1.9.3", "", { "dependencies": { "@thulite/bootstrap": "^1.2.3", "basiclightbox": "^5.0.4", "clipboard": "^2.0.11", "flexsearch": "^0.8.212" } }, "sha512-K4BssyW7LwA19fz628kkdWb9p+DMq1LawmkegNEHkXnz7kecO3lVldk/Yn5mm9Ib6tv32ECA61BQxefDD9XokQ=="],
+    "@thulite/doks-core": ["@thulite/doks-core@1.9.4", "", { "dependencies": { "@thulite/bootstrap": "^1.2.4", "basiclightbox": "^5.0.4", "clipboard": "^2.0.11", "flexsearch": "^0.8.212" } }, "sha512-64yBB1gCKJk05md2lKXwvAkRzpymmBDFI6YoMsNZorha7o4RY0cSQeDnE/fSD547zLHuo9MEuuH3QuLKiwJaXA=="],
 
     "@thulite/images": ["@thulite/images@3.3.4", "", {}, "sha512-l7fYyBFiiZWgFkaBLkINDrzDZ+KXTxWnvhTVPPEysL+TexzEubTY7b5s00iQoFZsUg4m+6flbYxZSupydFrEHg=="],
 
