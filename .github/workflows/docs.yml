@@ -40,17 +40,13 @@ jobs:
           hugo-version: 0.165.0
           extended: true
       - name: Setup Dart Sass
-        shell: ruby {0}
+        shell: bash
+        env:
+          DART_SASS_VERSION: "1.105.1"
         run: |
-          require "open-uri"
-          version = "1.105.1"
-          temp_dir = ENV.fetch("RUNNER_TEMP")
-          archive = File.join(temp_dir, "dart-sass.tar.gz")
-          URI.open("https://github.com/sass/dart-sass/releases/download/#{version}/dart-sass-#{version}-linux-x64.tar.gz") do |release|
-            File.binwrite(archive, release.read)
-          end
-          abort "Dart Sass extraction failed" unless system("tar", "-xzf", archive, "-C", temp_dir)
-          File.open(ENV.fetch("GITHUB_PATH"), "a") { |file| file.puts(File.join(temp_dir, "dart-sass")) }
+          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/dart-sass.tar.gz" "https://github.com/sass/dart-sass/releases/download/${DART_SASS_VERSION}/dart-sass-${DART_SASS_VERSION}-linux-x64.tar.gz"
+          tar -xzf "$RUNNER_TEMP/dart-sass.tar.gz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/dart-sass" >> "$GITHUB_PATH"
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
