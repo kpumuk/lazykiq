@@ -20,7 +20,7 @@
     "@thulite/images": "^3.3.1",
     "@thulite/inline-svg": "^1.2.0",
     "@thulite/seo": "^2.4.4",
-    "@tabler/icons": "^3.34.1",
+    "@tabler/icons": "^3.48.0",
     "thulite": "^3.0.2"
   },
   "devDependencies": {
