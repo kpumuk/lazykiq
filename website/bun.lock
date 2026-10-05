@@ -9,7 +9,7 @@
         "@thulite/doks-core": "^1.8.3",
         "@thulite/images": "^3.3.1",
         "@thulite/inline-svg": "^1.2.0",
-        "@thulite/seo": "^2.4.1",
+        "@thulite/seo": "^2.4.4",
         "thulite": "^2.6.3",
       },
       "devDependencies": {
@@ -273,7 +273,7 @@
 
     "@thulite/inline-svg": ["@thulite/inline-svg@1.2.2", "", {}, "sha512-jbxeXQjJT5HFuRufckEbEAoZjHJZCHwLY/rjJS6Lhc9ZZuMMp6QaOVk4pJa0Ey1UBsTJLcACyfm/K47oGJBluQ=="],
 
-    "@thulite/seo": ["@thulite/seo@2.4.3", "", {}, "sha512-1Y8PJXjGQBoB+VgcC3+RiPxGyI0VshBgufloOtPGlolB+K+qSMY9SPla1mL2HzkLbteb2W9+9CktS7CA/f90Rg=="],
+    "@thulite/seo": ["@thulite/seo@2.4.4", "", {}, "sha512-Vt7L+n82di/hcna25jfGmH1lGMjlMM42bIKsBJwUqfJmxt7HOJLJOjNGL9I6qaZyG7GX+IWumbJoZiDnT+E5gw=="],
 
     "ansi-regex": ["ansi-regex@5.0.1", "", {}, "sha512-quJQXlTSUGL2LH9SUXo8VwsY4soanhgo6LNSm84E1LBcE8s3O0wpdiRzyR9z/ZZJMlMWv37qOOb9pdJlMUEKFQ=="],
 
