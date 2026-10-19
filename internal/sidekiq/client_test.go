@@ -290,6 +290,9 @@ func TestNewClient_ConfiguresRequestBackpressure(t *testing.T) {
 	if opts.MaxActiveConns != uiRedisPoolSize {
 		t.Fatalf("MaxActiveConns = %d, want %d", opts.MaxActiveConns, uiRedisPoolSize)
 	}
+	if opts.PipelinePoolSize != -1 {
+		t.Fatalf("PipelinePoolSize = %d, want -1", opts.PipelinePoolSize)
+	}
 }
 
 // setupTestRedis starts a miniredis instance and creates a Sidekiq client.

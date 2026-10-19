@@ -59,6 +59,8 @@ func NewClient(redisURL string) (*Client, error) {
 	opts.ContextTimeoutEnabled = true
 	opts.PoolSize = uiRedisPoolSize
 	opts.MaxActiveConns = uiRedisPoolSize
+	// Keep pipelines within the shared connection limit.
+	opts.PipelinePoolSize = -1
 
 	rdb := redis.NewClient(opts)
 
