@@ -259,8 +259,8 @@ func originFromCallers() string {
 }
 
 func shortFuncName(fn string) string {
-	if idx := strings.LastIndex(fn, "/"); idx >= 0 {
-		fn = fn[idx+1:]
+	if _, name, ok := strings.CutLast(fn, "/"); ok {
+		fn = name
 	}
 	fn = strings.TrimSuffix(fn, ".func1")
 	fn = strings.ReplaceAll(fn, "(*", "")
