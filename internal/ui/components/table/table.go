@@ -633,7 +633,7 @@ func (m *Model) renderBody() string {
 			continue
 		}
 		for i, cell := range row.Cells {
-			cellWidth := lipgloss.Width(cell)
+			cellWidth := lipgloss.Width(singleLine(cell))
 			if i < len(m.colWidths) && cellWidth > m.colWidths[i] {
 				m.colWidths[i] = cellWidth
 			}
@@ -647,6 +647,7 @@ func (m *Model) renderBody() string {
 	maxWidth := m.columnRowWidth(m.lastColWidth)
 	for i, row := range m.rows {
 		if fullRow, ok := m.fullRows[i]; ok {
+			fullRow = singleLine(fullRow)
 			rawRows = append(rawRows, fullRow)
 			rowWidth := lipgloss.Width(fullRow)
 			if rowWidth > maxWidth {
@@ -915,8 +916,25 @@ func normalizeScrollbarLines(lines []string, height, width int) []string {
 	return out
 }
 
-// padCell pads a string to the specified width with the given alignment.
+var rowWhitespace = strings.NewReplacer(
+	"\r\n", " ",
+	"\n", " ",
+	"\r", " ",
+	"\t", " ",
+	"\v", " ",
+	"\f", " ",
+)
+
+// singleLine keeps row offsets and widths consistent without changing stored data
+// or ANSI styles. In particular, tabs must be replaced before clipping, since
+// Lip Gloss otherwise expands them during styling.
+func singleLine(s string) string {
+	return rowWhitespace.Replace(s)
+}
+
+// padCell renders a single-line cell and pads it with the given alignment.
 func padCell(s string, width int, align Alignment) string {
+	s = singleLine(s)
 	if width <= 0 {
 		return s
 	}
