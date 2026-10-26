@@ -362,7 +362,7 @@ func (r *Retries) buildRows(jobs []*sidekiq.SortedEntry) []table.Row {
 				retryCount,
 				r.styles.QueueText.Render(job.Queue()),
 				job.DisplayClass(),
-				display.Args(job.DisplayArgs()),
+				display.ArgsPreview(job.DisplayArgs()),
 				errorStr,
 			},
 		})

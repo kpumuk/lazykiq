@@ -423,7 +423,7 @@ func (b *Busy) updateTableRowsTree() {
 					b.styles.QueueText.Render(job.Queue()),
 					display.DurationSince(job.RunAt),
 					job.DisplayClass(),
-					display.Args(job.DisplayArgs()),
+					display.ArgsPreview(job.DisplayArgs()),
 				},
 			})
 			selectionSpans[len(rows)-1] = table.SelectionSpan{
@@ -464,7 +464,7 @@ func (b *Busy) updateTableRowsFlat() {
 				b.styles.QueueText.Render(job.Queue()),
 				display.DurationSince(job.RunAt),
 				job.DisplayClass(),
-				display.Args(job.DisplayArgs()),
+				display.ArgsPreview(job.DisplayArgs()),
 			},
 		})
 		rowJobIndex = append(rowJobIndex, jobIndex)

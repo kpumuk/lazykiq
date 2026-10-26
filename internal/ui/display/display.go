@@ -79,6 +79,11 @@ func Args(args []any) string {
 	return strings.Join(parts, ", ")
 }
 
+// ArgsPreview formats job arguments for tables, capped at 200 terminal columns.
+func ArgsPreview(args []any) string {
+	return ansi.Truncate(Args(args), 200, "…")
+}
+
 // ShortNumber formats a number with K/M suffixes for readability.
 func ShortNumber(n int64) string {
 	switch {

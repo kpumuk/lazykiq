@@ -336,7 +336,7 @@ func (d *Dead) buildRows(jobs []*sidekiq.SortedEntry) []table.Row {
 				lastRetry,
 				d.styles.QueueText.Render(job.Queue()),
 				job.DisplayClass(),
-				display.Args(job.DisplayArgs()),
+				display.ArgsPreview(job.DisplayArgs()),
 				errorStr,
 			},
 		})
