@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/kpumuk/lazykiq/internal/devtools"
@@ -61,7 +62,10 @@ func NewQueueDetails(client sidekiq.API) *QueueDetails {
 		),
 		selectedQueue: 0,
 	}
-	q.lazy.SetFetcher(q.fetchWindow)
+	q.lazy.SetFetcherFactory(func() lazytable.Fetcher {
+		snapshot := *q
+		return snapshot.fetchWindow
+	})
 	return q
 }
 
@@ -73,6 +77,11 @@ func (q *QueueDetails) Init() tea.Cmd {
 // Update implements View.
 func (q *QueueDetails) Update(msg tea.Msg) (View, tea.Cmd) {
 	switch msg := msg.(type) {
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		q.lazy, cmd = q.lazy.Update(msg)
+		return q, cmd
+
 	case lazytable.DataMsg:
 		if handled, cmd := q.handleData(msg, func(result lazytable.FetchResult) {
 			if payload, ok := result.Payload.(queueDetailsPayload); ok {

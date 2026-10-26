@@ -11,6 +11,11 @@ toc: true
 
 Queues show the backlog waiting to be processed, with per-queue counts.
 
+Filtering scans the selected queue in the background. An animated `Searching...`
+status stays visible until the scan finishes; previous results remain available.
+Use `Ctrl+u` to cancel and clear the filter, `/` to replace it, or switch screens
+to stop the scan. Large queues can take time to search fully.
+
 {{< lightbox src="assets/queue_details.png" alt="Queue jobs screen" >}}
 
 **Key bindings:**

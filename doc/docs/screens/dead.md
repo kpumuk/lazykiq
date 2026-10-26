@@ -11,6 +11,11 @@ toc: true
 
 Dead jobs have failed permanently and need intervention.
 
+Filtering runs in the background with an animated `Searching...` status while
+previous results remain available. Use `Ctrl+u` to cancel and clear the filter,
+`/` to replace it, or switch screens to stop the scan. The count and ordered
+results appear after the full scan finishes.
+
 {{< lightbox src="assets/dead.png" alt="Dead screen" >}}
 
 **Key bindings:**

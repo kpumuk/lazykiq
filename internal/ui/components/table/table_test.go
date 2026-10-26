@@ -625,6 +625,80 @@ func TestSetColumns_ClampsHorizontalScroll(t *testing.T) {
 	}
 }
 
+func TestCachedRowsReflectChanges(t *testing.T) {
+	cases := map[string]struct {
+		change func(*Model)
+		want   string
+		width  int
+	}{
+		"rows": {
+			change: func(m *Model) { m.SetRows([]Row{row("new", "new", "value")}) },
+			want:   "new", width: 14,
+		},
+		"columns": {
+			change: func(m *Model) { m.SetColumns([]Column{{Title: "Updated", Width: 8}, {Title: "B", Width: 3}}) },
+			want:   "Updated", width: 14,
+		},
+		"full rows": {
+			change: func(m *Model) { m.SetFullRows(map[int]string{0: "override"}) },
+			want:   "override", width: 14,
+		},
+		"resize": {
+			change: func(m *Model) { m.SetSize(40, 4) },
+			want:   "left-right-tail", width: 40,
+		},
+		"scroll": {
+			change: func(m *Model) { m.ScrollToEnd() },
+			want:   "-tail", width: 14,
+		},
+		"selection": {
+			change: func(m *Model) {
+				styles := blankStyles()
+				styles.Selected = lipgloss.NewStyle().Bold(true)
+				m.SetStyles(styles)
+				m.MoveDown(1)
+			},
+			want: "\x1b[1mtwo", width: 14,
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			m := newTestTable(
+				WithColumns([]Column{{Title: "A", Width: 3}, {Title: "B", Width: 3}}),
+				WithRows([]Row{row("old", "old", "left-right-tail"), row("two", "two", "second")}),
+				WithWidth(14), WithHeight(4),
+			)
+			_ = m.View()
+			m.MoveDown(1)
+			m.MoveUp(1)
+			tc.change(&m)
+			output := m.View()
+			if !strings.Contains(output, tc.want) {
+				t.Fatalf("updated table missing %q:\n%s", tc.want, output)
+			}
+			for line := range strings.SplitSeq(output, "\n") {
+				if ansi.StringWidth(line) != tc.width {
+					t.Fatalf("line width = %d, want %d", ansi.StringWidth(line), tc.width)
+				}
+			}
+		})
+	}
+}
+
+func TestGoldenCachedRowsAfterChanges(t *testing.T) {
+	m := newTestTable(
+		WithColumns([]Column{{Title: "Job", Width: 8}, {Title: "Arguments", Width: 10}}),
+		WithRows([]Row{row("one", "FirstJob", "original"), row("two", "SecondJob", "value")}),
+		WithWidth(30), WithHeight(5),
+	)
+	m.MoveDown(1)
+	m.SetRows([]Row{row("one", "FirstJob", "changed"), row("two", "SecondJob", "wide argument with 界 characters")})
+	m.SetFullRows(map[int]string{0: "overridden row"})
+	m.SetSize(36, 5)
+	m.ScrollToEnd()
+	golden.RequireEqual(t, []byte(ansi.Strip(m.View())))
+}
+
 // Golden File Tests - These catch visual regressions (misalignment, spacing, etc.)
 // Run with GOLDEN_UPDATE=1 to regenerate golden files after intentional changes.
 
