@@ -144,6 +144,9 @@ func (q *Queue) ScanJobsWindow(ctx context.Context, filter string, start, count 
 	}
 
 	for batchStart := 0; batchStart < int(size); batchStart += batchSize {
+		if err := ctx.Err(); err != nil {
+			return QueueEntriesWindow{}, err
+		}
 		batchEnd := min(batchStart+batchSize-1, int(size)-1)
 		entries, err := q.client.redis.LRange(ctx, "queue:"+q.name, int64(batchStart), int64(batchEnd)).Result()
 		if err != nil {
@@ -151,6 +154,9 @@ func (q *Queue) ScanJobsWindow(ctx context.Context, filter string, start, count 
 		}
 
 		for i, entry := range entries {
+			if err := ctx.Err(); err != nil {
+				return QueueEntriesWindow{}, err
+			}
 			if filter != "" && !strings.Contains(entry, filter) {
 				continue
 			}

@@ -170,12 +170,18 @@ func (c *Client) scanSortedSetWindow(
 	selected := make([]*SortedEntry, 0, max(min(limit, int(sortedSetScanCount)), 0))
 	var cursor uint64
 	for {
+		if err := ctx.Err(); err != nil {
+			return SortedEntriesWindow{}, err
+		}
 		values, nextCursor, err := c.redis.ZScan(ctx, key, cursor, match, sortedSetScanCount).Result()
 		if err != nil {
 			return SortedEntriesWindow{}, err
 		}
 
 		for i := 0; i+1 < len(values); i += 2 {
+			if err := ctx.Err(); err != nil {
+				return SortedEntriesWindow{}, err
+			}
 			score, err := strconv.ParseFloat(values[i+1], 64)
 			if err != nil {
 				continue

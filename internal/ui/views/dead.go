@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/kpumuk/lazykiq/internal/devtools"
@@ -53,7 +54,10 @@ func NewDead(client sidekiq.API) *Dead {
 			deadFallbackPageSize,
 		),
 	}
-	d.lazy.SetFetcher(d.fetchWindow)
+	d.lazy.SetFetcherFactory(func() lazytable.Fetcher {
+		snapshot := *d
+		return snapshot.fetchWindow
+	})
 	return d
 }
 
@@ -65,6 +69,11 @@ func (d *Dead) Init() tea.Cmd {
 // Update implements View.
 func (d *Dead) Update(msg tea.Msg) (View, tea.Cmd) {
 	switch msg := msg.(type) {
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		d.lazy, cmd = d.lazy.Update(msg)
+		return d, cmd
+
 	case lazytable.DataMsg:
 		if handled, cmd := d.handleSortedEntriesData(msg); handled {
 			return d, cmd

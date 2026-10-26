@@ -41,14 +41,19 @@ func newDetailListView(
 		lazytable.WithWindowPages(windowPages),
 		lazytable.WithFallbackPageSize(fallbackPageSize),
 	)
-	lazy.SetErrorHandler(func(err error) tea.Msg {
-		return ConnectionErrorMsg{Err: err}
+	lazy.SetErrorHandler(func(requestID int, err error) tea.Msg {
+		return ConnectionErrorMsg{Err: err, RequestID: requestID}
 	})
 
 	return detailListView{
 		title: title,
 		lazy:  lazy,
 	}
+}
+
+// RequestID identifies the current lazy-table request, including pending errors.
+func (s detailListView) RequestID() int {
+	return s.lazy.RequestID()
 }
 
 func (s *detailListView) init(reset func()) tea.Cmd {
@@ -64,8 +69,10 @@ func (s *detailListView) handleData(
 		return false, nil
 	}
 
-	apply(msg.Result)
-	s.ready = true
+	if msg.Err == nil {
+		apply(msg.Result)
+		s.ready = true
+	}
 
 	var cmd tea.Cmd
 	s.lazy, cmd = s.lazy.Update(msg)
@@ -162,10 +169,20 @@ func (s *detailListView) cancelRequests() {
 }
 
 func (s detailListView) renderLoadingMessage() string {
-	return renderStatusMessage(s.title, "Loading...", s.styles, s.width, s.height)
+	message := "Loading..."
+	if s.filter != "" && s.lazy.Loading() {
+		message = "Searching..."
+	}
+	if s.lazy.Loading() {
+		message = s.lazy.LoadingIndicator() + " " + message
+	}
+	return renderStatusMessage(s.title, message, s.styles, s.width, s.height)
 }
 
 func (s detailListView) rowsMeta(rowCount int) string {
+	if s.lazy.Loading() && s.filter != "" {
+		return s.lazy.LoadingIndicator() + " " + s.styles.Muted.Render("Searching...")
+	}
 	label := s.styles.MetricLabel.Render("rows: ")
 	start, end, total := s.lazy.Range()
 	if total == 0 || rowCount == 0 {

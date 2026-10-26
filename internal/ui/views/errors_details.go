@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/kpumuk/lazykiq/internal/devtools"
@@ -45,7 +46,10 @@ func NewErrorsDetails(client sidekiq.API) *ErrorsDetails {
 			errorsDetailsFallbackPageSize,
 		),
 	}
-	e.lazy.SetFetcher(e.fetchWindow)
+	e.lazy.SetFetcherFactory(func() lazytable.Fetcher {
+		snapshot := *e
+		return snapshot.fetchWindow
+	})
 	return e
 }
 
@@ -63,6 +67,11 @@ func (e *ErrorsDetails) Init() tea.Cmd {
 // Update implements View.
 func (e *ErrorsDetails) Update(msg tea.Msg) (View, tea.Cmd) {
 	switch msg := msg.(type) {
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		e.lazy, cmd = e.lazy.Update(msg)
+		return e, cmd
+
 	case lazytable.DataMsg:
 		if handled, cmd := e.handleData(msg, func(result lazytable.FetchResult) {
 			if payload, ok := result.Payload.(errorDetailsPayload); ok {

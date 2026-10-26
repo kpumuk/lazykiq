@@ -51,7 +51,8 @@ type RefreshMsg struct{}
 // ConnectionErrorMsg indicates a Redis connection error occurred.
 // Views emit this when data fetching fails.
 type ConnectionErrorMsg struct {
-	Err error
+	Err       error
+	RequestID int // Nonzero IDs must still belong to the active view at delivery.
 }
 
 // View defines the interface that all views must implement.
@@ -205,4 +206,9 @@ type Disposable interface {
 // RequestCanceler allows views to cancel in-flight requests when hidden.
 type RequestCanceler interface {
 	CancelRequests()
+}
+
+// RequestIDProvider identifies the current request for rejecting stale errors.
+type RequestIDProvider interface {
+	RequestID() int
 }

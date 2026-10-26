@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -130,5 +131,14 @@ func TestPushViewCancelsPreviousActiveViewRequests(t *testing.T) {
 	}
 	if processes.cancelations != 0 {
 		t.Fatalf("processes cancelations = %d, want 0", processes.cancelations)
+	}
+}
+
+func TestAppShowsUnscopedConnectionErrors(t *testing.T) {
+	app := New(nil, "", false, nil)
+	wantErr := errors.New("connection failed")
+	updated, _ := app.Update(views.ConnectionErrorMsg{Err: wantErr})
+	if got := updated.(App).connectionError; !errors.Is(got, wantErr) {
+		t.Fatalf("connection error = %v, want %v", got, wantErr)
 	}
 }

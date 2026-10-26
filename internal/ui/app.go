@@ -271,6 +271,12 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.connectionError = msg.err
 
 	case views.ConnectionErrorMsg:
+		if msg.RequestID != 0 {
+			active, ok := a.viewRegistry[a.activeViewID()].(views.RequestIDProvider)
+			if !ok || active.RequestID() != msg.RequestID {
+				break
+			}
+		}
 		// Handle connection errors from views
 		a.connectionError = msg.Err
 

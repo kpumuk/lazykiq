@@ -4,6 +4,7 @@ package lazytable
 import (
 	"context"
 	"slices"
+	"sync/atomic"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
@@ -39,18 +40,25 @@ type FetchResult struct {
 type DataMsg struct {
 	RequestID int
 	Result    FetchResult
+	Err       error
 }
 
 // Fetcher loads a window of rows.
 type Fetcher func(ctx context.Context, start, size int, intent CursorIntent) (FetchResult, error)
 
-// ErrorHandler converts fetch errors into tea messages.
-type ErrorHandler func(error) tea.Msg
+// FetcherFactory captures request inputs on the UI thread before fetching.
+type FetcherFactory func() Fetcher
+
+var nextRequestID atomic.Int64
+
+// ErrorHandler converts fetch errors into messages that retain their request ID.
+type ErrorHandler func(requestID int, err error) tea.Msg
 
 // Model is a lazily-loaded table component.
 type Model struct {
 	table            table.Model
 	fetcher          Fetcher
+	fetcherFactory   FetcherFactory
 	errorHandler     ErrorHandler
 	spinner          spinner.Model
 	windowPages      int
@@ -129,6 +137,12 @@ func WithFallbackPageSize(size int) Option {
 // SetFetcher updates the fetcher.
 func (m *Model) SetFetcher(fetcher Fetcher) {
 	m.fetcher = fetcher
+	m.fetcherFactory = nil
+}
+
+// SetFetcherFactory sets a factory that snapshots mutable request inputs.
+func (m *Model) SetFetcherFactory(factory FetcherFactory) {
+	m.fetcherFactory = factory
 }
 
 // SetErrorHandler updates the error handler.
@@ -165,7 +179,6 @@ func (m *Model) Reset() {
 	m.windowStart = 0
 	m.totalSize = 0
 	m.loading = false
-	m.requestID = 0
 	m.anchor = anchorState{}
 	m.table.SetRows(nil)
 	m.table.SetCursor(0)
@@ -175,12 +188,17 @@ func (m *Model) Reset() {
 // CancelRequest stops the current in-flight fetch, if any.
 func (m *Model) CancelRequest() {
 	m.request.Cancel()
+	m.requestID = int(nextRequestID.Add(1))
 	m.loading = false
 }
 
 // RequestWindow starts a fetch for the given window start.
 func (m *Model) RequestWindow(windowStart int, intent CursorIntent) tea.Cmd {
-	if m.fetcher == nil {
+	fetcher := m.fetcher
+	if m.fetcherFactory != nil {
+		fetcher = m.fetcherFactory()
+	}
+	if fetcher == nil {
 		return nil
 	}
 	windowStart = max(windowStart, 0)
@@ -192,13 +210,13 @@ func (m *Model) RequestWindow(windowStart int, intent CursorIntent) tea.Cmd {
 		m.anchor.pending = false
 	}
 	m.loading = true
-	m.requestID++
+	m.requestID = int(nextRequestID.Add(1))
 	requestID := m.requestID
 	windowSize := m.effectiveWindowSize()
 
 	return tea.Batch(
 		m.spinner.Tick,
-		m.fetchCmd(ctx, requestID, windowStart, windowSize, intent),
+		m.fetchCmd(ctx, fetcher, requestID, windowStart, windowSize, intent),
 	)
 }
 
@@ -209,7 +227,14 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if msg.RequestID != m.requestID {
 			return m, nil
 		}
+		m.request.Cancel()
 		m.loading = false
+		if msg.Err != nil {
+			if m.errorHandler != nil {
+				return m, func() tea.Msg { return m.errorHandler(msg.RequestID, msg.Err) }
+			}
+			return m, nil
+		}
 		m.windowStart = msg.Result.WindowStart
 		m.totalSize = msg.Result.Total
 		m.table.SetRows(msg.Result.Rows)
@@ -294,6 +319,14 @@ func (m *Model) Table() *table.Model {
 // Loading reports whether the table is loading data.
 func (m Model) Loading() bool {
 	return m.loading
+}
+
+// LoadingIndicator returns the current spinner frame while fetching.
+func (m Model) LoadingIndicator() string {
+	if !m.loading {
+		return ""
+	}
+	return m.spinner.View()
 }
 
 // RequestID returns the current request ID.
@@ -383,24 +416,16 @@ func (m Model) effectiveWindowSize() int {
 	return max(m.pageSize, m.fallbackPageSize) * max(m.windowPages, 1)
 }
 
-func (m *Model) fetchCmd(ctx context.Context, requestID, windowStart, windowSize int, intent CursorIntent) tea.Cmd {
-	fetcher := m.fetcher
-	handler := m.errorHandler
+func (m *Model) fetchCmd(ctx context.Context, fetcher Fetcher, requestID, windowStart, windowSize int, intent CursorIntent) tea.Cmd {
 	return func() tea.Msg {
-		if fetcher == nil {
+		if ctx.Err() != nil {
 			return nil
 		}
 		result, err := fetcher(ctx, windowStart, windowSize, intent)
-		if err != nil {
-			if requestctx.IsCanceled(err) {
-				return nil
-			}
-			if handler != nil {
-				return handler(err)
-			}
+		if ctx.Err() != nil || requestctx.IsCanceled(err) {
 			return nil
 		}
-		return DataMsg{RequestID: requestID, Result: result}
+		return DataMsg{RequestID: requestID, Result: result, Err: err}
 	}
 }
 
@@ -468,7 +493,7 @@ func (m *Model) applyAnchor() {
 }
 
 func (m *Model) maybePrefetch() tea.Cmd {
-	if m.loading || m.fetcher == nil || m.totalSize == 0 {
+	if m.loading || (m.fetcher == nil && m.fetcherFactory == nil) || m.totalSize == 0 {
 		return nil
 	}
 	rows := m.table.Rows()

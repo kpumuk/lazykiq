@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/kpumuk/lazykiq/internal/devtools"
@@ -53,7 +54,10 @@ func NewScheduled(client sidekiq.API) *Scheduled {
 			scheduledFallbackPageSize,
 		),
 	}
-	s.lazy.SetFetcher(s.fetchWindow)
+	s.lazy.SetFetcherFactory(func() lazytable.Fetcher {
+		snapshot := *s
+		return snapshot.fetchWindow
+	})
 	return s
 }
 
@@ -65,6 +69,11 @@ func (s *Scheduled) Init() tea.Cmd {
 // Update implements View.
 func (s *Scheduled) Update(msg tea.Msg) (View, tea.Cmd) {
 	switch msg := msg.(type) {
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		s.lazy, cmd = s.lazy.Update(msg)
+		return s, cmd
+
 	case lazytable.DataMsg:
 		if handled, cmd := s.handleSortedEntriesData(msg); handled {
 			return s, cmd

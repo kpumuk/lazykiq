@@ -147,7 +147,11 @@ type Model struct {
 	colWidths         []int // dynamic column widths (max of defined and actual)
 	lastColWidth      int
 	emptyMessage      string
-	content           string // pre-rendered body content
+	content           string   // pre-rendered body content
+	header            string   // pre-rendered header and separator
+	rowContent        []string // clipped, unstyled rows; rebuilt when data or horizontal layout changes
+	rowContentX       int
+	rowContentWidth   int
 	viewportHeight    int
 	fullRows          map[int]string // row index -> full-width content
 	selectionSpans    map[int]SelectionSpan
@@ -232,6 +236,7 @@ func WithEmptyMessage(msg string) Option {
 // SetStyles sets the table styles.
 func (m *Model) SetStyles(s Styles) {
 	m.styles = s
+	m.header = ""
 	m.updateViewport()
 	m.updateScrollbar()
 }
@@ -262,6 +267,7 @@ func (m *Model) SetRowsWithMeta(rows []Row, fullRows map[int]string, spans map[i
 	}
 
 	m.rows = rows
+	m.rowContent = nil
 	m.fullRows = fullRows
 	m.selectionSpans = spans
 
@@ -292,6 +298,7 @@ func (m *Model) SetRowsWithMeta(rows []Row, fullRows map[int]string, spans map[i
 // SetColumns sets a new columns state.
 func (m *Model) SetColumns(cols []Column) {
 	m.columns = cols
+	m.rowContent = nil
 	m.colWidths = nil
 	m.lastColWidth = 0
 	m.updateViewport()
@@ -305,6 +312,7 @@ func (m *Model) SetEmptyMessage(msg string) {
 // SetFullRows sets full-width row content overrides (row index -> content).
 func (m *Model) SetFullRows(rows map[int]string) {
 	m.fullRows = rows
+	m.rowContent = nil
 	m.updateViewport()
 	m.clampScroll()
 }
@@ -427,7 +435,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 // View renders the table (header + visible rows).
 func (m Model) View() string {
-	headerLines := strings.Split(m.renderHeader(), "\n")
+	headerLines := strings.Split(m.header, "\n")
 	bodyLines := m.getVisibleContent()
 
 	if m.scrollbarWidth() > 0 {
@@ -530,7 +538,17 @@ func (m *Model) scrollX(delta int) {
 
 // updateViewport rebuilds the pre-rendered body content.
 func (m *Model) updateViewport() {
+	layoutChanged := m.rowContent == nil || m.rowContentX != m.xOffset || m.rowContentWidth != m.contentWidth()
 	m.content = m.renderBody()
+	oldX := m.xOffset
+	m.clampScroll()
+	if oldX != m.xOffset {
+		m.content = m.renderBody()
+		layoutChanged = true
+	}
+	if layoutChanged || m.header == "" {
+		m.header = m.renderHeader()
+	}
 }
 
 func (m *Model) updateScrollbar() {
@@ -603,8 +621,6 @@ func (m *Model) renderBody() string {
 		return m.styles.Muted.Render(m.emptyMessage)
 	}
 
-	lastCol := len(m.columns) - 1
-
 	baseWidths := make([]int, len(m.columns))
 	if len(m.colWidths) == len(m.columns) {
 		copy(baseWidths, m.colWidths)
@@ -626,7 +642,34 @@ func (m *Model) renderBody() string {
 		return m.styles.Muted.Render(empty)
 	}
 
-	// First pass: find max width for each column (at least the defined width)
+	if m.rowContent == nil || m.rowContentX != m.xOffset || m.rowContentWidth != m.contentWidth() {
+		m.rowContent = m.renderRowContent(baseWidths)
+		m.rowContentX = m.xOffset
+		m.rowContentWidth = m.contentWidth()
+	}
+
+	lines := make([]string, 0, len(m.rowContent))
+	for i, row := range m.rowContent {
+		_, isFullRow := m.fullRows[i]
+		span, hasSpan := m.selectionSpans[i]
+		if i == m.cursor {
+			if hasSpan {
+				row = applySelection(row, span, m.maxRowWidth, m.xOffset, m.contentWidth(), m.styles.Selected)
+			} else {
+				row = m.styles.Selected.Render(ansi.Strip(row))
+			}
+		} else if !isFullRow {
+			row = m.styles.Text.Render(row)
+		}
+		lines = append(lines, row)
+	}
+	return strings.Join(lines, "\n")
+}
+
+// renderRowContent measures and clips rows independently of cursor selection.
+func (m *Model) renderRowContent(baseWidths []int) []string {
+	lastCol := len(m.columns) - 1
+	// First pass: find max width for each column (at least the defined width).
 	m.colWidths = baseWidths
 	for i, row := range m.rows {
 		if _, ok := m.fullRows[i]; ok {
@@ -678,12 +721,9 @@ func (m *Model) renderBody() string {
 	}
 	m.maxRowWidth = maxWidth
 
-	// Third pass: apply scroll and styling
+	// Third pass: clip rows before applying selection and styles.
 	lines := make([]string, 0, len(rawRows))
-	for i, row := range rawRows {
-		_, isFullRow := m.fullRows[i]
-		span, hasSpan := m.selectionSpans[i]
-
+	for _, row := range rawRows {
 		// Pad row to max width for consistent selection highlight
 		rowWidth := lipgloss.Width(row)
 		if rowWidth < maxWidth {
@@ -693,21 +733,9 @@ func (m *Model) renderBody() string {
 		// Apply horizontal scroll offset (before styling)
 		row = applyHorizontalScroll(row, m.xOffset, m.contentWidth())
 
-		// Apply selection highlight
-		if i == m.cursor {
-			if hasSpan {
-				row = applySelection(row, span, maxWidth, m.xOffset, m.contentWidth(), m.styles.Selected)
-			} else {
-				row = m.styles.Selected.Render(ansi.Strip(row))
-			}
-		} else if !isFullRow {
-			row = m.styles.Text.Render(row)
-		}
-
 		lines = append(lines, row)
 	}
-
-	return strings.Join(lines, "\n")
+	return lines
 }
 
 // getVisibleContent returns the visible portion of content based on yOffset.

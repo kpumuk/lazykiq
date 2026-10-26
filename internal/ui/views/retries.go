@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/kpumuk/lazykiq/internal/devtools"
@@ -56,7 +57,10 @@ func NewRetries(client sidekiq.API) *Retries {
 			retriesFallbackPageSize,
 		),
 	}
-	r.lazy.SetFetcher(r.fetchWindow)
+	r.lazy.SetFetcherFactory(func() lazytable.Fetcher {
+		snapshot := *r
+		return snapshot.fetchWindow
+	})
 	return r
 }
 
@@ -68,6 +72,11 @@ func (r *Retries) Init() tea.Cmd {
 // Update implements View.
 func (r *Retries) Update(msg tea.Msg) (View, tea.Cmd) {
 	switch msg := msg.(type) {
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		r.lazy, cmd = r.lazy.Update(msg)
+		return r, cmd
+
 	case lazytable.DataMsg:
 		if handled, cmd := r.handleSortedEntriesData(msg); handled {
 			return r, cmd

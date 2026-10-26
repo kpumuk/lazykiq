@@ -2,6 +2,7 @@ package lazytable
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -186,4 +187,84 @@ func TestLazyTableRequestWindowCancelsSupersededFetch(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("active request did not finish after cancellation")
 	}
+}
+
+func TestLazyTableFailedFetchCanRetry(t *testing.T) {
+	wantErr := errors.New("scan failed")
+	m := newTestModel()
+	m.SetFetcher(func(context.Context, int, int, CursorIntent) (FetchResult, error) {
+		return FetchResult{}, wantErr
+	})
+	wantID := 0
+	m.SetErrorHandler(func(requestID int, err error) tea.Msg {
+		if requestID != wantID {
+			t.Errorf("error request ID = %d, want %d", requestID, wantID)
+		}
+		return err
+	})
+	msg := fetchBatchCmd(t, m.RequestWindow(0, CursorStart))()
+	wantID = m.RequestID()
+	var cmd tea.Cmd
+	m, cmd = m.Update(msg)
+	if m.Loading() || m.LoadingIndicator() != "" {
+		t.Fatal("failed fetch left the loading indicator active")
+	}
+	if cmd == nil || !errors.Is(cmd().(error), wantErr) {
+		t.Fatal("fetch error was not forwarded")
+	}
+	if cmd := m.RequestWindow(0, CursorStart); cmd == nil || !m.Loading() {
+		t.Fatal("failed fetch could not be retried")
+	}
+	m.CancelRequest()
+}
+
+func TestLazyTableRejectsObsoleteResults(t *testing.T) {
+	cases := map[string]func(*Model){
+		"cancel": func(m *Model) { m.CancelRequest() },
+		"reset and reload": func(m *Model) {
+			m.Reset()
+			m.RequestWindow(0, CursorStart)
+		},
+		"another table": func(m *Model) {
+			m.CancelRequest()
+			*m = newTestModel()
+			m.RequestWindow(0, CursorStart)
+		},
+	}
+	for name, invalidate := range cases {
+		t.Run(name, func(t *testing.T) {
+			m := newTestModel()
+			m.RequestWindow(0, CursorStart)
+			oldID := m.RequestID()
+			invalidate(&m)
+			defer m.CancelRequest()
+			loading := m.Loading()
+			m, cmd := m.Update(DataMsg{
+				RequestID: oldID,
+				Result:    FetchResult{Rows: []table.Row{tableRow("stale", "stale")}, Total: 1},
+				Err:       errors.New("stale error"),
+			})
+			if cmd != nil || m.Loading() != loading || len(m.Table().Rows()) != 0 {
+				t.Fatal("obsolete result changed the current request")
+			}
+		})
+	}
+}
+
+func TestLazyTableFetcherSnapshotsInputs(t *testing.T) {
+	m := newTestModel()
+	query := "original"
+	m.SetFetcherFactory(func() Fetcher {
+		snapshot := query
+		return func(context.Context, int, int, CursorIntent) (FetchResult, error) {
+			return FetchResult{Payload: snapshot}, nil
+		}
+	})
+	cmd := fetchBatchCmd(t, m.RequestWindow(0, CursorStart))
+	query = "changed"
+	msg := cmd().(DataMsg)
+	if msg.Result.Payload != "original" {
+		t.Fatalf("request used %q, want original inputs", msg.Result.Payload)
+	}
+	m.CancelRequest()
 }
