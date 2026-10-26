@@ -195,8 +195,15 @@ func TestLazyTableFailedFetchCanRetry(t *testing.T) {
 	m.SetFetcher(func(context.Context, int, int, CursorIntent) (FetchResult, error) {
 		return FetchResult{}, wantErr
 	})
-	m.SetErrorHandler(func(err error) tea.Msg { return err })
+	wantID := 0
+	m.SetErrorHandler(func(requestID int, err error) tea.Msg {
+		if requestID != wantID {
+			t.Errorf("error request ID = %d, want %d", requestID, wantID)
+		}
+		return err
+	})
 	msg := fetchBatchCmd(t, m.RequestWindow(0, CursorStart))()
+	wantID = m.RequestID()
 	var cmd tea.Cmd
 	m, cmd = m.Update(msg)
 	if m.Loading() || m.LoadingIndicator() != "" {

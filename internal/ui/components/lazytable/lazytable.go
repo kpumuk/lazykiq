@@ -51,8 +51,8 @@ type FetcherFactory func() Fetcher
 
 var nextRequestID atomic.Int64
 
-// ErrorHandler converts fetch errors into tea messages.
-type ErrorHandler func(error) tea.Msg
+// ErrorHandler converts fetch errors into messages that retain their request ID.
+type ErrorHandler func(requestID int, err error) tea.Msg
 
 // Model is a lazily-loaded table component.
 type Model struct {
@@ -231,7 +231,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.loading = false
 		if msg.Err != nil {
 			if m.errorHandler != nil {
-				return m, func() tea.Msg { return m.errorHandler(msg.Err) }
+				return m, func() tea.Msg { return m.errorHandler(msg.RequestID, msg.Err) }
 			}
 			return m, nil
 		}

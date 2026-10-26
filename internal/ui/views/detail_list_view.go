@@ -41,14 +41,19 @@ func newDetailListView(
 		lazytable.WithWindowPages(windowPages),
 		lazytable.WithFallbackPageSize(fallbackPageSize),
 	)
-	lazy.SetErrorHandler(func(err error) tea.Msg {
-		return ConnectionErrorMsg{Err: err}
+	lazy.SetErrorHandler(func(requestID int, err error) tea.Msg {
+		return ConnectionErrorMsg{Err: err, RequestID: requestID}
 	})
 
 	return detailListView{
 		title: title,
 		lazy:  lazy,
 	}
+}
+
+// RequestID identifies the current lazy-table request, including pending errors.
+func (s detailListView) RequestID() int {
+	return s.lazy.RequestID()
 }
 
 func (s *detailListView) init(reset func()) tea.Cmd {

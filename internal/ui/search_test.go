@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"io"
 	"strings"
 	"testing"
@@ -12,7 +13,91 @@ import (
 
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
+	"github.com/kpumuk/lazykiq/internal/ui/views"
 )
+
+type failedSearchClient struct {
+	sidekiq.API
+	err error
+}
+
+func (c failedSearchClient) GetQueues(context.Context) ([]*sidekiq.Queue, error) {
+	return nil, c.err
+}
+
+func (c failedSearchClient) ScanSortedEntriesWindow(context.Context, sidekiq.SortedSetKind, string, int, int) (sidekiq.SortedEntriesWindow, error) {
+	return sidekiq.SortedEntriesWindow{}, c.err
+}
+
+func (c failedSearchClient) GetErrorGroupWindow(context.Context, sidekiq.ErrorGroupKey, string, int, int) (sidekiq.ErrorGroupWindow, error) {
+	return sidekiq.ErrorGroupWindow{}, c.err
+}
+
+func TestAppRejectsDeferredSearchErrors(t *testing.T) {
+	for name, id := range map[string]viewID{
+		"queues": viewQueueDetails, "retries": viewRetries, "scheduled": viewScheduled,
+		"dead": viewDead, "error details": viewErrorsDetails,
+	} {
+		t.Run(name, func(t *testing.T) {
+			otherViewKey := '4'
+			if id == viewRetries {
+				otherViewKey = '5'
+			}
+			for name, tc := range map[string]struct {
+				action    tea.Msg
+				wantError bool
+			}{
+				"current request": {wantError: true},
+				"clear filter":    {action: tea.KeyPressMsg(tea.Key{Code: 'u', Mod: tea.ModCtrl})},
+				"replace filter":  {action: filterdialog.ActionMsg{Action: filterdialog.ActionApply, Query: "new query"}},
+				"refresh":         {action: views.RefreshMsg{}},
+				"switch view":     {action: tea.KeyPressMsg(tea.Key{Code: otherViewKey})},
+				"open detail":     {action: views.ShowJobDetailMsg{}},
+			} {
+				for when, produceBeforeAction := range map[string]bool{
+					"before error command runs": false,
+					"after error command runs":  true,
+				} {
+					t.Run(name+"/"+when, func(t *testing.T) {
+						scanError := errors.New("old scan failed")
+						app := New(failedSearchClient{err: scanError}, "", false, nil)
+						app.setActiveView(id)
+						t.Cleanup(func() {
+							for id := range app.viewRegistry {
+								app.cancelViewRequests(id)
+							}
+						})
+						updated, start := app.Update(filterdialog.ActionMsg{Action: filterdialog.ActionApply, Query: "old query"})
+						app = updated.(App)
+						fetch := start().(tea.BatchMsg)[1]
+						updated, delivery := app.Update(fetch())
+						app = updated.(App)
+						if app.connectionError != nil || delivery == nil {
+							t.Fatal("expected error to await final delivery")
+						}
+
+						var errorMsg tea.Msg
+						if produceBeforeAction {
+							errorMsg = delivery()
+						}
+						if tc.action != nil {
+							updated, _ = app.Update(tc.action)
+							app = updated.(App)
+						}
+						if !produceBeforeAction {
+							errorMsg = delivery()
+						}
+						updated, _ = app.Update(errorMsg)
+						app = updated.(App)
+						if got := errors.Is(app.connectionError, scanError); got != tc.wantError {
+							t.Fatalf("search error displayed = %v, want %v", got, tc.wantError)
+						}
+					})
+				}
+			}
+		})
+	}
+}
 
 type blockedSearchClient struct {
 	sidekiq.API
