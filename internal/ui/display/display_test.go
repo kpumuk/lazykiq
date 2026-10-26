@@ -2,8 +2,12 @@ package display
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
 type badJSON struct{}
@@ -114,6 +118,33 @@ func TestArgs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := Args(tt.args); got != tt.want {
 				t.Fatalf("Args(%v) = %q, want %q", tt.args, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestArgsPreview(t *testing.T) {
+	for name, tc := range map[string]struct {
+		args []any
+		want string
+	}{
+		"empty":         {want: ""},
+		"short":         {args: []any{"foo", 1, map[string]any{"a": "b"}}, want: `"foo", 1, {"a":"b"}`},
+		"marshal error": {args: []any{badJSON{}}, want: "{}"},
+		"at limit":      {args: []any{strings.Repeat("x", 198)}, want: `"` + strings.Repeat("x", 198) + `"`},
+		"over limit":    {args: []any{strings.Repeat("x", 199)}, want: `"` + strings.Repeat("x", 198) + "…"},
+		"large":         {args: []any{strings.Repeat("x", 32*1024)}, want: `"` + strings.Repeat("x", 198) + "…"},
+		"many args":     {args: []any{strings.Repeat("x", 196), 123, "tail"}, want: `"` + strings.Repeat("x", 196) + `",…`},
+		"wide unicode":  {args: []any{strings.Repeat("界", 1024)}, want: `"` + strings.Repeat("界", 99) + "…"},
+		"graphemes":     {args: []any{strings.Repeat("e\u0301", 1024)}, want: `"` + strings.Repeat("e\u0301", 198) + "…"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := ArgsPreview(tc.args)
+			if got != tc.want {
+				t.Fatalf("ArgsPreview() = %q, want %q", got, tc.want)
+			}
+			if !utf8.ValidString(got) || ansi.StringWidth(got) > 200 {
+				t.Fatalf("preview is invalid UTF-8 or wider than 200 columns: %q", got)
 			}
 		})
 	}

@@ -546,7 +546,7 @@ func (q *QueueDetails) buildRows(jobs []*sidekiq.PositionedEntry) []table.Row {
 			Cells: []string{
 				strconv.Itoa(job.Position),
 				job.DisplayClass(),
-				display.Args(job.DisplayArgs()),
+				display.ArgsPreview(job.DisplayArgs()),
 				formatContext(job.Context()),
 			},
 		})

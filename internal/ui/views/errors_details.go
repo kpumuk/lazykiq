@@ -256,7 +256,7 @@ func (e *ErrorsDetails) buildRows(jobs []sidekiq.ErrorGroupEntry) []table.Row {
 				when,
 				queue,
 				job.Entry.DisplayClass(),
-				display.Args(job.Entry.DisplayArgs()),
+				display.ArgsPreview(job.Entry.DisplayArgs()),
 				message,
 			},
 		})

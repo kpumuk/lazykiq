@@ -326,7 +326,7 @@ func (s *Scheduled) buildRows(jobs []*sidekiq.SortedEntry) []table.Row {
 				when,
 				s.styles.QueueText.Render(job.Queue()),
 				job.DisplayClass(),
-				display.Args(job.DisplayArgs()),
+				display.ArgsPreview(job.DisplayArgs()),
 			},
 		})
 	}
