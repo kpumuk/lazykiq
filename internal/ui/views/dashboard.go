@@ -157,9 +157,12 @@ func (d *Dashboard) View() string {
 		return ""
 	}
 
-	available := max(d.height, 2)
-	topHeight := available / 2
-	bottomHeight := available - topHeight
+	// Each pane needs two border rows and at least one row for its summary.
+	if d.height < 6 || d.width < 6 {
+		return d.renderCompact()
+	}
+	topHeight := d.height / 2
+	bottomHeight := d.height - topHeight
 
 	realtimeBox := d.renderRealtimeBox(topHeight)
 	historyBox := d.renderHistoryBox(bottomHeight)
@@ -238,6 +241,28 @@ func (d *Dashboard) CancelRequests() {
 	d.historyRequest.Cancel()
 }
 
+func (d *Dashboard) renderCompact() string {
+	realtime := "Loading..."
+	if len(d.realtimeProcessed) > 0 {
+		realtime = d.renderRealtimeLegend(d.width)
+	}
+	history := "Loading..."
+	if len(d.historyProcessed) > 0 {
+		history = d.renderHistoryLegend(d.width)
+	}
+	lines := []string{
+		d.styles.Title.Render("Dashboard: ") + realtime,
+		d.styles.Title.Render("History: ") + history,
+	}
+	if d.height == 1 {
+		lines = lines[d.focusedPane : d.focusedPane+1]
+	}
+	for i, line := range lines {
+		lines[i] = ansi.Cut(line, 0, d.width)
+	}
+	return strings.Join(lines, "\n") + strings.Repeat("\n", max(d.height-len(lines), 0))
+}
+
 func (d *Dashboard) adjustHistoryRange(delta int) (View, tea.Cmd) {
 	next := max(d.historyRangeIdx+delta, 0)
 	if next >= len(d.historyRanges) {
@@ -301,7 +326,6 @@ func (d *Dashboard) renderRealtimeBox(height int) string {
 		frame.WithContent(content),
 		frame.WithPadding(1),
 		frame.WithSize(d.width, height),
-		frame.WithMinHeight(5),
 		frame.WithFocused(d.focusedPane == dashboardPaneRealtime),
 	)
 	return box.View()
@@ -331,7 +355,6 @@ func (d *Dashboard) renderHistoryBox(height int) string {
 		frame.WithContent(content),
 		frame.WithPadding(1),
 		frame.WithSize(d.width, height),
-		frame.WithMinHeight(5),
 		frame.WithFocused(d.focusedPane == dashboardPaneHistory),
 	)
 	return box.View()
@@ -341,6 +364,9 @@ func (d *Dashboard) renderRealtimeContent(contentHeight int) string {
 	width := d.chartContentWidth()
 	if contentHeight < 1 || width < 1 {
 		return ""
+	}
+	if contentHeight == 1 && len(d.realtimeProcessed) > 0 {
+		return d.renderRealtimeLegend(width)
 	}
 
 	chartHeight := contentHeight - 1
@@ -387,6 +413,9 @@ func (d *Dashboard) renderHistoryContent(contentHeight int) string {
 	width := d.chartContentWidth()
 	if contentHeight < 1 || width < 1 {
 		return ""
+	}
+	if contentHeight == 1 && len(d.historyProcessed) > 0 {
+		return d.renderHistoryLegend(width)
 	}
 
 	chartHeight := contentHeight - 1

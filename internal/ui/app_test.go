@@ -2,6 +2,7 @@ package ui
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -10,9 +11,35 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 	"github.com/kpumuk/lazykiq/internal/ui/views"
 )
+
+func TestAppDashboardShortTerminal(t *testing.T) {
+	client, err := sidekiq.NewClient("redis://localhost:6379/0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	app := New(client, "", false, nil)
+	// Render WindowSizeMsg updates without executing the Redis commands.
+	for _, width := range []int{40, 80, 120} {
+		for _, height := range []int{40, 24, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 40} {
+			t.Run(fmt.Sprintf("%dx%d", width, height), func(t *testing.T) {
+				updated, _ := app.Update(tea.WindowSizeMsg{Width: width, Height: height})
+				app = updated.(App)
+				output := app.View().Content
+				if got := lipgloss.Height(output); got != height {
+					t.Fatalf("height = %d, want %d", got, height)
+				}
+				if got := lipgloss.Width(output); got > width {
+					t.Fatalf("width = %d, want <= %d", got, width)
+				}
+			})
+		}
+	}
+}
 
 func TestQueueMutationErrorSurvivesNavigation(t *testing.T) {
 	queues := &cancelableStubView{name: "Queues"}
