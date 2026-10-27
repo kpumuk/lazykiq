@@ -36,6 +36,7 @@ type Styles struct {
 	JSONBool        lipgloss.Style
 	JSONNull        lipgloss.Style
 	JSONPunctuation lipgloss.Style
+	QueuePaused     lipgloss.Style
 	QueueText       lipgloss.Style
 	QueueWeight     lipgloss.Style
 	FilterFocused   lipgloss.Style

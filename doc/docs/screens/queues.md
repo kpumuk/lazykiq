@@ -3,7 +3,7 @@ title: "Queues"
 description: "Browse queues and inspect queued jobs."
 summary: "Browse queues and inspect queued jobs."
 date: 2025-12-30T00:00:00Z
-lastmod: 2026-03-21T00:00:00Z
+lastmod: 2026-10-27T00:00:00Z
 draft: false
 weight: 60
 toc: true
@@ -33,6 +33,7 @@ to stop the scan. Large queues can take time to search fully.
 | `[` / `]`         | Page up or down (also `Alt+Left` / `Alt+Right`).          |
 | `g` / `G`         | Jump to start or end.                                     |
 | `s`               | Open queue list.                                          |
+| `p`               | Pause/resume queue (requires `sidekiq-pro` and `--danger`). |
 | `q`               | Quit.                                                     |
 
 ## Queue List
@@ -48,8 +49,17 @@ to stop the scan. Large queues can take time to search fully.
 | `/`          | Filter queues by substring.                  |
 | `Enter`      | Show jobs in the queue.                      |
 | `d`          | Delete queue (requires `--danger`).          |
+| `p`          | Pause/resume queue (requires `sidekiq-pro` and `--danger`). |
 | `Esc`        | Back to Queue details view.                  |
 | `q`          | Quit.                                        |
+
+## Pausing queues
+
+Sidekiq Pro 7.3.5+ allows pausing processing on any queue. Start Lazykiq with
+`--enable=pro --danger` (or `--enable=ent --danger`), select a queue, then press `p` and confirm to pause or resume it.
+Already running jobs may finish, and new jobs may still enter the queue.
+Paused queues are marked in the queue list, queue shortcuts, and selected
+queue's jobs title.
 
 ## Job Details
 

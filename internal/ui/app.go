@@ -138,6 +138,7 @@ func New(client sidekiq.API, version string, dangerousActionsEnabled bool, devTr
 		JSONBool:        styles.JSONBool,
 		JSONNull:        styles.JSONNull,
 		JSONPunctuation: styles.JSONPunctuation,
+		QueuePaused:     styles.QueuePaused,
 		QueueText:       styles.QueueText,
 		QueueWeight:     styles.QueueWeight,
 		FilterFocused:   styles.FilterFocused,
@@ -279,6 +280,11 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Handle connection errors from views
 		a.connectionError = msg.Err
+	case views.QueueActionResultMsg:
+		if msg.Err != nil {
+			a.connectionError = msg.Err
+		}
+		cmds = append(cmds, a.updateView(a.activeViewID(), msg))
 
 	case views.DashboardRedisInfoMsg:
 		cmds = append(cmds, a.updateView(viewDashboard, msg))

@@ -3,7 +3,7 @@ title: "Configuration"
 description: "Configure Lazykiq flags and Redis connection."
 summary: "Configure Lazykiq flags and Redis connection."
 date: 2025-12-30T00:00:00Z
-lastmod: 2026-01-09T00:00:00Z
+lastmod: 2026-10-27T00:00:00Z
 draft: false
 weight: 25
 toc: true
@@ -21,6 +21,7 @@ FLAGS
   --cpuprofile   write cpu profile to file
   --danger       enable dangerous operations
   --development  enable development diagnostics
+  --enable       enable optional features (pro, ent)
   -h --help      help for lazykiq
   --redis        redis URL (redis://localhost:6379/0)
   -v --version   version for lazykiq
@@ -39,6 +40,17 @@ Point to another host or database index by changing the URL:
 
 ```bash
 lazykiq --redis redis://redis.internal:6379/2
+```
+
+## Optional features
+
+Use `--enable=pro` for Sidekiq Pro or `--enable=ent` for Sidekiq Enterprise,
+which includes Pro features. Optional features are disabled by default.
+Multiple features can be comma-separated or supplied with repeated `--enable` flags.
+
+```bash
+lazykiq --enable=pro
+lazykiq --enable=ent --danger
 ```
 
 ## Dangerous actions

@@ -29,11 +29,14 @@ type QueuesListInfo struct {
 	Latency       float64
 	OldestJobTime time.Time
 	HasOldestJob  bool
+	Paused        bool
 }
 
 // queuesListDataMsg carries queues list data internally.
 type queuesListDataMsg struct {
-	queues []*QueuesListInfo
+	queues       []*QueuesListInfo
+	capabilities sidekiq.Capabilities
+	requestID    uint64
 }
 
 // QueuesList shows all Sidekiq queues in a table.
@@ -50,6 +53,9 @@ type QueuesList struct {
 	frameStyles             frame.Styles
 	filterStyle             filterdialog.Styles
 	fetchRequest            requestctx.Controller
+	capabilities            sidekiq.Capabilities
+	requestID               uint64
+	actions                 queueActions
 }
 
 // NewQueuesList creates a new QueuesList view.
@@ -73,12 +79,27 @@ func (q *QueuesList) Init() tea.Cmd {
 func (q *QueuesList) Update(msg tea.Msg) (View, tea.Cmd) {
 	switch msg := msg.(type) {
 	case queuesListDataMsg:
+		if msg.requestID != q.requestID || q.actions.busy {
+			return q, nil
+		}
 		q.queues = msg.queues
+		q.capabilities = msg.capabilities
 		q.ready = true
 		q.updateTableRows()
 		return q, nil
 
 	case RefreshMsg:
+		if q.actions.busy {
+			return q, nil
+		}
+		return q, q.fetchDataCmd()
+	case QueueActionResultMsg:
+		if !q.actions.complete(msg) {
+			return q, nil
+		}
+		if msg.Err != nil {
+			return q, nil
+		}
 		return q, q.fetchDataCmd()
 
 	case filterdialog.ActionMsg:
@@ -96,15 +117,17 @@ func (q *QueuesList) Update(msg tea.Msg) (View, tea.Cmd) {
 		if !q.dangerousActionsEnabled {
 			return q, nil
 		}
-		if !msg.Confirmed {
-			return q, nil
+		cmd := q.actions.confirm(msg, q.client)
+		if cmd != nil {
+			q.fetchRequest.Cancel()
+			q.requestID++
 		}
-		if msg.Target == "" {
-			return q, nil
-		}
-		return q, q.deleteQueueCmd(msg.Target)
+		return q, cmd
 
 	case tea.KeyPressMsg:
+		if q.actions.busy {
+			return q, nil
+		}
 		switch msg.String() {
 		case "/":
 			return q, func() tea.Msg {
@@ -125,27 +148,42 @@ func (q *QueuesList) Update(msg tea.Msg) (View, tea.Cmd) {
 			return q, nil
 		}
 
-		if q.dangerousActionsEnabled {
-			switch msg.String() {
-			case "d":
-				if queueName, ok := q.selectedQueueName(); ok {
-					return q, func() tea.Msg {
-						return dialogs.OpenDialogMsg{
-							Model: newConfirmDialog(
-								q.styles,
-								"Delete queue",
-								fmt.Sprintf(
-									"Are you sure you want to delete the %s queue?\n\nThis will remove all jobs currently in the queue.\nThe queue will be created again automatically if you add new jobs to it later.",
-									q.styles.Text.Bold(true).Render(queueName),
-								),
-								queueName,
-								q.styles.DangerAction,
-							),
-						}
-					}
-				}
+		if !q.dangerousActionsEnabled {
+			q.table, _ = q.table.Update(msg)
+			return q, nil
+		}
+		switch msg.String() {
+		case "p":
+			if !q.capabilities.SupportsQueuePause() {
 				return q, nil
 			}
+			if idx := q.table.Cursor(); idx >= 0 && idx < len(q.queues) {
+				queue := q.queues[idx]
+				return q, q.actions.pauseDialog(queue.Name, queue.Paused, q.styles)
+			}
+			return q, nil
+		case "d":
+			if queueName, ok := q.selectedQueueName(); ok {
+				action, ok := q.actions.prepare(queueName, "delete")
+				if !ok {
+					return q, nil
+				}
+				return q, func() tea.Msg {
+					return dialogs.OpenDialogMsg{
+						Model: newConfirmDialog(
+							q.styles,
+							"Delete queue",
+							fmt.Sprintf(
+								"Are you sure you want to delete the %s queue?\n\nThis will remove all jobs currently in the queue.\nThe queue will be created again automatically if you add new jobs to it later.",
+								q.styles.Text.Bold(true).Render(queueName),
+							),
+							action.target,
+							q.styles.DangerAction,
+						),
+					}
+				}
+			}
+			return q, nil
 		}
 
 		q.table, _ = q.table.Update(msg)
@@ -217,9 +255,15 @@ func (q *QueuesList) MutationBindings() []key.Binding {
 	if !q.dangerousActionsEnabled {
 		return nil
 	}
-	return []key.Binding{
+	bindings := []key.Binding{
 		helpBinding([]string{"d"}, "d", "delete queue"),
 	}
+	if q.capabilities.SupportsQueuePause() {
+		if idx := q.table.Cursor(); idx >= 0 && idx < len(q.queues) {
+			bindings = append(bindings, helpBinding([]string{"p"}, "p", queuePauseHelp(q.queues[idx].Paused)))
+		}
+	}
+	return bindings
 }
 
 // HelpSections implements HelpProvider.
@@ -233,10 +277,8 @@ func (q *QueuesList) HelpSections() []HelpSection {
 	}}
 	if q.dangerousActionsEnabled {
 		sections = append(sections, HelpSection{
-			Title: "Dangerous Actions",
-			Bindings: []key.Binding{
-				helpBinding([]string{"d"}, "d", "delete queue"),
-			},
+			Title:    "Dangerous Actions",
+			Bindings: q.MutationBindings(),
 		})
 	}
 	return sections
@@ -278,12 +320,23 @@ func (q *QueuesList) SetStyles(styles Styles) View {
 // CancelRequests stops in-flight fetches when the view is hidden.
 func (q *QueuesList) CancelRequests() {
 	q.fetchRequest.Cancel()
+	q.requestID++
+	q.actions.reset()
 }
 
 // fetchDataCmd fetches queues data from Redis.
 func (q *QueuesList) fetchDataCmd() tea.Cmd {
+	q.requestID++
+	requestID, filter := q.requestID, q.filter
 	ctx := q.fetchRequest.Start(devtools.WithTracker(context.Background(), "queues.fetchDataCmd"))
 	return func() tea.Msg {
+		capabilities, paused, err := fetchQueueCapabilities(ctx, q.client)
+		if err != nil {
+			if requestctx.IsCanceled(err) {
+				return nil
+			}
+			return ConnectionErrorMsg{Err: err}
+		}
 		queues, err := q.client.GetQueues(ctx)
 		if err != nil {
 			if requestctx.IsCanceled(err) {
@@ -295,7 +348,7 @@ func (q *QueuesList) fetchDataCmd() tea.Cmd {
 		queueInfos := make([]*QueuesListInfo, 0, len(queues))
 		for _, queue := range queues {
 			// Apply filter
-			if q.filter != "" && !strings.Contains(strings.ToLower(queue.Name()), strings.ToLower(q.filter)) {
+			if filter != "" && !strings.Contains(strings.ToLower(queue.Name()), strings.ToLower(filter)) {
 				continue
 			}
 
@@ -306,6 +359,7 @@ func (q *QueuesList) fetchDataCmd() tea.Cmd {
 				Name:    queue.Name(),
 				Size:    size,
 				Latency: latency,
+				Paused:  paused[queue.Name()],
 			}
 
 			// Calculate oldest job timestamp from latency
@@ -323,13 +377,15 @@ func (q *QueuesList) fetchDataCmd() tea.Cmd {
 		})
 
 		return queuesListDataMsg{
-			queues: queueInfos,
+			queues:       queueInfos,
+			capabilities: capabilities,
+			requestID:    requestID,
 		}
 	}
 }
 
 func (q *QueuesList) reset() {
-	q.fetchRequest.Cancel()
+	q.CancelRequests()
 	q.ready = false
 	q.queues = nil
 	q.table.SetRows(nil)
@@ -360,6 +416,11 @@ func (q *QueuesList) updateTableSize() {
 
 // updateTableRows converts queue data to table rows.
 func (q *QueuesList) updateTableRows() {
+	columns := append([]table.Column(nil), queuesListColumns...)
+	if q.capabilities.SupportsQueuePause() {
+		columns = append(columns, table.Column{Title: "State", Width: 10})
+	}
+	q.table.SetColumns(columns)
 	if q.filter != "" {
 		q.table.SetEmptyMessage("No matches")
 	} else {
@@ -382,20 +443,17 @@ func (q *QueuesList) updateTableRows() {
 				oldestJobStr,
 			},
 		}
+		if q.capabilities.SupportsQueuePause() {
+			state := "Active"
+			if queue.Paused {
+				state = q.styles.QueuePaused.Render("Paused")
+			}
+			row.Cells = append(row.Cells, state)
+		}
 		rows = append(rows, row)
 	}
 	q.table.SetRows(rows)
 	q.updateTableSize()
-}
-
-func (q *QueuesList) deleteQueueCmd(queueName string) tea.Cmd {
-	return func() tea.Msg {
-		ctx := devtools.WithTracker(context.Background(), "queues.deleteQueueCmd")
-		if err := q.client.NewQueue(queueName).Clear(ctx); err != nil {
-			return ConnectionErrorMsg{Err: err}
-		}
-		return RefreshMsg{}
-	}
 }
 
 // renderQueuesBox renders the bordered box containing the queues table.

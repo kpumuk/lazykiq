@@ -150,7 +150,12 @@ func (m *Model) Update(msg tea.Msg) (dialogs.DialogModel, tea.Cmd) {
 	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "esc":
-			return m, func() tea.Msg { return dialogs.CloseDialogMsg{} }
+			// Clear the owner's pending action before the dialog can reopen
+			// with the same target (for example, a sorted job's JID).
+			return m, tea.Sequence(
+				func() tea.Msg { return ActionMsg{Confirmed: false, Target: m.target} },
+				func() tea.Msg { return dialogs.CloseDialogMsg{} },
+			)
 		case "y":
 			return m, tea.Batch(
 				func() tea.Msg { return ActionMsg{Confirmed: true, Target: m.target} },

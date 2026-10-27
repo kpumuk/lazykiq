@@ -21,6 +21,10 @@ type failedSearchClient struct {
 	err error
 }
 
+func (c failedSearchClient) GetCapabilities() sidekiq.Capabilities {
+	return sidekiq.Capabilities{}
+}
+
 func (c failedSearchClient) GetQueues(context.Context) ([]*sidekiq.Queue, error) {
 	return nil, c.err
 }

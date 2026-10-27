@@ -185,7 +185,7 @@ func (m *Model) Reset() {
 	m.table.ClearScrollbar()
 }
 
-// CancelRequest stops the current in-flight fetch, if any.
+// CancelRequest stops the current fetch and invalidates any late result.
 func (m *Model) CancelRequest() {
 	m.request.Cancel()
 	m.requestID = int(nextRequestID.Add(1))
