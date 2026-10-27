@@ -67,20 +67,90 @@ func (q *Queue) Latency(ctx context.Context) (float64, error) {
 		return 0.0, err
 	}
 
-	var jobData map[string]any
+	return queueLatency(entry, time.Now())
+}
+
+func queueLatency(entry string, now time.Time) (float64, error) {
+	// Decode only the timestamp; arguments and other large fields are skipped.
+	var jobData struct {
+		EnqueuedAt any `json:"enqueued_at"`
+	}
 	if err := json.Unmarshal([]byte(entry), &jobData); err != nil {
 		return 0.0, err
 	}
 
-	enqueuedAt := parseTimestamp(jobData["enqueued_at"])
+	enqueuedAt := parseTimestamp(jobData.EnqueuedAt)
 	if enqueuedAt.IsZero() {
 		return 0.0, nil
 	}
 
-	latency := time.Since(enqueuedAt).Seconds()
-	latency = max(latency, 0)
+	return max(now.Sub(enqueuedAt).Seconds(), 0), nil
+}
 
-	return latency, nil
+// QueueMetadata holds a queue's size and latency at refresh time.
+type QueueMetadata struct {
+	Name          string
+	Size          int64
+	Latency       float64
+	OldestJobTime time.Time
+}
+
+const queueMetadataBatchSize = 100
+
+// FetchQueueMetadata fetches metadata in bounded pipelines, preserving input order.
+// Queues must come from the same Client. Missing queues and individual invalid
+// payloads/keys retain zero values, matching the queue views' best-effort display.
+// Transport errors and cancellation fail the entire snapshot.
+func FetchQueueMetadata(ctx context.Context, queues []*Queue) ([]QueueMetadata, error) {
+	metadata := make([]QueueMetadata, len(queues))
+	for start := 0; start < len(queues); start += queueMetadataBatchSize {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		batch := queues[start:min(start+queueMetadataBatchSize, len(queues))]
+		sizes := make([]*redis.IntCmd, len(batch))
+		oldest := make([]*redis.StringCmd, len(batch))
+		commands, err := batch[0].client.redis.Pipelined(ctx, func(pipe redis.Pipeliner) error {
+			for i, queue := range batch {
+				key := "queue:" + queue.name
+				sizes[i] = pipe.LLen(ctx, key)
+				oldest[i] = pipe.LIndex(ctx, key, -1)
+			}
+			return nil
+		})
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		var serverErr redis.Error
+		if err != nil && !errors.As(err, &serverErr) {
+			return nil, err
+		}
+		// Exec can report an earlier missing entry even if a later reply failed.
+		for _, command := range commands {
+			if err := command.Err(); err != nil && !errors.As(err, &serverErr) {
+				return nil, err
+			}
+		}
+		now := time.Now()
+		for i, queue := range batch {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			info := QueueMetadata{Name: queue.name}
+			info.Size, _ = sizes[i].Result()
+			if entry, err := oldest[i].Result(); err == nil && entry != "" {
+				info.Latency, _ = queueLatency(entry, now)
+				if info.Latency > 0 {
+					info.OldestJobTime = now.Add(-time.Duration(info.Latency * float64(time.Second)))
+				}
+			}
+			metadata[start+i] = info
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return metadata, nil
 }
 
 // PositionedEntry wraps a JobRecord with its position in the queue.
