@@ -1,0 +1,17 @@
+First      Middle                   
+─────────────────────────────────── 
+one           two                   
+one           two HEADxxxxxxxxxxxxx 
+full override                       
+
+t      Middle                       
+─────────────────────────────────── 
+          two                       
+          two HEADxxxxxxxxxxxxxxxxx 
+ override                           
+
+t                                   
+─────────────────────────────────── 
+e                                   
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxTAIL 
+                                    

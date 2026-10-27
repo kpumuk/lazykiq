@@ -561,7 +561,7 @@ func (m *Model) updateScrollbar() {
 
 // renderHeader renders the table header with separator.
 func (m Model) renderHeader() string {
-	var cols []string
+	line := viewportLine{offset: m.xOffset, width: m.contentWidth()}
 	lastCol := len(m.columns) - 1
 	for i, col := range m.columns {
 		// Use dynamic column width if available, otherwise use defined width
@@ -570,19 +570,14 @@ func (m Model) renderHeader() string {
 			width = m.colWidths[i]
 		}
 
-		align := col.Align
-		if i < lastCol {
-			cols = append(cols, padCell(col.Title, width, align))
-		} else {
-			// Last column: stretch to fill available width when shorter
-			lastWidth := width
-			if m.lastColWidth > 0 {
-				lastWidth = m.lastColWidth
-			}
-			cols = append(cols, padCell(col.Title, lastWidth, align))
+		if i == lastCol && m.lastColWidth > 0 {
+			width = m.lastColWidth
 		}
+		if i > 0 {
+			line.writePadding(1)
+		}
+		line.writeCell(col.Title, width, col.Align)
 	}
-	header := strings.Join(cols, " ")
 
 	// Use maxRowWidth for consistent scrolling with body
 	totalWidth := m.maxRowWidth
@@ -591,23 +586,12 @@ func (m Model) renderHeader() string {
 			totalWidth += col.Width + 1
 		}
 	}
-	headerWidth := lipgloss.Width(header)
-	if headerWidth > totalWidth {
-		totalWidth = headerWidth
-	}
+	totalWidth = max(totalWidth, line.position)
+	styledHeader := m.styles.Header.Render(line.String())
 
-	// Pad header to match body width
-	if headerWidth < totalWidth {
-		header += strings.Repeat(" ", totalWidth-headerWidth)
-	}
-
-	// Apply horizontal scroll to header
-	header = applyHorizontalScroll(header, m.xOffset, m.contentWidth())
-	styledHeader := m.styles.Header.Render(header)
-
-	// Separator line (also scrolled)
-	separator := strings.Repeat("─", totalWidth)
-	separator = applyHorizontalScroll(separator, m.xOffset, m.contentWidth())
+	// Materialize only the separator segment intersecting the viewport.
+	separatorWidth := mathutil.Clamp(totalWidth-m.xOffset, 0, m.contentWidth())
+	separator := strings.Repeat("─", separatorWidth) + strings.Repeat(" ", m.contentWidth()-separatorWidth)
 
 	return styledHeader + "\n" + m.styles.Separator.Render(separator)
 }
@@ -684,58 +668,96 @@ func (m *Model) renderRowContent(baseWidths []int) []string {
 	}
 
 	m.lastColWidth = m.computeLastColWidth(m.colWidths, m.contentWidth())
+	m.maxRowWidth = m.columnRowWidth(m.lastColWidth)
 
-	// Second pass: build all rows using actual column widths (no truncation)
-	rawRows := make([]string, 0, len(m.rows))
-	maxWidth := m.columnRowWidth(m.lastColWidth)
+	// Keep padding in display coordinates until it intersects the viewport.
+	// A wide cell must not allocate its column width for every other row.
+	lines := make([]string, len(m.rows))
 	for i, row := range m.rows {
+		line := viewportLine{offset: m.xOffset, width: m.contentWidth()}
 		if fullRow, ok := m.fullRows[i]; ok {
-			fullRow = singleLine(fullRow)
-			rawRows = append(rawRows, fullRow)
-			rowWidth := lipgloss.Width(fullRow)
-			if rowWidth > maxWidth {
-				maxWidth = rowWidth
-			}
-			continue
-		}
-		var cols []string
-		for i, cell := range row.Cells {
-			align := AlignLeft
-			if i < len(m.columns) {
-				align = m.columns[i].Align
-			}
-			if i < lastCol {
-				cols = append(cols, padCell(cell, m.colWidths[i], align))
-			} else {
-				// Last column: stretch to fill remaining width when needed
-				cols = append(cols, padCell(cell, m.lastColWidth, align))
+			line.writeCell(fullRow, 0, AlignLeft)
+		} else {
+			for i, cell := range row.Cells {
+				if i > 0 {
+					line.writePadding(1)
+				}
+				align := AlignLeft
+				if i < len(m.columns) {
+					align = m.columns[i].Align
+				}
+				width := m.lastColWidth
+				if i < lastCol {
+					width = m.colWidths[i]
+				}
+				line.writeCell(cell, width, align)
 			}
 		}
-		rowStr := strings.Join(cols, " ")
-		rawRows = append(rawRows, rowStr)
-
-		rowWidth := lipgloss.Width(rowStr)
-		if rowWidth > maxWidth {
-			maxWidth = rowWidth
-		}
-	}
-	m.maxRowWidth = maxWidth
-
-	// Third pass: clip rows before applying selection and styles.
-	lines := make([]string, 0, len(rawRows))
-	for _, row := range rawRows {
-		// Pad row to max width for consistent selection highlight
-		rowWidth := lipgloss.Width(row)
-		if rowWidth < maxWidth {
-			row += strings.Repeat(" ", maxWidth-rowWidth)
-		}
-
-		// Apply horizontal scroll offset (before styling)
-		row = applyHorizontalScroll(row, m.xOffset, m.contentWidth())
-
-		lines = append(lines, row)
+		m.maxRowWidth = max(m.maxRowWidth, line.position)
+		lines[i] = line.String()
 	}
 	return lines
+}
+
+// viewportLine builds only the visible part of a virtually padded line.
+type viewportLine struct {
+	content  strings.Builder
+	position int
+	offset   int
+	width    int
+}
+
+func (l *viewportLine) String() string {
+	// Fill the remaining viewport, including a partial glyph at the right edge.
+	return applyHorizontalScroll(l.content.String(), 0, l.width)
+}
+
+func (l *viewportLine) writePadding(width int) {
+	start := max(l.position, l.offset)
+	end := min(l.position+width, l.offset+l.width)
+	if end > start {
+		l.content.WriteString(strings.Repeat(" ", end-start))
+	}
+	l.position += width
+}
+
+func (l *viewportLine) writeCell(s string, width int, align Alignment) {
+	s = singleLine(s)
+	contentWidth := lipgloss.Width(s)
+	padding := max(width-contentWidth, 0)
+	leftPad := 0
+	switch align {
+	case AlignRight:
+		leftPad = padding
+	case AlignCenter:
+		leftPad = padding / 2
+	case AlignLeft:
+	}
+	l.writePadding(leftPad)
+	l.writeText(s, contentWidth)
+	l.writePadding(padding - leftPad)
+}
+
+func (l *viewportLine) writeText(s string, width int) {
+	start := max(l.offset-l.position, 0)
+	end := min(l.offset+l.width-l.position, width)
+	if end > start {
+		// ansi.Cut includes a whole wide glyph when the left edge bisects it.
+		// Replace that partial glyph with spaces so later cells keep their
+		// display coordinates and the final metadata character stays visible.
+		cutStart := start
+		if start > 0 {
+			for cutStart < end && lipgloss.Width(ansi.Cut(s, 0, cutStart)) < cutStart {
+				cutStart++
+			}
+		}
+		l.content.WriteString(strings.Repeat(" ", cutStart-start))
+		l.content.WriteString(ansi.Cut(s, cutStart, end))
+	} else if strings.Contains(s, "\x1b") {
+		// Offscreen cells can still change ANSI state for subsequent cells.
+		l.content.WriteString(ansi.Truncate(s, 0, ""))
+	}
+	l.position += width
 }
 
 // getVisibleContent returns the visible portion of content based on yOffset.
