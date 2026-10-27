@@ -39,10 +39,11 @@ func buildVersion(version, commit, date, builtBy string) string {
 	return result
 }
 
-// Execute initializes and runs the lazykiq terminal application.
-func Execute(version, commit, date, builtBy string) error {
+// newRootCommand builds the CLI without starting Redis or the terminal UI.
+func newRootCommand(version, commit, date, builtBy string) *cobra.Command {
 	var enableDangerousActions bool
 	var development bool
+	var enabledFeatures []string
 	rootCmd := &cobra.Command{
 		Use:   "lazykiq",
 		Short: "A terminal UI for Sidekiq.",
@@ -52,6 +53,8 @@ func Execute(version, commit, date, builtBy string) error {
 
 	rootCmd.Version = buildVersion(version, commit, date, builtBy)
 	rootCmd.SetVersionTemplate(`lazykiq {{printf "version %s\n" .Version}}`)
+
+	rootCmd.Flags().StringSliceVar(&enabledFeatures, "enable", nil, "enable optional features (pro, ent)")
 
 	rootCmd.Flags().String(
 		"cpuprofile",
@@ -92,6 +95,10 @@ func Execute(version, commit, date, builtBy string) error {
 	})
 
 	rootCmd.RunE = func(cmd *cobra.Command, _ []string) error {
+		features, err := sidekiq.ResolveFeatures(enabledFeatures)
+		if err != nil {
+			return err
+		}
 		sidekiq.DisableRedisLogging()
 
 		cpuprofile, err := cmd.Flags().GetString("cpuprofile")
@@ -104,7 +111,7 @@ func Execute(version, commit, date, builtBy string) error {
 			return fmt.Errorf("parse redis flag: %w", err)
 		}
 
-		client, err := sidekiq.NewClient(redisURL)
+		client, err := sidekiq.NewClient(redisURL, sidekiq.WithFeatures(features))
 		if err != nil {
 			return fmt.Errorf("create redis client: %w", err)
 		}
@@ -143,6 +150,13 @@ func Execute(version, commit, date, builtBy string) error {
 
 		return nil
 	}
+
+	return rootCmd
+}
+
+// Execute initializes and runs the lazykiq terminal application.
+func Execute(version, commit, date, builtBy string) error {
+	rootCmd := newRootCommand(version, commit, date, builtBy)
 
 	return fang.Execute(
 		context.Background(),

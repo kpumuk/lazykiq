@@ -16,6 +16,7 @@ import (
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/lazytable"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
+	confirmdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/confirm"
 	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
 	"github.com/kpumuk/lazykiq/internal/ui/display"
 )
@@ -25,12 +26,14 @@ type QueueInfo struct {
 	Name    string
 	Size    int64
 	Latency float64
+	Paused  bool
 }
 
 type queueDetailsPayload struct {
 	queues        []*QueueInfo
 	jobs          []*sidekiq.PositionedEntry
 	selectedQueue int
+	capabilities  sidekiq.Capabilities
 }
 
 const (
@@ -42,11 +45,14 @@ const (
 type QueueDetails struct {
 	client sidekiq.API
 	detailListView
-	queues           []*QueueInfo
-	jobs             []*sidekiq.PositionedEntry
-	selectedQueue    int
-	selectedQueueKey string // Queue name to select after loading
-	displayOrder     []int  // Maps ctrl+1-5 to queue indices
+	queues                  []*QueueInfo
+	jobs                    []*sidekiq.PositionedEntry
+	selectedQueue           int
+	selectedQueueKey        string // Queue name to select after loading
+	displayOrder            []int  // Maps ctrl+1-5 to queue indices
+	capabilities            sidekiq.Capabilities
+	dangerousActionsEnabled bool
+	actions                 queueActions
 }
 
 // NewQueueDetails creates a new QueueDetails view.
@@ -83,11 +89,15 @@ func (q *QueueDetails) Update(msg tea.Msg) (View, tea.Cmd) {
 		return q, cmd
 
 	case lazytable.DataMsg:
+		if q.actions.busy {
+			return q, nil
+		}
 		if handled, cmd := q.handleData(msg, func(result lazytable.FetchResult) {
 			if payload, ok := result.Payload.(queueDetailsPayload); ok {
 				q.queues = payload.queues
 				q.jobs = payload.jobs
 				q.selectedQueue = payload.selectedQueue
+				q.capabilities = payload.capabilities
 			}
 			q.selectedQueueKey = ""
 			q.updateEmptyMessage()
@@ -97,17 +107,47 @@ func (q *QueueDetails) Update(msg tea.Msg) (View, tea.Cmd) {
 		return q, nil
 
 	case RefreshMsg:
+		if q.actions.busy {
+			return q, nil
+		}
 		return q, q.refreshWindow()
+	case QueueActionResultMsg:
+		if !q.actions.complete(msg) {
+			return q, nil
+		}
+		if msg.Err != nil {
+			return q, nil
+		}
+		return q, q.refreshWindow()
+	case confirmdialog.ActionMsg:
+		if !q.dangerousActionsEnabled {
+			return q, nil
+		}
+		cmd := q.actions.confirm(msg, q.client)
+		if cmd != nil {
+			q.lazy.CancelRequest()
+		}
+		return q, cmd
 
 	case filterdialog.ActionMsg:
 		return q, q.handleFilterAction(msg, q.updateEmptyMessage)
 
 	case tea.KeyPressMsg:
+		if q.actions.busy {
+			return q, nil
+		}
 		if handled, cmd := q.handleKeyPress(msg, q.updateEmptyMessage); handled {
 			return q, cmd
 		}
 
 		switch msg.String() {
+		case "p":
+			if q.dangerousActionsEnabled && q.capabilities.SupportsQueuePause() {
+				if queue, ok := q.currentQueue(); ok {
+					return q, q.actions.pauseDialog(queue.Name, queue.Paused, q.styles)
+				}
+			}
+			return q, nil
 		case "s":
 			// Switch to queues list view
 			return q, func() tea.Msg {
@@ -230,7 +270,25 @@ func (q *QueueDetails) HelpSections() []HelpSection {
 			helpBinding([]string{"enter"}, "enter", "job detail"),
 		},
 	}}
+	if bindings := q.MutationBindings(); len(bindings) > 0 {
+		sections = append(sections, HelpSection{Title: "Dangerous Actions", Bindings: bindings})
+	}
 	return sections
+}
+
+// MutationBindings implements MutationHintProvider.
+func (q *QueueDetails) MutationBindings() []key.Binding {
+	if q.dangerousActionsEnabled && q.capabilities.SupportsQueuePause() {
+		if queue, ok := q.currentQueue(); ok {
+			return []key.Binding{helpBinding([]string{"p"}, "p", queuePauseHelp(queue.Paused))}
+		}
+	}
+	return nil
+}
+
+// SetDangerousActionsEnabled toggles mutational actions for the view.
+func (q *QueueDetails) SetDangerousActionsEnabled(enabled bool) {
+	q.dangerousActionsEnabled = enabled
 }
 
 // TableHelp implements TableHelpProvider.
@@ -252,6 +310,7 @@ func (q *QueueDetails) Dispose() {
 // CancelRequests stops in-flight fetches when the view is hidden.
 func (q *QueueDetails) CancelRequests() {
 	q.cancelRequests()
+	q.actions.reset()
 }
 
 // SetStyles implements View.
@@ -280,6 +339,10 @@ func (q *QueueDetails) fetchWindow(
 	_ lazytable.CursorIntent,
 ) (lazytable.FetchResult, error) {
 	ctx = devtools.WithTracker(ctx, "queue_details.fetchWindow")
+	capabilities, paused, err := fetchQueueCapabilities(ctx, q.client)
+	if err != nil {
+		return lazytable.FetchResult{}, err
+	}
 
 	queues, err := q.client.GetQueues(ctx)
 	if err != nil {
@@ -294,6 +357,7 @@ func (q *QueueDetails) fetchWindow(
 			Name:    queue.Name(),
 			Size:    size,
 			Latency: latency,
+			Paused:  paused[queue.Name()],
 		}
 	}
 
@@ -311,6 +375,7 @@ func (q *QueueDetails) fetchWindow(
 			queues:        queueInfos,
 			jobs:          jobs,
 			selectedQueue: selectedQueue,
+			capabilities:  capabilities,
 		},
 	}, nil
 }
@@ -424,6 +489,7 @@ func (q *QueueDetails) fetchUnfilteredQueueJobs(
 }
 
 func (q *QueueDetails) reset() {
+	q.actions.reset()
 	q.resetShell()
 	// Only reset selectedQueue if no queue key is set
 	if q.selectedQueueKey == "" {
@@ -524,8 +590,11 @@ func (q *QueueDetails) queueListLines() []string {
 		sizeStr := fmt.Sprintf("%*d", maxSizeLen, queue.Size)
 		latencyStr := fmt.Sprintf("%*s", maxLatencyLen, formatLatency(queue.Latency))
 		stats := q.styles.Muted.Render(fmt.Sprintf("  %s  %s", sizeStr, latencyStr))
+		if queue.Paused {
+			stats += "  " + q.styles.QueuePaused.Render("Paused")
+		}
 
-		lines = append(lines, hotkey+name+stats)
+		lines = append(lines, hotkey+" "+name+stats)
 	}
 
 	return lines
@@ -590,8 +659,18 @@ func (q *QueueDetails) renderJobsBox() string {
 	title := "Jobs"
 	if q.selectedQueue >= 0 && q.selectedQueue < len(q.queues) {
 		title = "Jobs in " + q.queues[q.selectedQueue].Name
+		if q.queues[q.selectedQueue].Paused {
+			title += " · Paused"
+		}
 	}
 	return q.renderBox(title, len(q.jobs))
+}
+
+func (q *QueueDetails) currentQueue() (*QueueInfo, bool) {
+	if q.selectedQueue >= 0 && q.selectedQueue < len(q.queues) {
+		return q.queues[q.selectedQueue], true
+	}
+	return nil, false
 }
 
 // renderJobDetail renders the job detail view.

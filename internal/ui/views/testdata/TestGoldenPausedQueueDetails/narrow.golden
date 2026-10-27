@@ -1,0 +1,17 @@
+ctrl+1 critical  100  0ms  Paused
+ctrl+2 default    90  0ms
+ctrl+3 mailers    80  0ms
+ctrl+4 reports    70  0ms
+ctrl+5 exports    60  0ms
+╭─Jobs in a-very-long-selected-queue-outside-t…╖rows: 0/0╓─╮
+│ #      Job                            Arguments          │
+│ ───────────────────────────────────────────────────────  │
+│ No jobs in queue                                         │
+│                                                          │
+│                                                          │
+│                                                          │
+│                                                          │
+│                                                          │
+│                                                          │
+│                                                          │
+╰──────────────────────────────────────────────────────────╯

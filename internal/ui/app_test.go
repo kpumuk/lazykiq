@@ -14,6 +14,25 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/views"
 )
 
+func TestQueueMutationErrorSurvivesNavigation(t *testing.T) {
+	queues := &cancelableStubView{name: "Queues"}
+	app := App{
+		viewStack:    []viewID{viewQueuesList},
+		viewRegistry: map[viewID]views.View{viewQueuesList: queues, viewBusy: stubView{}},
+		dialogs:      stubDialogs{},
+	}
+	app.setActiveView(viewBusy)
+	want := errors.New("queue pause failed after navigation")
+	updated, _ := app.Update(views.QueueActionResultMsg{Err: want})
+	got := updated.(App)
+	if !errors.Is(got.connectionError, want) {
+		t.Fatalf("connectionError = %v; want %v", got.connectionError, want)
+	}
+	if queues.cancelations == 0 {
+		t.Fatal("test did not hide original view")
+	}
+}
+
 type stubView struct{}
 
 func (v stubView) Init() tea.Cmd                        { return nil }

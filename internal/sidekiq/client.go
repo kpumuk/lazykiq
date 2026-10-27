@@ -38,10 +38,19 @@ type Client struct {
 	displayRedisURL string
 	version         Version
 	versionDetected bool
+	capabilities    Capabilities
+}
+
+// ClientOption configures a client at construction.
+type ClientOption func(*Client)
+
+// WithFeatures configures the optional capabilities selected by ResolveFeatures.
+func WithFeatures(features Capabilities) ClientOption {
+	return func(c *Client) { c.capabilities = features }
 }
 
 // NewClient creates a new Sidekiq client configured from a Redis URL.
-func NewClient(redisURL string) (*Client, error) {
+func NewClient(redisURL string, options ...ClientOption) (*Client, error) {
 	if redisURL == "" {
 		redisURL = "redis://localhost:6379/0"
 	}
@@ -64,10 +73,14 @@ func NewClient(redisURL string) (*Client, error) {
 
 	rdb := redis.NewClient(opts)
 
-	return &Client{
+	client := &Client{
 		redis:           rdb,
 		displayRedisURL: sanitizeRedisURL(redisURL),
-	}, nil
+	}
+	for _, option := range options {
+		option(client)
+	}
+	return client, nil
 }
 
 // DisplayRedisURL returns a sanitized URL safe for display.

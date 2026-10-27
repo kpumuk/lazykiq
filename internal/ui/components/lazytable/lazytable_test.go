@@ -268,3 +268,39 @@ func TestLazyTableFetcherSnapshotsInputs(t *testing.T) {
 	}
 	m.CancelRequest()
 }
+
+func TestCancelRequestRejectsLateResult(t *testing.T) {
+	model := New()
+	oldID := model.RequestID()
+	model.CancelRequest()
+	updated, _ := model.Update(DataMsg{RequestID: oldID, Result: FetchResult{Total: 10, Rows: []table.Row{{ID: "stale"}}}})
+	if len(updated.Table().Rows()) != 0 {
+		t.Fatal("canceled request's late result was accepted")
+	}
+}
+
+func TestResetRejectsPreviousVisitResult(t *testing.T) {
+	model := New(WithFetcher(func(context.Context, int, int, CursorIntent) (FetchResult, error) {
+		return FetchResult{}, nil
+	}))
+	model.RequestWindow(0, CursorStart)
+	previousID := model.RequestID()
+	model.Reset()
+	model.RequestWindow(0, CursorStart)
+	updated, _ := model.Update(DataMsg{RequestID: previousID, Result: FetchResult{Total: 10, Rows: []table.Row{{ID: "previous visit"}}}})
+	if len(updated.Table().Rows()) != 0 || !updated.Loading() {
+		t.Fatal("previous visit's result replaced the current request")
+	}
+}
+
+func TestCanceledRequestIDDoesNotCollideWithAnotherTable(t *testing.T) {
+	first := newTestModel()
+	first.RequestWindow(0, CursorStart)
+	first.CancelRequest()
+	second := newTestModel()
+	second.RequestWindow(0, CursorStart)
+	defer second.CancelRequest()
+	if first.RequestID() == second.RequestID() {
+		t.Fatal("canceled table and active table share a request ID")
+	}
+}

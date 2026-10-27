@@ -237,6 +237,7 @@ type Styles struct {
 	JSONPunctuation lipgloss.Style
 
 	// Queues
+	QueuePaused lipgloss.Style
 	QueueText   lipgloss.Style
 	QueueWeight lipgloss.Style
 
@@ -385,6 +386,9 @@ func NewStyles() Styles {
 
 		JSONPunctuation: lipgloss.NewStyle().
 			Foreground(t.JSONPunctuation),
+
+		QueuePaused: lipgloss.NewStyle().
+			Foreground(t.Primary),
 
 		QueueText: lipgloss.NewStyle().
 			Foreground(t.QueueText),

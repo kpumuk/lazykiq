@@ -5,6 +5,10 @@ import "context"
 // API defines the interface for interacting with Sidekiq via Redis.
 // This interface enables mocking the client for testing purposes.
 type API interface {
+	// GetCapabilities returns explicitly enabled optional functionality.
+	GetCapabilities() Capabilities
+	// GetPausedQueues reads the persistent commercial queue pause flags.
+	GetPausedQueues(ctx context.Context) (map[string]bool, error)
 	// Close closes the Redis connection.
 	Close() error
 
