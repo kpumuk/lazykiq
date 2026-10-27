@@ -138,3 +138,63 @@ func TestGoldenTimeseries(t *testing.T) {
 	output := ansi.Strip(m.View())
 	golden.RequireEqual(t, []byte(output))
 }
+
+func TestViewSmallSizes(t *testing.T) {
+	for name, opts := range map[string][]Option{
+		"empty":        {WithEmptyMessage("Loading...")},
+		"populated":    {WithSeries(sampleSeries()...)},
+		"zero values":  {WithSeries(Series{Times: sampleSeries()[0].Times, Values: []float64{0, 0, 0}})},
+		"wide labels":  {WithSeries(sampleSeries()...), WithYFormatter(func(int, float64) string { return "1000000000" })},
+		"without axes": {WithSeries(sampleSeries()...), WithXYSteps(0, 0)},
+	} {
+		t.Run(name, func(t *testing.T) {
+			m := New(opts...)
+			for width := -1; width <= 16; width++ {
+				for height := -1; height <= 8; height++ {
+					t.Run(fmt.Sprintf("%dx%d", width, height), func(t *testing.T) {
+						m.SetSize(width, height)
+						output := m.View()
+						if width <= 0 || height <= 0 {
+							if output != "" {
+								t.Fatalf("expected empty output, got %q", output)
+							}
+							return
+						}
+						if got := lipgloss.Height(output); got != height {
+							t.Fatalf("height = %d, want %d", got, height)
+						}
+						if got := lipgloss.Width(output); got > width {
+							t.Fatalf("width = %d, want <= %d", got, width)
+						}
+					})
+				}
+			}
+		})
+	}
+}
+
+func TestGoldenTimeseriesSmallSizes(t *testing.T) {
+	for name, tc := range map[string]struct {
+		width  int
+		height int
+		empty  bool
+	}{
+		"one row":        {width: 24, height: 1},
+		"two rows":       {width: 24, height: 2},
+		"first plot row": {width: 24, height: 3},
+		"narrow":         {width: 2, height: 5},
+		"empty":          {width: 24, height: 2, empty: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			m := New(
+				WithSize(tc.width, tc.height),
+				WithYFormatter(func(_ int, v float64) string { return fmt.Sprintf("%.0f", v) }),
+				WithEmptyMessage("Loading..."),
+			)
+			if !tc.empty {
+				m.SetSeries(sampleSeries()...)
+			}
+			golden.RequireEqual(t, []byte(ansi.Strip(m.View())))
+		})
+	}
+}

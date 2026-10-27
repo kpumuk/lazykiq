@@ -199,6 +199,11 @@ func (m Model) View() string {
 		tslc.WithTimeRange(minTime, maxTime),
 		tslc.WithYRange(minValue, maxValue),
 	)
+	// Axes and labels can exhaust a positive-sized canvas. Braille drawing
+	// requires a positive plotting area, independent of the outer dimensions.
+	if chart.GraphWidth() < 1 || chart.GraphHeight() < 1 {
+		return charts.RenderCentered(m.width, m.height, "Not enough space")
+	}
 	chart.AutoMinX = false
 	chart.AutoMaxX = false
 	chart.AutoMinY = false
