@@ -1,0 +1,16 @@
+╭─Job Details──────────────────────────────────────────────────╮╭─Job Data (JSON)───────────────────────────────────────────────────────────────╖Esc to close╓─╮
+│   job1                                                       ││ {                                                                                            │
+│ Queue:                                                       ││   "args": [                                                                                  │
+│   default                                                    ││     "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456 │
+│ Class:                                                       ││   ],                                                                                         │
+│   ReportJob                                                  ││   "class": "ReportJob",                                                                      │
+│ Error Class:                                                 ││   "error_backtrace": [                                                                       │
+│   RuntimeError                                               ││     "app/jobs/report.rb:42",                                                                 │
+│ Error:                                                       ││     "app/reports/daily.rb:8"                                                                 │
+│   Request failed                                             ││   ],                                                                                         │
+│ Backtrace:                                                   ││   "error_class": "RuntimeError",                                                             │
+│   app/jobs/report.rb:42 | app/reports/daily.rb:8             ││   "error_message": "Request failed",                                                         │
+│ Args:                                                        ││   "jid": "job1",                                                                             │
+│   "012345678901234567890123456789012345678901234567890123456 ││   "queue": "default"                                                                         │
+│   789012345678901234567890123456789TAIL"                     ││ }                                                                                            │
+╰──────────────────────────────────────────────────────────────╯╰──────────────────────────────────────────────────────────────────────────────────────────────╯

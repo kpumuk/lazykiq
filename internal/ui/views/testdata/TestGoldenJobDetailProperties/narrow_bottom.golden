@@ -1,0 +1,12 @@
+╭─Job Details──────────────────╮╭─Job Data (JSON)───────────────╖Esc to close╓─╮
+│ Error:                       ││ {                                            │
+│   Request failed             ││   "args": [                                  │
+│ Backtrace:                   ││     "012345678901234567890123456789012345678 │
+│   app/jobs/report.rb:42 | ap ││   ],                                         │
+│   p/reports/daily.rb:8       ││   "class": "ReportJob",                      │
+│ Args:                        ││   "error_backtrace": [                       │
+│   "0123456789012345678901234 ││     "app/jobs/report.rb:42",                 │
+│   56789012345678901234567890 ││     "app/reports/daily.rb:8"                 │
+│   12345678901234567890123456 ││   ],                                         │
+│   7890123456789TAIL"         ││   "error_class": "RuntimeError",             │
+╰──────────────────────────────╯╰──────────────────────────────────────────────╯

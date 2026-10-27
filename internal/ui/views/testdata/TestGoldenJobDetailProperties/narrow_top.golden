@@ -1,0 +1,12 @@
+╭─Job Details──────────────────╮╭─Job Data (JSON)───────────────╖Esc to close╓─╮
+│ JID:                         ││ {                                            │
+│   job1                       ││   "args": [                                  │
+│ Queue:                       ││     "012345678901234567890123456789012345678 │
+│   default                    ││   ],                                         │
+│ Class:                       ││   "class": "ReportJob",                      │
+│   ReportJob                  ││   "error_backtrace": [                       │
+│ Error Class:                 ││     "app/jobs/report.rb:42",                 │
+│   RuntimeError               ││     "app/reports/daily.rb:8"                 │
+│ Error:                       ││   ],                                         │
+│   Request failed             ││   "error_class": "RuntimeError",             │
+╰──────────────────────────────╯╰──────────────────────────────────────────────╯
