@@ -1,0 +1,17 @@
+First                               
+─────────────────────────────────── 
+one                                 
+one      HEADxxxxxxxxxxxxxxxxxxxxxx 
+full override                       
+
+t                                   
+─────────────────────────────────── 
+                                    
+     HEADxxxxxxxxxxxxxxxxxxxxxxxxxx 
+ override                           
+
+                    Middle   Last   
+─────────────────────────────────── 
+                       two  three   
+xxxxxxxxxxxxxxxxxxxxxxTAIL  three   
+                                    
