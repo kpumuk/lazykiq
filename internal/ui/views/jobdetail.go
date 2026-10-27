@@ -11,6 +11,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/kpumuk/lazykiq/internal/mathutil"
@@ -107,6 +108,19 @@ type PropertyRow struct {
 	Value string
 }
 
+type jobDetailLineKind uint8
+
+const (
+	jobDetailValueLine jobDetailLineKind = iota
+	jobDetailLabelLine
+	jobDetailQueueLine
+)
+
+type jobDetailLine struct {
+	text string
+	kind jobDetailLineKind
+}
+
 // JobDetail shows a full job detail panel.
 type JobDetail struct {
 	KeyMap KeyMap
@@ -118,6 +132,10 @@ type JobDetail struct {
 	job        *sidekiq.JobRecord
 	properties []PropertyRow
 	jsonView   jsonview.Model
+
+	// Unstyled property lines for the current job and value width only.
+	leftLines      []jobDetailLine
+	leftLinesWidth int
 
 	// Scroll state
 	leftYOffset  int
@@ -428,33 +446,44 @@ func (j *JobDetail) clampScroll() {
 	}
 }
 
-// countLeftPanelLines counts total display lines in left panel (with wrapping).
+// countLeftPanelLines reuses the prepared lines for scroll bounds and rendering.
 func (j *JobDetail) countLeftPanelLines() int {
+	j.prepareLeftPanel()
+	return len(j.leftLines)
+}
+
+func (j *JobDetail) prepareLeftPanel() {
 	if len(j.properties) == 0 {
-		return 0
+		j.leftLines = nil
+		return
 	}
 
-	// Calculate value width (same as in renderLeftPanel)
 	innerWidth := j.leftWidth - 2
 	contentWidth := max(innerWidth-2*jobDetailPanelPadding, 0)
 	valueWidth := max(contentWidth-jobDetailValueIndent, 10)
+	if j.leftLines != nil && j.leftLinesWidth == valueWidth {
+		return
+	}
 
-	count := 0
+	lines := make([]jobDetailLine, 0, len(j.properties)*2)
 	for _, prop := range j.properties {
-		count++ // label line
-		lines := wrapText(prop.Value, valueWidth)
-		if len(lines) == 0 {
-			count++ // empty value line
-		} else {
-			count += len(lines)
+		lines = append(lines, jobDetailLine{text: prop.Label + ":", kind: jobDetailLabelLine})
+		kind := jobDetailValueLine
+		if prop.Label == "Queue" {
+			kind = jobDetailQueueLine
+		}
+		for _, line := range wrapText(prop.Value, valueWidth) {
+			lines = append(lines, jobDetailLine{text: line, kind: kind})
 		}
 	}
-	return count
+	j.leftLines = lines
+	j.leftLinesWidth = valueWidth
 }
 
 // extractProperties builds the properties list from job data.
 func (j *JobDetail) extractProperties() {
 	j.properties = nil
+	j.leftLines = nil
 	if j.job == nil {
 		return
 	}
@@ -555,43 +584,22 @@ func (j *JobDetail) jobJSON() string {
 
 // renderLeftPanel renders the properties panel.
 func (j *JobDetail) renderLeftPanel() string {
-	innerWidth := j.leftWidth - 2 // minus left and right border
-
-	// Calculate available width for values (with 2-space indent)
-	contentWidth := max(innerWidth-2*jobDetailPanelPadding, 0)
+	j.prepareLeftPanel()
 	valueIndent := strings.Repeat(" ", jobDetailValueIndent)
-	valueWidth := max(contentWidth-jobDetailValueIndent, 10)
 
-	// Build all display lines (label on own row, value indented below)
-	allLines := make([]string, 0, len(j.properties)*2)
-	for _, prop := range j.properties {
-		// Label row
-		label := j.styles.Label.Render(prop.Label + ":")
-		allLines = append(allLines, label)
-		// Value rows (indented, wrapped if needed)
-		valueStyle := j.styles.Value
-		if prop.Label == "Queue" {
-			valueStyle = j.styles.QueueText
+	// Style only visible lines; scrolling never rewraps or styles hidden content.
+	contentLines := make([]string, j.panelHeight)
+	startY := mathutil.Clamp(j.leftYOffset, 0, len(j.leftLines))
+	endY := min(startY+j.panelHeight, len(j.leftLines))
+	for i, line := range j.leftLines[startY:endY] {
+		switch line.kind {
+		case jobDetailLabelLine:
+			contentLines[i] = j.styles.Label.Render(line.text)
+		case jobDetailQueueLine:
+			contentLines[i] = valueIndent + j.styles.QueueText.Render(line.text)
+		case jobDetailValueLine:
+			contentLines[i] = valueIndent + j.styles.Value.Render(line.text)
 		}
-		valueLines := wrapText(prop.Value, valueWidth)
-		if len(valueLines) == 0 {
-			valueLines = []string{""}
-		}
-		for _, vl := range valueLines {
-			allLines = append(allLines, valueIndent+valueStyle.Render(vl))
-		}
-	}
-
-	// Apply vertical scroll
-	var contentLines []string
-	endY := min(j.leftYOffset+j.panelHeight, len(allLines))
-	if j.leftYOffset < len(allLines) {
-		contentLines = allLines[j.leftYOffset:endY]
-	}
-
-	// Pad to panel height
-	for len(contentLines) < j.panelHeight {
-		contentLines = append(contentLines, "")
 	}
 	return frame.New(
 		frame.WithStyles(frame.Styles{
@@ -672,23 +680,70 @@ func formatTimestamp(ts time.Time) string {
 	return fmt.Sprintf("%s (%s ago)", ts.Format("2006-01-02 15:04:05"), display.DurationSince(ts))
 }
 
-// wrapText wraps text to fit within the specified width.
+// wrapText makes one forward pass over graphemes and ANSI sequences. Each line
+// carries its own terminal style so it can also be rendered alone after scrolling.
 func wrapText(s string, width int) []string {
 	if width <= 0 {
 		return []string{s}
 	}
 
-	if lipgloss.Width(s) <= width {
-		return []string{s}
+	p := ansi.GetParser()
+	defer ansi.PutParser(p)
+	var pen uv.Style
+	var link uv.Link
+	var state byte
+	var lines []string
+	var prefix string
+	start, lineWidth := 0, 0
+	appendLine := func(end int) {
+		text := s[start:end]
+		var suffix, nextPrefix string
+		if !pen.IsZero() {
+			suffix = ansi.ResetStyle
+			nextPrefix = pen.String()
+		}
+		if !link.IsZero() {
+			suffix += ansi.SetHyperlink("")
+			nextPrefix += ansi.SetHyperlink(link.URL, link.Params)
+		}
+		if prefix != "" || suffix != "" {
+			text = prefix + text + suffix
+		}
+		lines = append(lines, text)
+		prefix = nextPrefix
+		lineWidth = 0
 	}
 
-	var lines []string
-	for lipgloss.Width(s) > width {
-		lines = append(lines, ansi.Truncate(s, width, ""))
-		s = ansi.Cut(s, width, lipgloss.Width(s))
+	for pos := 0; pos < len(s); {
+		rest := s[pos:]
+		seq, cellWidth, n, nextState := ansi.DecodeSequence(rest, state, p)
+		// DecodeSequence's ASCII fast path does not include combining marks.
+		if n == 1 && seq[0] > 0x1f && seq[0] < 0x7f && len(rest) > 1 && rest[1] >= 0xc0 {
+			seq, cellWidth = ansi.FirstGraphemeCluster(rest, ansi.GraphemeWidth)
+			n = len(seq)
+		}
+		// Invalid UTF-8 must still make progress; retain the original byte.
+		n = max(n, 1)
+		if seq == "\n" {
+			appendLine(pos)
+			start = pos + n
+		} else {
+			// An indivisible grapheme wider than the limit occupies its own line.
+			if cellWidth > 0 && lineWidth > 0 && lineWidth+cellWidth > width {
+				appendLine(pos)
+				start = pos
+			}
+			lineWidth += cellWidth
+			switch {
+			case ansi.HasCsiPrefix(seq) && p.Command() == 'm':
+				uv.ReadStyle(p.Params(), &pen)
+			case ansi.HasOscPrefix(seq) && p.Command() == 8:
+				uv.ReadLink(p.Data(), &link)
+			}
+		}
+		state = nextState
+		pos += n
 	}
-	if s != "" {
-		lines = append(lines, s)
-	}
+	appendLine(len(s))
 	return lines
 }
