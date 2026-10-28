@@ -3,7 +3,9 @@ package jsonview
 
 import (
 	"encoding/json"
+	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -62,8 +64,25 @@ const (
 )
 
 type token struct {
-	kind  tokenKind
-	value string
+	kind   tokenKind
+	value  string
+	layout *tokenLayout // nil for printable ASCII: byte offsets are cell offsets
+}
+
+// Unicode tokens keep only sparse positions, never an entry per byte or cell.
+// Positions follow ansi.Cut's cluster boundaries; its ASCII handling differs
+// from StringWidth for some combining sequences, so cache that width separately.
+const checkpointBytes = 1024
+
+type tokenPosition struct {
+	byteOffset int
+	column     int
+}
+
+type tokenLayout struct {
+	width       int
+	checkpoints []tokenPosition
+	controls    bool
 }
 
 // Option is used to set options in New.
@@ -185,7 +204,7 @@ func (m Model) renderTokens(tokens []token, offset, width int) string {
 	col := 0
 
 	for _, token := range tokens {
-		tokenWidth := lipgloss.Width(token.value)
+		tokenWidth := token.width()
 		if tokenWidth == 0 {
 			continue
 		}
@@ -196,7 +215,7 @@ func (m Model) renderTokens(tokens []token, offset, width int) string {
 		if tokenEnd > offset && tokenStart < end {
 			start := mathutil.Clamp(offset-tokenStart, 0, tokenWidth)
 			stop := mathutil.Clamp(end-tokenStart, 0, tokenWidth)
-			segment := ansi.Cut(token.value, start, stop)
+			segment := token.cut(start, stop)
 			if segment != "" {
 				builder.WriteString(m.styleForToken(token).Render(segment))
 			}
@@ -213,6 +232,103 @@ func (m Model) renderTokens(tokens []token, offset, width int) string {
 		rendered += strings.Repeat(" ", width-renderedWidth)
 	}
 	return rendered
+}
+
+func (t token) width() int {
+	if t.layout == nil {
+		return len(t.value)
+	}
+	return t.layout.width
+}
+
+func newToken(kind tokenKind, value string) token {
+	t := token{kind: kind, value: value}
+	for i := range len(value) {
+		if value[i] < ' ' || value[i] >= '\x7f' {
+			t.layout = indexToken(value)
+			break
+		}
+	}
+	return t
+}
+
+func indexToken(value string) *tokenLayout {
+	layout := &tokenLayout{width: ansi.StringWidth(value)}
+	// Marshal escapes C0 controls, but leaves DEL literal. ansi.Cut can emit
+	// these even outside the viewport; retain its behavior for such tokens.
+	for i := range len(value) {
+		if value[i] < ' ' || value[i] == '\x7f' {
+			layout.controls = true
+			return layout
+		}
+	}
+	last := 0
+	for pos, column := 0, 0; pos < len(value); {
+		if pos-last >= checkpointBytes {
+			layout.checkpoints = append(layout.checkpoints, tokenPosition{byteOffset: pos, column: column})
+			last = pos
+		}
+		n, width := cutCluster(value[pos:])
+		pos += n
+		column += width
+	}
+	return layout
+}
+
+// JSON marshaling escapes ANSI sequences, so ordinary tokens are plain text.
+// Clip the unstyled text before applying syntax colors. As with ansi.Cut, a
+// wide cluster crossing the left edge is kept and one crossing the right is
+// omitted. Zero-width clusters at the right edge stay with their prefix.
+func (t token) cut(left, right int) string {
+	if right <= left {
+		return ""
+	}
+	if t.layout == nil {
+		return t.value[left:right]
+	}
+	if t.layout.controls {
+		return ansi.Cut(t.value, left, right)
+	}
+	stop := len(t.value)
+	if right < t.layout.width {
+		stop = t.byteAfter(right)
+	}
+	start := 0
+	if left > 0 {
+		start = t.byteAfter(left)
+	}
+	if start >= stop {
+		return ""
+	}
+	return t.value[start:stop]
+}
+
+// byteAfter finds the first cluster whose end exceeds column, starting at the
+// nearest checkpoint. Both left removal and right truncation use this boundary.
+func (t token) byteAfter(column int) int {
+	checkpoints := t.layout.checkpoints
+	i := sort.Search(len(checkpoints), func(i int) bool { return checkpoints[i].column > column })
+	position := tokenPosition{}
+	if i > 0 {
+		position = checkpoints[i-1]
+	}
+	for position.byteOffset < len(t.value) {
+		n, width := cutCluster(t.value[position.byteOffset:])
+		if position.column+width > column {
+			break
+		}
+		position.byteOffset += n
+		position.column += width
+	}
+	return position.byteOffset
+}
+
+func cutCluster(value string) (bytes, width int) {
+	if value[0] < utf8.RuneSelf {
+		return 1, 1
+	}
+	cluster, width := ansi.FirstGraphemeCluster(value, ansi.GraphemeWidth)
+	return len(cluster), width
 }
 
 func (m Model) styleForToken(token token) lipgloss.Style {
@@ -250,7 +366,7 @@ func tokenizeJSONLines(jsonText string) [][]token {
 		if value == "" {
 			return
 		}
-		lines[len(lines)-1] = append(lines[len(lines)-1], token{kind: kind, value: value})
+		lines[len(lines)-1] = append(lines[len(lines)-1], newToken(kind, value))
 	}
 
 	for i := 0; i < len(jsonText); {

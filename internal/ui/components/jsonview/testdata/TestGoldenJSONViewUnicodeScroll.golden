@@ -1,0 +1,25 @@
+offset=0 width=24
+"{                       "
+"  \"args\": \"界é👩🏽\u200d💻🇨🇦界é👩🏽\u200d💻 "
+"  \"text\": \"quote: \\\" sla"
+"}                       "
+offset=10 width=13
+"             "
+"\"界é👩🏽\u200d💻🇨🇦界é👩🏽\u200d💻"
+"\"quote: \\\" sl"
+"             "
+offset=221 width=17
+"                 "
+"界é👩🏽\u200d💻🇨🇦界é👩🏽\u200d💻🇨🇦界é"
+"                 "
+"                 "
+offset=428 width=24
+"                        "
+"👩🏽\u200d💻🇨🇦\",                  "
+"                        "
+"                        "
+offset=900 width=8
+"        "
+"        "
+"        "
+"        "
