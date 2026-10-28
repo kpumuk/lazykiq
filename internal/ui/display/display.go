@@ -4,6 +4,8 @@ package display
 import (
 	"encoding/json"
 	"fmt"
+	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -81,7 +83,204 @@ func Args(args []any) string {
 
 // ArgsPreview formats job arguments for tables, capped at 200 terminal columns.
 func ArgsPreview(args []any) string {
-	return ansi.Truncate(Args(args), 200, "…")
+	if len(args) == 0 {
+		return ""
+	}
+	// Check the whole value shape before skipping invisible content. A marshal
+	// error anywhere in an argument must still select Args' original fallback.
+	// Small inputs also use the simpler formatter; their escaped size is bounded.
+	size := previewJSONSize(args, 0)
+	if size < 0 {
+		return ansi.Truncate(Args(args), 200, "…")
+	}
+	if size <= argsPreviewSmallSize {
+		return truncateArgsPreview(Args(args))
+	}
+
+	p := argsPreview{data: make([]byte, 0, 256)}
+	for i, arg := range args {
+		if i > 0 {
+			p.write(", ")
+		}
+		p.value(arg)
+		if p.full {
+			break
+		}
+	}
+	return truncateArgsPreview(string(p.data))
+}
+
+const argsPreviewSmallSize = 512
+
+// truncateArgsPreview clips JSON text at complete graphemes, including keycaps
+// that start with an ASCII digit. JSON escaping removes terminal control codes.
+func truncateArgsPreview(s string) string {
+	if ansi.StringWidth(s) <= 200 {
+		return s
+	}
+	if strings.IndexFunc(s, func(r rune) bool { return r < ' ' || r > '~' }) < 0 {
+		return s[:199] + "…"
+	}
+	end, columns := 0, 0
+	for end < len(s) {
+		cluster, width := ansi.FirstGraphemeCluster(s[end:], ansi.GraphemeWidth)
+		if columns+width > 199 {
+			break
+		}
+		end += len(cluster)
+		columns += width
+	}
+	return s[:end] + "…"
+}
+
+// previewJSONSize recognizes decoded JSON values and ordinary Go numbers. It
+// estimates their size before string escaping, capped above the small-input
+// threshold. A negative result preserves encoding/json's handling of other
+// types, custom marshalers, invalid values and excessively deep/cyclic inputs.
+func previewJSONSize(value any, depth int) int {
+	if depth > 1000 {
+		return -1
+	}
+	size := 0
+	switch v := value.(type) {
+	case string:
+		return 2 + min(len(v), argsPreviewSmallSize+1)
+	case nil, bool:
+		return 5
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, uintptr:
+		return 24
+	case float64:
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			return -1
+		}
+		return 24
+	case float32:
+		return previewJSONSize(float64(v), depth)
+	case []any:
+		size = 2 + min(len(v), argsPreviewSmallSize+1)
+		for _, item := range v {
+			child := previewJSONSize(item, depth+1)
+			if child < 0 {
+				return -1
+			}
+			size = min(size+child, argsPreviewSmallSize+1)
+		}
+	case map[string]any:
+		size = 2
+		for key, item := range v {
+			child := previewJSONSize(item, depth+1)
+			if child < 0 {
+				return -1
+			}
+			size = min(size+min(len(key), argsPreviewSmallSize+1)+4+child, argsPreviewSmallSize+1)
+		}
+	default:
+		return -1
+	}
+	return size
+}
+
+type argsPreview struct {
+	data      []byte
+	processed int
+	columns   int
+	full      bool
+}
+
+func (p *argsPreview) value(value any) {
+	if p.full {
+		return
+	}
+	switch v := value.(type) {
+	case string:
+		p.quoted(v)
+	case []any:
+		if v == nil {
+			p.write("null")
+			return
+		}
+		p.write("[")
+		for i, item := range v {
+			if i > 0 {
+				p.write(",")
+			}
+			p.value(item)
+			if p.full {
+				return
+			}
+		}
+		p.write("]")
+	case map[string]any:
+		if v == nil {
+			p.write("null")
+			return
+		}
+		keys := make([]string, 0, len(v))
+		for key := range v {
+			keys = append(keys, key)
+		}
+		slices.Sort(keys)
+		p.write("{")
+		for i, key := range keys {
+			if i > 0 {
+				p.write(",")
+			}
+			p.quoted(key)
+			p.write(":")
+			p.value(v[key])
+			if p.full {
+				return
+			}
+		}
+		p.write("}")
+	default:
+		// Shape validation excludes unsupported values and non-finite floats.
+		encoded, _ := json.Marshal(value)
+		p.write(string(encoded))
+	}
+}
+
+func (p *argsPreview) quoted(s string) {
+	if p.full {
+		return
+	}
+	p.write(`"`)
+	for len(s) > 0 && !p.full {
+		// Quote only a small block, using the standard library for all escaping
+		// and invalid UTF-8 handling. Keep complete source graphemes together.
+		end := 0
+		for end < len(s) && end < 256 {
+			cluster, _ := ansi.FirstGraphemeCluster(s[end:], ansi.GraphemeWidth)
+			end += len(cluster)
+		}
+		encoded, _ := json.Marshal(s[:end])
+		p.write(string(encoded[1 : len(encoded)-1]))
+		s = s[end:]
+	}
+	p.write(`"`)
+}
+
+func (p *argsPreview) write(s string) {
+	if p.full {
+		return
+	}
+	p.data = append(p.data, s...)
+	for p.processed < len(p.data) {
+		remaining := p.data[p.processed:]
+		cluster, width := ansi.FirstGraphemeCluster(remaining, ansi.GraphemeWidth)
+		if len(cluster) == len(remaining) {
+			// A later block can extend this grapheme (for example a combining
+			// mark after an escaped digit). Count it only once its end is known.
+			return
+		}
+		p.processed += len(cluster)
+		p.columns += width
+		if p.columns > 200 {
+			p.data = p.data[:p.processed]
+			p.full = true
+			return
+		}
+	}
 }
 
 // ShortNumber formats a number with K/M suffixes for readability.
