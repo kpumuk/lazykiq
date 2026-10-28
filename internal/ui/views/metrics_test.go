@@ -2,8 +2,13 @@ package views
 
 import (
 	"context"
+	"fmt"
 	"slices"
+	"strings"
 	"testing"
+
+	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/exp/golden"
 
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 )
@@ -108,5 +113,88 @@ func TestNormalizeMetricsPeriods_FallbackToDefaults(t *testing.T) {
 	got = normalizeMetricsPeriods(nil)
 	if !slices.Equal(got, sidekiq.MetricsPeriodOrder) {
 		t.Fatalf("normalizeMetricsPeriods(nil) = %v, want %v", got, sidekiq.MetricsPeriodOrder)
+	}
+}
+
+func metricsListFixture(width, height int, filter string, jobs map[string]sidekiq.MetricsJobTotals) *Metrics {
+	m := NewMetrics(nil)
+	m.SetStyles(Styles{})
+	m.SetSize(width, height)
+	m.filter = filter
+	m.Update(metricsListMsg{
+		period: "8h",
+		result: sidekiq.MetricsTopJobsResult{Jobs: jobs},
+	})
+	return m
+}
+
+func TestMetricsListOrderAndDimensions(t *testing.T) {
+	jobs := map[string]sidekiq.MetricsJobTotals{
+		"EmailJob":  {Processed: 20, Failed: 2, Milliseconds: 5000, Seconds: 5},
+		"ReportJob": {Processed: 10, Failed: 1, Milliseconds: 10000, Seconds: 10},
+	}
+	for name, size := range map[string][2]int{
+		"narrow": {60, 8}, "wide": {120, 12}, "zero width": {0, 12}, "zero height": {120, 0},
+	} {
+		t.Run(name, func(t *testing.T) {
+			m := metricsListFixture(size[0], size[1], "", jobs)
+			if len(m.rows) != 2 || m.rows[0].class != "ReportJob" || m.rows[1].class != "EmailJob" {
+				t.Fatalf("jobs are not ordered by descending execution time: %+v", m.rows)
+			}
+			if m.rows[0].totals != jobs["ReportJob"] || m.rows[1].totals != jobs["EmailJob"] {
+				t.Fatal("building rows changed the totals")
+			}
+			if count, succeeded, failed := m.aggregateTotals(); count != 2 || succeeded != 27 || failed != 3 {
+				t.Fatalf("context totals = %d/%d/%d, want 2/27/3", count, succeeded, failed)
+			}
+			output := ansi.Strip(m.View())
+			if size[0] == 0 || size[1] == 0 {
+				if output != "" {
+					t.Fatal("zero-sized view should be empty")
+				}
+				return
+			}
+			lines := strings.Split(output, "\n")
+			if len(lines) != size[1] {
+				t.Fatalf("height = %d, want %d", len(lines), size[1])
+			}
+			for _, line := range lines {
+				if width := ansi.StringWidth(line); width != size[0] {
+					t.Fatalf("width = %d, want %d", width, size[0])
+				}
+			}
+			if !strings.Contains(output, "ReportJob") || !strings.Contains(output, "EmailJob") {
+				t.Fatal("job rows missing from view")
+			}
+		})
+	}
+}
+
+func TestGoldenMetricsList(t *testing.T) {
+	for name, spec := range map[string]struct {
+		filter string
+		jobs   map[string]sidekiq.MetricsJobTotals
+	}{
+		"empty":      {},
+		"no matches": {filter: "missing"},
+		"matching filter": {
+			filter: "EMAIL",
+			jobs: map[string]sidekiq.MetricsJobTotals{
+				"App::EmailJob": {Processed: 48000, Failed: 480, Milliseconds: 96000, Seconds: 96},
+			},
+		},
+		"multiple jobs": {
+			jobs: map[string]sidekiq.MetricsJobTotals{
+				"EmailJob":  {Processed: 20, Failed: 2, Milliseconds: 5000, Seconds: 5},
+				"ReportJob": {Processed: 10, Failed: 1, Milliseconds: 10000, Seconds: 10},
+			},
+		},
+	} {
+		for _, width := range []int{100, 120} {
+			t.Run(fmt.Sprintf("%s/width %d", name, width), func(t *testing.T) {
+				m := metricsListFixture(width, 10, spec.filter, spec.jobs)
+				golden.RequireEqual(t, []byte(ansi.Strip(m.View())))
+			})
+		}
 	}
 }

@@ -47,6 +47,9 @@ var MetricsPeriodOrderSidekiq7 = []string{"1h", "2h", "4h", "8h"}
 
 const metricsHistogramBuckets = 26
 
+// Limit response maps retained at once, including both Sidekiq key formats.
+const metricsTopJobsBatchSize = 16
+
 // metricsJobDetailLuaScript fetches job metrics in a single round-trip.
 // KEYS: rollupKey1, ..., rollupKeyN, histKey1, ..., histKeyN
 // ARGV: className, rollupCount, GET, u16, #0, GET, u16, #1, ...
@@ -166,49 +169,84 @@ func (c *Client) GetMetricsTopJobs(ctx context.Context, period MetricsPeriod, cl
 		filter = strings.ToLower(classFilter)
 	}
 
-	pipe := c.redis.Pipeline()
-	cmds := make([]*redis.MapStringStringCmd, 0, len(keys))
-	for _, key := range keys {
-		cmds = append(cmds, pipe.HGetAll(ctx, key))
+	// Cache both matches and misses across fields and buckets. Class names can
+	// have mixed case, so Redis field matching cannot implement this filter.
+	var matches map[string]bool
+	if filter != "" {
+		matches = make(map[string]bool)
 	}
 
-	_, err := pipe.Exec(ctx)
-	if err != nil && !errors.Is(err, redis.Nil) {
-		return result, err
-	}
-
-	for _, cmd := range cmds {
-		if cmd.Err() != nil && !errors.Is(cmd.Err(), redis.Nil) {
-			return result, cmd.Err()
-		}
-		for key, value := range cmd.Val() {
-			className, metric := splitMetricKey(key)
-			if className == "" {
-				continue
-			}
-			if filter != "" && !strings.Contains(strings.ToLower(className), filter) {
-				continue
-			}
-			parsed, err := strconv.ParseInt(value, 10, 64)
-			if err != nil {
-				continue
-			}
-
-			totals := result.Jobs[className]
-			switch metric {
-			case "ms":
-				totals.Milliseconds += parsed
-				totals.Seconds += float64(parsed) / 1000.0
-			case "p":
-				totals.Processed += parsed
-			case "f":
-				totals.Failed += parsed
-			}
-			result.Jobs[className] = totals
+	for batch := range slices.Chunk(keys, metricsTopJobsBatchSize) {
+		if err := c.aggregateMetricsTopJobsBatch(ctx, batch, result.Jobs, filter, matches); err != nil {
+			// A failed fetch must not expose incomplete period totals.
+			clear(result.Jobs)
+			return result, err
 		}
 	}
 
 	return result, nil
+}
+
+func (c *Client) aggregateMetricsTopJobsBatch(ctx context.Context, keys []string, jobs map[string]MetricsJobTotals, filter string, matches map[string]bool) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	pipe := c.redis.Pipeline()
+	for _, key := range keys {
+		pipe.HGetAll(ctx, key)
+	}
+	cmds, err := pipe.Exec(ctx)
+	if err != nil && !errors.Is(err, redis.Nil) {
+		return err
+	}
+	for _, cmd := range cmds {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if cmd.Err() != nil && !errors.Is(cmd.Err(), redis.Nil) {
+			return cmd.Err()
+		}
+		response := cmd.(*redis.MapStringStringCmd)
+		aggregateMetricsTopJobs(response.Val(), jobs, filter, matches)
+		// Drop the map even while the remaining commands are being aggregated.
+		response.SetVal(nil)
+	}
+	return ctx.Err()
+}
+
+func aggregateMetricsTopJobs(fields map[string]string, jobs map[string]MetricsJobTotals, filter string, matches map[string]bool) {
+	for key, value := range fields {
+		className, metric, ok := strings.Cut(key, "|")
+		if !ok || className == "" {
+			continue
+		}
+		if filter != "" {
+			match, cached := matches[className]
+			if !cached {
+				match = strings.Contains(strings.ToLower(className), filter)
+				matches[className] = match
+			}
+			if !match {
+				continue
+			}
+		}
+		parsed, err := strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			continue
+		}
+
+		totals := jobs[className]
+		switch metric {
+		case "ms":
+			totals.Milliseconds += parsed
+			totals.Seconds += float64(parsed) / 1000.0
+		case "p":
+			totals.Processed += parsed
+		case "f":
+			totals.Failed += parsed
+		}
+		jobs[className] = totals
+	}
 }
 
 // GetMetricsJobDetail fetches detailed metrics for a single job within the period.
