@@ -1,0 +1,24 @@
+ Processed: 0   Failed: 0   Busy: 0   En
+  ctrl+1 worker-00000:12345  3/25  -  / 
+  ctrl+2 worker-00001:12345  3/25  -  c 
+  ctrl+3 worker-00002:12345  3/25  -  s 
+  ctrl+4 worker-00003:12345  3/25  -  c 
+  ctrl+5 worker-00004:12345  3/25  -  t 
+╭─Active Jobs──────────────────────────╮
+│ Process        TID    JID            │
+│ ───────────────────────────────────  │
+│ No active jobs                       │
+│                                      │
+│                                      │
+│                                      │
+│                                      │
+│                                      │
+│                                      │
+│                                      │
+│                                      │
+│                                      │
+│                                      │
+│                                      │
+╰──────────────────────────────────────╯
+  Dashboard                             
+  1 Dashboard  2 Busy  3 Queues  4 Retr 
