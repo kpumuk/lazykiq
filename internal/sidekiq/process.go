@@ -117,10 +117,21 @@ func (c *Client) GetProcesses(ctx context.Context) ([]*Process, error) {
 	return processes, nil
 }
 
+// GetProcessesData fetches process metadata and status without reading active work.
+// Processes are sorted by identity; stopped or invalid processes are skipped.
+func (c *Client) GetProcessesData(ctx context.Context) ([]Process, error) {
+	data, err := c.getProcessData(ctx, "", false)
+	return data.Processes, err
+}
+
 // GetBusyData fetches detailed process and active job information from Redis.
 // Uses pipelining to batch all Redis requests for optimal performance on large systems.
 // If filter is non-empty, only jobs whose raw payload contains the substring are returned.
 func (c *Client) GetBusyData(ctx context.Context, filter string) (BusyData, error) {
+	return c.getProcessData(ctx, filter, true)
+}
+
+func (c *Client) getProcessData(ctx context.Context, filter string, includeWork bool) (BusyData, error) {
 	var data BusyData
 
 	// Step 1: Get all process identities
@@ -157,20 +168,28 @@ func (c *Client) GetBusyData(ctx context.Context, filter string) (BusyData, erro
 		return data, err
 	}
 
-	// Step 4: Pipeline all work data fetches
-	workResults, err := c.redis.Pipelined(ctx, func(pipe redis.Pipeliner) error {
-		for _, identity := range identities {
-			pipe.HGetAll(ctx, identity+":work")
+	// Step 4: Only Busy needs active work data.
+	var workResults []redis.Cmder
+	if includeWork {
+		workResults, err = c.redis.Pipelined(ctx, func(pipe redis.Pipeliner) error {
+			for _, identity := range identities {
+				pipe.HGetAll(ctx, identity+":work")
+			}
+			return nil
+		})
+		if err != nil {
+			return data, err
 		}
-		return nil
-	})
-	if err != nil {
-		return data, err
 	}
 
 	// Step 5: Parse results
+	if err := ctx.Err(); err != nil {
+		return data, err
+	}
 	data.Processes = make([]Process, 0, len(identities))
-	data.Jobs = make([]Job, 0)
+	if includeWork {
+		data.Jobs = make([]Job, 0)
+	}
 
 	for i, identity := range identities {
 		process := c.NewProcess(identity)
@@ -199,6 +218,10 @@ func (c *Client) GetBusyData(ctx context.Context, filter string) (BusyData, erro
 		}
 
 		data.Processes = append(data.Processes, *process)
+
+		if !includeWork {
+			continue
+		}
 
 		// Parse work data
 		if cmd, ok := workResults[i].(*redis.MapStringStringCmd); ok {
