@@ -9,6 +9,77 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
+var tableRenderSink string
+
+func cardinalityRows(n int) []Row {
+	rows := make([]Row, n)
+	for i := range rows {
+		rows[i] = Row{ID: strconv.Itoa(i), Cells: []string{"default", "SomeJob", "[123, \"short arguments\"]"}}
+	}
+	return rows
+}
+
+func cardinalityTable(rows []Row) Model {
+	m := New(WithColumns([]Column{{Title: "Queue", Width: 12}, {Title: "Class", Width: 16}, {Title: "Args", Width: 20}}))
+	m.SetSize(120, 24)
+	m.SetRows(rows)
+	return m
+}
+
+// BenchmarkTableCardinality varies loaded rows with 22 visible rows.
+func BenchmarkTableCardinality(b *testing.B) {
+	for _, n := range []int{75, 1000, 10000, 100000} {
+		b.Run(fmt.Sprintf("rows=%d", n), func(b *testing.B) {
+			rows := cardinalityRows(n)
+			m := cardinalityTable(rows)
+			b.Run("SetRows", func(b *testing.B) {
+				b.ReportAllocs()
+				for range b.N {
+					m.SetRows(rows)
+				}
+			})
+			b.Run("Navigate", func(b *testing.B) {
+				b.ReportAllocs()
+				for i := range b.N {
+					m.SetCursor(i % n)
+				}
+			})
+			b.Run("View", func(b *testing.B) {
+				b.ReportAllocs()
+				for range b.N {
+					tableRenderSink = m.View()
+				}
+			})
+		})
+	}
+}
+
+func BenchmarkTableViewportChanges(b *testing.B) {
+	for _, n := range []int{75, 1000, 10000, 100000} {
+		b.Run(fmt.Sprintf("rows=%d", n), func(b *testing.B) {
+			rows := cardinalityRows(n)
+			rows[n-1].Cells[2] = strings.Repeat("x", 240)
+			m := cardinalityTable(rows)
+			b.Run("Horizontal", func(b *testing.B) {
+				m.ScrollToStart()
+				b.ReportAllocs()
+				b.ResetTimer()
+				for i := range b.N {
+					m.scrollX((1 - i%2*2) * 4)
+				}
+			})
+			b.Run("Resize", func(b *testing.B) {
+				m.SetSize(110, 24)
+				b.ReportAllocs()
+				b.ResetTimer()
+				for i := range b.N {
+					m.SetSize(120-i%2*10, 24)
+				}
+			})
+		})
+	}
+}
+
 // BenchmarkTableOutlier keeps total input small while one cell widens every row.
 // Fixtures and table construction are outside the measured refresh loop.
 func BenchmarkTableOutlier(b *testing.B) {

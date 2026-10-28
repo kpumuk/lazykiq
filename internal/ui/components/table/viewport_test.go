@@ -2,6 +2,7 @@ package table
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -239,5 +240,45 @@ func TestGoldenUnicodeViewport(t *testing.T) {
 			end := m.View()
 			golden.RequireEqual(t, []byte(ansi.Strip(start+"\n\n"+middle+"\n\n"+end)))
 		})
+	}
+}
+
+func TestGoldenViewportNavigation(t *testing.T) {
+	rows := make([]Row, 80)
+	for i := range rows {
+		rows[i] = row(strconv.Itoa(i), fmt.Sprintf("Job%02d", i), fmt.Sprintf("argument %02d with 界 tail", i))
+	}
+	m := newTestTable(
+		WithColumns([]Column{{Title: "Job", Width: 8}, {Title: "Arguments", Width: 12}}),
+		WithWidth(30), WithHeight(6),
+	)
+	m.SetRowsWithMeta(rows, map[int]string{73: "\x1b[3mworker group 73 — healthy\x1b[0m"}, map[int]SelectionSpan{73: {Start: 7, End: -1}})
+	frames := make([]string, 0, 6)
+	frames = append(frames, m.View())
+	m.SetCursor(73)
+	frames = append(frames, m.View())
+	m.ScrollToEnd()
+	frames = append(frames, m.View())
+	m.SetYOffset(76)
+	frames = append(frames, m.View())
+	m.GotoBottom()
+	m.SetSize(36, 8)
+	frames = append(frames, m.View())
+	m.GotoTop()
+	frames = append(frames, m.View())
+	golden.RequireEqual(t, []byte(ansi.Strip(strings.Join(frames, "\n\n"))))
+}
+
+func TestGoldenEmptyBody(t *testing.T) {
+	for name, columns := range map[string][]Column{
+		"no columns": nil,
+		"columns":    {{Title: "Job", Width: 8}, {Title: "Value", Width: 12}},
+	} {
+		for messageName, message := range map[string]string{"blank": "", "single line": "No jobs", "multiple lines": "No jobs\nTry another queue"} {
+			t.Run(name+"/"+messageName, func(t *testing.T) {
+				m := newTestTable(WithColumns(columns), WithEmptyMessage(message), WithWidth(30), WithHeight(6))
+				golden.RequireEqual(t, []byte(ansi.Strip(m.View())))
+			})
+		}
 	}
 }

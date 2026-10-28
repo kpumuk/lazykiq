@@ -1,0 +1,45 @@
+Job      Arguments            
+───────────────────────────── 
+Job00    argument 00 with 界 █
+Job01    argument 01 with 界 ░
+Job02    argument 02 with 界 ░
+Job03    argument 03 with 界 ░
+
+Job      Arguments            
+───────────────────────────── 
+Job70    argument 70 with 界 ░
+Job71    argument 71 with 界 ░
+Job72    argument 72 with 界 ░
+worker group 73 — healthy    █
+
+     Arguments                
+───────────────────────────── 
+0    argument 70 with 界 tail░
+1    argument 71 with 界 tail░
+2    argument 72 with 界 tail░
+er group 73 — healthy        █
+
+     Arguments                
+───────────────────────────── 
+6    argument 76 with 界 tail░
+7    argument 77 with 界 tail░
+8    argument 78 with 界 tail░
+9    argument 79 with 界 tail█
+
+Job      Arguments                  
+─────────────────────────────────── 
+Job74    argument 74 with 界 tail  ░
+Job75    argument 75 with 界 tail  ░
+Job76    argument 76 with 界 tail  ░
+Job77    argument 77 with 界 tail  ░
+Job78    argument 78 with 界 tail  ░
+Job79    argument 79 with 界 tail  █
+
+Job      Arguments                  
+─────────────────────────────────── 
+Job00    argument 00 with 界 tail  █
+Job01    argument 01 with 界 tail  ░
+Job02    argument 02 with 界 tail  ░
+Job03    argument 03 with 界 tail  ░
+Job04    argument 04 with 界 tail  ░
+Job05    argument 05 with 界 tail  ░

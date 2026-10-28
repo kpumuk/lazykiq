@@ -147,11 +147,13 @@ type Model struct {
 	colWidths         []int // dynamic column widths (max of defined and actual)
 	lastColWidth      int
 	emptyMessage      string
-	content           string   // pre-rendered body content
+	content           []string // pre-rendered visible body rows
 	header            string   // pre-rendered header and separator
-	rowContent        []string // clipped, unstyled rows; rebuilt when data or horizontal layout changes
+	rowContent        []string // clipped, unstyled visible rows
 	rowContentX       int
+	rowContentY       int
 	rowContentWidth   int
+	layoutValid       bool
 	viewportHeight    int
 	fullRows          map[int]string // row index -> full-width content
 	selectionSpans    map[int]SelectionSpan
@@ -246,6 +248,9 @@ func (m *Model) SetSize(width, height int) {
 	if m.width == width && m.height == height {
 		return
 	}
+	if m.width != width {
+		m.layoutValid = false
+	}
 	m.width = width
 	m.height = height
 	m.viewportHeight = max(height-2, 1) // minus header and separator
@@ -268,6 +273,7 @@ func (m *Model) SetRowsWithMeta(rows []Row, fullRows map[int]string, spans map[i
 
 	m.rows = rows
 	m.rowContent = nil
+	m.layoutValid = false
 	m.fullRows = fullRows
 	m.selectionSpans = spans
 
@@ -299,6 +305,7 @@ func (m *Model) SetRowsWithMeta(rows []Row, fullRows map[int]string, spans map[i
 func (m *Model) SetColumns(cols []Column) {
 	m.columns = cols
 	m.rowContent = nil
+	m.layoutValid = false
 	m.colWidths = nil
 	m.lastColWidth = 0
 	m.updateViewport()
@@ -313,6 +320,7 @@ func (m *Model) SetEmptyMessage(msg string) {
 func (m *Model) SetFullRows(rows map[int]string) {
 	m.fullRows = rows
 	m.rowContent = nil
+	m.layoutValid = false
 	m.updateViewport()
 	m.clampScroll()
 }
@@ -536,16 +544,23 @@ func (m *Model) scrollX(delta int) {
 	m.updateViewport()
 }
 
-// updateViewport rebuilds the pre-rendered body content.
+// updateViewport measures changed data and renders only the visible body rows.
 func (m *Model) updateViewport() {
-	layoutChanged := m.rowContent == nil || m.rowContentX != m.xOffset || m.rowContentWidth != m.contentWidth()
-	m.content = m.renderBody()
-	oldX := m.xOffset
-	m.clampScroll()
-	if oldX != m.xOffset {
-		m.content = m.renderBody()
-		layoutChanged = true
+	layoutChanged := !m.layoutValid
+	if layoutChanged {
+		m.measureRows()
+		m.layoutValid = true
 	}
+	m.clampScroll()
+	layoutChanged = layoutChanged || m.rowContentX != m.xOffset || m.rowContentWidth != m.contentWidth()
+	visibleCount := min(m.viewportHeight, len(m.rows)-m.yOffset)
+	if layoutChanged || m.rowContentY != m.yOffset || len(m.rowContent) != visibleCount {
+		m.rowContent = m.renderRowContent(!layoutChanged)
+		m.rowContentX = m.xOffset
+		m.rowContentY = m.yOffset
+		m.rowContentWidth = m.contentWidth()
+	}
+	m.content = m.renderBody()
 	if layoutChanged || m.header == "" {
 		m.header = m.renderHeader()
 	}
@@ -596,44 +611,23 @@ func (m Model) renderHeader() string {
 	return styledHeader + "\n" + m.styles.Separator.Render(separator)
 }
 
-// renderBody renders all table rows (for scrolling).
-func (m *Model) renderBody() string {
-	if len(m.columns) == 0 {
-		m.maxRowWidth = 0
-		m.colWidths = nil
-		m.lastColWidth = 0
-		return m.styles.Muted.Render(m.emptyMessage)
-	}
-
-	baseWidths := make([]int, len(m.columns))
-	if len(m.colWidths) == len(m.columns) {
-		copy(baseWidths, m.colWidths)
-	}
-	for i, col := range m.columns {
-		if col.Width > baseWidths[i] {
-			baseWidths[i] = col.Width
-		}
-	}
-
-	if len(m.rows) == 0 {
-		m.colWidths = baseWidths
-		m.lastColWidth = m.computeLastColWidth(m.colWidths, m.contentWidth())
-		m.maxRowWidth = m.columnRowWidth(m.lastColWidth)
+// renderBody styles cached visible rows without processing offscreen rows.
+func (m Model) renderBody() []string {
+	if len(m.columns) == 0 || len(m.rows) == 0 {
 		empty := m.emptyMessage
-		if m.contentWidth() > 0 {
+		if len(m.columns) > 0 && m.contentWidth() > 0 {
 			empty = padCell(empty, m.contentWidth(), AlignLeft)
 		}
-		return m.styles.Muted.Render(empty)
+		empty = m.styles.Muted.Render(empty)
+		if empty == "" {
+			return nil
+		}
+		return strings.Split(empty, "\n")
 	}
 
-	if m.rowContent == nil || m.rowContentX != m.xOffset || m.rowContentWidth != m.contentWidth() {
-		m.rowContent = m.renderRowContent(baseWidths)
-		m.rowContentX = m.xOffset
-		m.rowContentWidth = m.contentWidth()
-	}
-
-	lines := make([]string, 0, len(m.rowContent))
-	for i, row := range m.rowContent {
+	lines := make([]string, len(m.rowContent))
+	for visibleIndex, row := range m.rowContent {
+		i := m.yOffset + visibleIndex
 		_, isFullRow := m.fullRows[i]
 		span, hasSpan := m.selectionSpans[i]
 		if i == m.cursor {
@@ -645,56 +639,87 @@ func (m *Model) renderBody() string {
 		} else if !isFullRow {
 			row = m.styles.Text.Render(row)
 		}
-		lines = append(lines, row)
+		lines[visibleIndex] = row
 	}
-	return strings.Join(lines, "\n")
+	return lines
 }
 
-// renderRowContent measures and clips rows independently of cursor selection.
-func (m *Model) renderRowContent(baseWidths []int) []string {
-	lastCol := len(m.columns) - 1
-	// First pass: find max width for each column (at least the defined width).
-	m.colWidths = baseWidths
-	for i, row := range m.rows {
-		if _, ok := m.fullRows[i]; ok {
-			continue
-		}
-		for i, cell := range row.Cells {
-			cellWidth := lipgloss.Width(singleLine(cell))
-			if i < len(m.colWidths) && cellWidth > m.colWidths[i] {
-				m.colWidths[i] = cellWidth
-			}
-		}
+// measureRows keeps width metadata independent of the viewport's rendered rows.
+func (m *Model) measureRows() {
+	if len(m.columns) == 0 {
+		m.maxRowWidth = 0
+		m.colWidths = nil
+		m.lastColWidth = 0
+		return
 	}
 
+	widths := make([]int, len(m.columns))
+	copy(widths, m.colWidths)
+	for i, col := range m.columns {
+		widths[i] = max(widths[i], col.Width)
+	}
+	fullRowWidth := 0
+	for i, row := range m.rows {
+		if fullRow, ok := m.fullRows[i]; ok {
+			fullRowWidth = max(fullRowWidth, lipgloss.Width(singleLine(fullRow)))
+			continue
+		}
+		for i, cell := range row.Cells[:min(len(row.Cells), len(widths))] {
+			widths[i] = max(widths[i], lipgloss.Width(singleLine(cell)))
+		}
+	}
+	m.colWidths = widths
 	m.lastColWidth = m.computeLastColWidth(m.colWidths, m.contentWidth())
-	m.maxRowWidth = m.columnRowWidth(m.lastColWidth)
+	columnWidth := m.columnRowWidth(m.lastColWidth)
+	m.maxRowWidth = max(columnWidth, fullRowWidth)
+	for i, row := range m.rows {
+		if _, ok := m.fullRows[i]; ok || len(row.Cells) <= len(m.columns) {
+			continue
+		}
+		width := columnWidth
+		for _, cell := range row.Cells[len(m.columns):] {
+			width += 1 + max(m.lastColWidth, lipgloss.Width(singleLine(cell)))
+		}
+		m.maxRowWidth = max(m.maxRowWidth, width)
+	}
+}
+
+// renderRowContent clips only visible rows, reusing overlapping cached rows.
+func (m Model) renderRowContent(reuse bool) []string {
+	if len(m.columns) == 0 {
+		return nil
+	}
+	lastCol := len(m.columns) - 1
+	end := min(m.yOffset+m.viewportHeight, len(m.rows))
 
 	// Keep padding in display coordinates until it intersects the viewport.
 	// A wide cell must not allocate its column width for every other row.
-	lines := make([]string, len(m.rows))
-	for i, row := range m.rows {
+	lines := make([]string, end-m.yOffset)
+	for i := m.yOffset; i < end; i++ {
+		if reuse && i >= m.rowContentY && i < m.rowContentY+len(m.rowContent) {
+			lines[i-m.yOffset] = m.rowContent[i-m.rowContentY]
+			continue
+		}
 		line := viewportLine{offset: m.xOffset, width: m.contentWidth()}
 		if fullRow, ok := m.fullRows[i]; ok {
 			line.writeCell(fullRow, 0, AlignLeft)
 		} else {
-			for i, cell := range row.Cells {
-				if i > 0 {
+			for column, cell := range m.rows[i].Cells {
+				if column > 0 {
 					line.writePadding(1)
 				}
 				align := AlignLeft
-				if i < len(m.columns) {
-					align = m.columns[i].Align
+				if column < len(m.columns) {
+					align = m.columns[column].Align
 				}
 				width := m.lastColWidth
-				if i < lastCol {
-					width = m.colWidths[i]
+				if column < lastCol {
+					width = m.colWidths[column]
 				}
 				line.writeCell(cell, width, align)
 			}
 		}
-		m.maxRowWidth = max(m.maxRowWidth, line.position)
-		lines[i] = line.String()
+		lines[i-m.yOffset] = line.String()
 	}
 	return lines
 }
@@ -760,26 +785,11 @@ func (l *viewportLine) writeText(s string, width int) {
 	l.position += width
 }
 
-// getVisibleContent returns the visible portion of content based on yOffset.
+// getVisibleContent copies the visible rows so scrollbar rendering cannot change
+// the cached body, then fills unused viewport lines.
 func (m Model) getVisibleContent() []string {
-	if m.content == "" {
-		return blankScrollbar(m.viewportHeight, m.contentWidth())
-	}
-
-	lines := strings.Split(m.content, "\n")
-
-	// Clamp yOffset to valid range
-	yOffset := 0
-	if len(lines) > 0 {
-		yOffset = mathutil.Clamp(m.yOffset, 0, len(lines)-1)
-	}
-
-	// Get visible slice
-	end := min(yOffset+m.viewportHeight, len(lines))
-	visible := lines[yOffset:end]
-	if len(visible) < m.viewportHeight {
-		visible = append(visible, blankScrollbar(m.viewportHeight-len(visible), m.contentWidth())...)
-	}
+	visible := blankScrollbar(m.viewportHeight, m.contentWidth())
+	copy(visible, m.content)
 	return visible
 }
 
