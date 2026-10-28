@@ -1,7 +1,10 @@
 package display
 
 import (
+	"encoding/json"
 	"errors"
+	"math"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +17,13 @@ type badJSON struct{}
 
 func (badJSON) MarshalJSON() ([]byte, error) {
 	return nil, errors.New("boom")
+}
+
+type countedJSON struct{ calls *int }
+
+func (v countedJSON) MarshalJSON() ([]byte, error) {
+	*v.calls++
+	return []byte(`"custom"`), nil
 }
 
 func TestDuration(t *testing.T) {
@@ -148,6 +158,126 @@ func TestArgsPreview(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestArgsPreviewCompatibility(t *testing.T) {
+	var deep any = "leaf"
+	for range 1100 {
+		deep = []any{deep}
+	}
+	wide := strings.Repeat("payload", 1024)
+	for name, args := range map[string][]any{
+		"scalars":                     {nil, true, false, int64(-42), uint64(math.MaxUint64), 1e-9, 1e21, float32(1.25)},
+		"nested":                      {map[string]any{"z": []any{true, nil, "tail"}, "a": map[string]any{"b": wide}}},
+		"nil containers":              {[]any(nil), map[string]any(nil), []any{}, map[string]any{}},
+		"many arguments":              {strings.Repeat("a", 196), "\n\t\"\\", "tail"},
+		"sorted keys":                 {map[string]any{"z": "last", "a": wide, "b": "middle"}},
+		"wide key":                    {map[string]any{wide: "value"}},
+		"invalid UTF-8":               {string([]byte{'a', 0xff, 0xfe, 'b'}), strings.Repeat("\x80", 512)},
+		"escapes":                     {strings.Repeat("\n\r\t\b\f\x00\x1b\"\\<>&\u2028\u2029", 512)},
+		"combining":                   {strings.Repeat("e\u0301", 512)},
+		"zero width":                  {strings.Repeat("\u200b", 512)},
+		"long cluster":                {"e" + strings.Repeat("\u0301", 512)},
+		"escaped cluster boundary":    {strings.Repeat("x", 254) + "\u2028\ufe0f\u20e3"},
+		"typed slice":                 {[]string{wide, "tail"}},
+		"typed map":                   {map[int]string{2: "two", 1: wide}},
+		"raw JSON":                    {json.RawMessage(`{"nested":[1,"two"]}`)},
+		"invalid raw JSON":            {json.RawMessage(`{"invalid"`)},
+		"custom marshaler":            {badJSON{}, "tail"},
+		"hidden marshaler":            {wide, badJSON{}},
+		"hidden nested marshal error": {[]any{wide, badJSON{}}},
+		"hidden unsupported value":    {map[string]any{"a": wide, "z": make(chan int)}},
+		"hidden NaN":                  {[]any{wide, math.NaN()}},
+		"hidden infinity":             {map[string]any{"a": wide, "z": math.Inf(1)}},
+		"deep fallback":               {deep},
+	} {
+		t.Run(name, func(t *testing.T) {
+			want := ansi.Truncate(Args(args), 200, "…")
+			if got := ArgsPreview(args); got != want {
+				t.Fatalf("ArgsPreview() = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+func TestArgsPreviewUnicodeLimits(t *testing.T) {
+	for name, tc := range map[string]struct {
+		text string
+		want string
+	}{
+		"keycaps":            {strings.Repeat("1️⃣", 512), `"` + strings.Repeat("1️⃣", 99) + "…"},
+		"emoji clusters":     {strings.Repeat("👩🏽‍💻🇨🇦1️⃣", 512), `"` + strings.Repeat("👩🏽‍💻🇨🇦1️⃣", 33) + "…"},
+		"keycap at boundary": {strings.Repeat("x", 197) + "1️⃣tail", `"` + strings.Repeat("x", 197) + "…"},
+		"escaped keycap":     {strings.Repeat("x", 150) + strings.Repeat("<\ufe0f\u20e3", 10), `"` + strings.Repeat("x", 150) + strings.Repeat(`\u003c`+"\ufe0f\u20e3", 6) + `\u003…`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := ArgsPreview([]any{tc.text})
+			if got != tc.want || !utf8.ValidString(got) || ansi.StringWidth(got) > 200 {
+				t.Fatalf("ArgsPreview() = %q (width %d), want %q", got, ansi.StringWidth(got), tc.want)
+			}
+		})
+	}
+}
+
+func TestArgsPreviewPreservesHiddenCustomMarshaler(t *testing.T) {
+	calls := 0
+	args := []any{strings.Repeat("x", 1024), countedJSON{calls: &calls}}
+	if got := ArgsPreview(args); got != `"`+strings.Repeat("x", 198)+"…" {
+		t.Fatalf("unexpected preview: %q", got)
+	}
+	if calls != 1 {
+		t.Fatalf("hidden custom marshaler called %d times, want once", calls)
+	}
+}
+
+func TestArgsPreviewBoundedAllocations(t *testing.T) {
+	const iterations = 32
+	for name, unit := range map[string]string{"ascii": "x", "unicode": "界", "escaped": "\n", "emoji": "👩🏽‍💻"} {
+		t.Run(name, func(t *testing.T) {
+			args := []any{strings.Repeat(unit, 1024*1024/len(unit))}
+			var before, after runtime.MemStats
+			var preview string
+			runtime.GC()
+			runtime.ReadMemStats(&before)
+			for range iterations {
+				preview = ArgsPreview(args)
+			}
+			runtime.ReadMemStats(&after)
+			runtime.KeepAlive(preview)
+			if bytes := (after.TotalAlloc - before.TotalAlloc) / iterations; bytes > 32*1024 {
+				t.Fatalf("1 MiB preview allocates %d bytes/op, want at most 32 KiB", bytes)
+			}
+		})
+	}
+}
+
+func FuzzArgsPreview(f *testing.F) {
+	for _, raw := range []string{
+		`[]`, `[null,true,1,1e-9,{"z":"last","a":["first"]}]`,
+		`["\u2028\ufe0f\u20e3\n\"\\<>&","👩🏽‍💻é🇨🇦"]`,
+		`["` + strings.Repeat("界", 200) + `"]`,
+		`["` + strings.Repeat("x", 197) + `👩🏽‍💻"]`,
+	} {
+		f.Add(raw)
+	}
+	f.Fuzz(func(t *testing.T, raw string) {
+		var args []any
+		if err := json.Unmarshal([]byte(raw), &args); err != nil {
+			return
+		}
+		full := Args(args)
+		got := ArgsPreview(args)
+		if !utf8.ValidString(got) || ansi.StringWidth(got) > 200 {
+			t.Fatalf("invalid or oversized preview: %q", got)
+		}
+		if ansi.StringWidth(full) <= 200 {
+			if got != full {
+				t.Fatalf("short preview = %q, want %q", got, full)
+			}
+		} else if !strings.HasSuffix(got, "…") || !strings.HasPrefix(full, strings.TrimSuffix(got, "…")) {
+			t.Fatalf("truncated preview is not a prefix with an ellipsis: %q", got)
+		}
+	})
 }
 
 func TestShortNumber(t *testing.T) {

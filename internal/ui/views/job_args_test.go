@@ -1,9 +1,12 @@
 package views
 
 import (
+	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/exp/golden"
@@ -99,6 +102,68 @@ func TestGoldenJobsTableArgumentPreview(t *testing.T) {
 	}
 }
 
+func TestJobsTableNestedArgumentsRemainCompleteInDetail(t *testing.T) {
+	args := []any{map[string]any{"a": []any{"hello\n\"<>&", strings.Repeat("👩🏽‍💻1️⃣", 512)}, "z": "TAIL"}}
+	raw, err := json.Marshal(map[string]any{"jid": "nested", "class": "TestJob", "args": args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	job := sidekiq.NewJobRecord(string(raw), "default")
+	rows := NewQueueDetails(nil).buildRows([]*sidekiq.PositionedEntry{{JobRecord: job, Position: 1}})
+	preview := rows[0].Cells[2]
+	if ansi.StringWidth(preview) > 200 || !strings.HasSuffix(preview, "…") || strings.Contains(preview, "TAIL") {
+		t.Fatalf("unexpected argument preview: %q", preview)
+	}
+	view := NewJobDetail()
+	view.SetJob(job)
+	var copied struct{ Args []any }
+	if err := json.Unmarshal([]byte(view.jobJSON()), &copied); err != nil {
+		t.Fatal(err)
+	}
+	want := display.Args(args)
+	if display.Args(copied.Args) != want {
+		t.Fatal("copy JSON lost arguments")
+	}
+	for _, property := range view.properties {
+		if property.Label == "Args" {
+			if property.Value != want {
+				t.Fatal("job detail lost arguments")
+			}
+			return
+		}
+	}
+	t.Fatal("job detail has no arguments")
+}
+
+func TestGoldenJobsTableUnicodeArgumentPreview(t *testing.T) {
+	view := NewQueueDetails(nil)
+	jobs := make([]*sidekiq.PositionedEntry, 0, 2)
+	for i, args := range [][]any{
+		{strings.Repeat("👩🏽‍💻🇨🇦", 512)},
+		{map[string]any{"a": []any{"hello\n\"<>&", strings.Repeat("界é", 512)}, "z": "TAIL"}},
+	} {
+		raw, err := json.Marshal(map[string]any{"jid": fmt.Sprintf("job%d", i), "class": "ReportJob", "args": args})
+		if err != nil {
+			t.Fatal(err)
+		}
+		jobs = append(jobs, &sidekiq.PositionedEntry{JobRecord: sidekiq.NewJobRecord(string(raw), "default"), Position: i + 1})
+	}
+	rows := view.buildRows(jobs)
+	for _, width := range []int{120, 300} {
+		t.Run(fmt.Sprintf("width %d", width), func(t *testing.T) {
+			model := table.New(table.WithColumns(queueJobColumns), table.WithRows(rows))
+			model.SetSize(width, 5)
+			t.Run("start", func(t *testing.T) {
+				golden.RequireEqual(t, []byte(ansi.Strip(model.View())))
+			})
+			model.ScrollToEnd()
+			t.Run("end", func(t *testing.T) {
+				golden.RequireEqual(t, []byte(ansi.Strip(model.View())))
+			})
+		})
+	}
+}
+
 func BenchmarkJobsTableScrollLargeArguments(b *testing.B) {
 	jobs := make([]*sidekiq.PositionedEntry, 75)
 	for i := range jobs {
@@ -125,6 +190,29 @@ func BenchmarkJobsTableScrollLargeArguments(b *testing.B) {
 					model.ScrollLeft()
 				}
 				_ = model.View()
+			}
+		})
+	}
+}
+
+func BenchmarkBusyRowsArgumentPreview(b *testing.B) {
+	for _, size := range []int{1024, 65536} {
+		b.Run(fmt.Sprintf("jobs=75/arg_bytes=%d", size), func(b *testing.B) {
+			view := NewBusy(nil)
+			view.SetSize(160, 40)
+			view.data.Processes = []sidekiq.Process{{Identity: "worker:1:nonce", Hostname: "worker", PID: 1, Concurrency: 100, Busy: 75}}
+			for i := range 75 {
+				raw := fmt.Sprintf(`{"jid":"job-%d","class":"WideJob","queue":"default","args":["%s"]}`, i, strings.Repeat("x", size))
+				job := sidekiq.NewJobRecord(raw, "default")
+				job.DisplayArgs() // Exclude lazy JSON decoding, as in the retained audit fixture.
+				view.data.Jobs = append(view.data.Jobs, sidekiq.Job{
+					JobRecord: job, ProcessIdentity: "worker:1:nonce", ThreadID: strconv.Itoa(i), RunAt: time.Now(),
+				})
+			}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for b.Loop() {
+				view.updateTableRows()
 			}
 		})
 	}
