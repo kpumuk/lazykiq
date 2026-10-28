@@ -108,7 +108,7 @@ func TestRenderBody_EmptyMessage(t *testing.T) {
 		WithEmptyMessage("Nothing here"),
 	)
 
-	got := table.renderBody()
+	got := strings.Join(table.renderBody(), "\n")
 	if got != "Nothing here" {
 		t.Fatalf("want %q, got %q", "Nothing here", got)
 	}
@@ -130,7 +130,7 @@ func TestSetEmptyMessage(t *testing.T) {
 	table := newTestTable()
 	table.SetEmptyMessage("Nada")
 
-	got := table.renderBody()
+	got := strings.Join(table.renderBody(), "\n")
 	if got != "Nada" {
 		t.Fatalf("want %q, got %q", "Nada", got)
 	}
@@ -146,9 +146,10 @@ func TestRenderBody_LastColumnNotTruncated(t *testing.T) {
 			row("row-1", "foo", "this-is-long"),
 		}),
 		WithWidth(80),
+		WithHeight(3),
 	)
 
-	got := table.renderBody()
+	got := strings.Join(table.renderBody(), "\n")
 	got = strings.TrimRight(got, " ")
 	want := "foo this-is-long"
 	if got != want {
@@ -300,29 +301,24 @@ func TestUpdate_KeyHandling(t *testing.T) {
 func TestGetVisibleContent(t *testing.T) {
 	tests := []struct {
 		name           string
-		content        string
-		yOffset        int
+		content        []string
 		viewportHeight int
 		want           []string
 	}{
 		{
 			name:           "Empty",
-			content:        "",
-			yOffset:        0,
 			viewportHeight: 2,
 			want:           []string{"", ""},
 		},
 		{
-			name:           "ClampOffset",
-			content:        "a\nb\nc",
-			yOffset:        5,
+			name:           "SingleRow",
+			content:        []string{"c"},
 			viewportHeight: 1,
 			want:           []string{"c"},
 		},
 		{
-			name:           "SliceWindow",
-			content:        "a\nb\nc",
-			yOffset:        1,
+			name:           "VisibleWindow",
+			content:        []string{"b", "c"},
 			viewportHeight: 2,
 			want:           []string{"b", "c"},
 		},
@@ -332,7 +328,6 @@ func TestGetVisibleContent(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			table := Model{
 				content:        tc.content,
-				yOffset:        tc.yOffset,
 				viewportHeight: tc.viewportHeight,
 			}
 			got := table.getVisibleContent()
