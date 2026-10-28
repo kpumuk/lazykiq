@@ -30,10 +30,11 @@ type QueueInfo struct {
 }
 
 type queueDetailsPayload struct {
-	queues        []*QueueInfo
-	jobs          []*sidekiq.PositionedEntry
-	selectedQueue int
-	capabilities  sidekiq.Capabilities
+	queues           []*QueueInfo
+	jobs             []*sidekiq.PositionedEntry
+	selectedQueue    int
+	capabilities     sidekiq.Capabilities
+	metadataRevision uint64
 }
 
 const (
@@ -53,6 +54,8 @@ type QueueDetails struct {
 	capabilities            sidekiq.Capabilities
 	dangerousActionsEnabled bool
 	actions                 queueActions
+	metadataRevision        uint64
+	metadataLoadedRevision  uint64
 }
 
 // NewQueueDetails creates a new QueueDetails view.
@@ -98,6 +101,7 @@ func (q *QueueDetails) Update(msg tea.Msg) (View, tea.Cmd) {
 				q.jobs = payload.jobs
 				q.selectedQueue = payload.selectedQueue
 				q.capabilities = payload.capabilities
+				q.metadataLoadedRevision = payload.metadataRevision
 			}
 			q.selectedQueueKey = ""
 			q.updateEmptyMessage()
@@ -110,6 +114,7 @@ func (q *QueueDetails) Update(msg tea.Msg) (View, tea.Cmd) {
 		if q.actions.busy {
 			return q, nil
 		}
+		q.metadataRevision++
 		return q, q.refreshWindow()
 	case QueueActionResultMsg:
 		if !q.actions.complete(msg) {
@@ -118,6 +123,7 @@ func (q *QueueDetails) Update(msg tea.Msg) (View, tea.Cmd) {
 		if msg.Err != nil {
 			return q, nil
 		}
+		q.metadataRevision++
 		return q, q.refreshWindow()
 	case confirmdialog.ActionMsg:
 		if !q.dangerousActionsEnabled {
@@ -311,6 +317,7 @@ func (q *QueueDetails) Dispose() {
 func (q *QueueDetails) CancelRequests() {
 	q.cancelRequests()
 	q.actions.reset()
+	q.metadataRevision++
 }
 
 // SetStyles implements View.
@@ -339,30 +346,17 @@ func (q *QueueDetails) fetchWindow(
 	_ lazytable.CursorIntent,
 ) (lazytable.FetchResult, error) {
 	ctx = devtools.WithTracker(ctx, "queue_details.fetchWindow")
-	capabilities, paused, err := fetchQueueCapabilities(ctx, q.client)
+	queueInfos, capabilities, err := q.fetchMetadata(ctx)
 	if err != nil {
 		return lazytable.FetchResult{}, err
 	}
 
-	queues, err := q.client.GetQueues(ctx)
-	if err != nil {
-		return lazytable.FetchResult{}, err
+	selectedQueue := q.resolveSelectedQueue(queueInfos)
+	var queue *sidekiq.Queue
+	if len(queueInfos) > 0 {
+		queue = q.client.NewQueue(queueInfos[selectedQueue].Name)
 	}
-
-	queueInfos := make([]*QueueInfo, len(queues))
-	for i, queue := range queues {
-		size, _ := queue.Size(ctx)
-		latency, _ := queue.Latency(ctx)
-		queueInfos[i] = &QueueInfo{
-			Name:    queue.Name(),
-			Size:    size,
-			Latency: latency,
-			Paused:  paused[queue.Name()],
-		}
-	}
-
-	selectedQueue := q.resolveSelectedQueue(queues, q.selectedQueue)
-	jobs, totalSize, windowStart, err := q.fetchQueueJobs(ctx, queues, selectedQueue, windowStart, windowSize)
+	jobs, totalSize, windowStart, err := q.fetchQueueJobs(ctx, queue, windowStart, windowSize)
 	if err != nil {
 		return lazytable.FetchResult{}, err
 	}
@@ -372,12 +366,44 @@ func (q *QueueDetails) fetchWindow(
 		Total:       totalSize,
 		WindowStart: windowStart,
 		Payload: queueDetailsPayload{
-			queues:        queueInfos,
-			jobs:          jobs,
-			selectedQueue: selectedQueue,
-			capabilities:  capabilities,
+			queues:           queueInfos,
+			jobs:             jobs,
+			selectedQueue:    selectedQueue,
+			capabilities:     capabilities,
+			metadataRevision: q.metadataRevision,
 		},
 	}, nil
+}
+
+func (q *QueueDetails) fetchMetadata(ctx context.Context) ([]*QueueInfo, sidekiq.Capabilities, error) {
+	// Paging and filtering reuse the last accepted immutable metadata snapshot.
+	// RefreshMsg (the app's five-second cadence), mutations and hiding invalidate it.
+	if q.queues != nil && q.metadataLoadedRevision == q.metadataRevision {
+		return q.queues, q.capabilities, nil
+	}
+
+	capabilities, paused, err := fetchQueueCapabilities(ctx, q.client)
+	if err != nil {
+		return nil, capabilities, err
+	}
+	queues, err := q.client.GetQueues(ctx)
+	if err != nil {
+		return nil, capabilities, err
+	}
+	metadata, err := sidekiq.FetchQueueMetadata(ctx, queues)
+	if err != nil {
+		return nil, capabilities, err
+	}
+	infos := make([]*QueueInfo, len(metadata))
+	for i, queue := range metadata {
+		infos[i] = &QueueInfo{
+			Name:    queue.Name,
+			Size:    queue.Size,
+			Latency: queue.Latency,
+			Paused:  paused[queue.Name],
+		}
+	}
+	return infos, capabilities, nil
 }
 
 func (q *QueueDetails) refreshWindow() tea.Cmd {
@@ -390,14 +416,18 @@ func (q *QueueDetails) refreshWindow() tea.Cmd {
 	return q.detailListView.refreshWindow()
 }
 
-func (q *QueueDetails) resolveSelectedQueue(queues []*sidekiq.Queue, selected int) int {
+func (q *QueueDetails) resolveSelectedQueue(queues []*QueueInfo) int {
 	if len(queues) == 0 {
 		return 0
 	}
 
-	if q.selectedQueueKey != "" {
-		if idx := slices.IndexFunc(queues, func(queue *sidekiq.Queue) bool {
-			return queue.Name() == q.selectedQueueKey
+	selected, key := q.selectedQueue, q.selectedQueueKey
+	if key == "" && selected >= 0 && selected < len(q.queues) {
+		key = q.queues[selected].Name
+	}
+	if key != "" {
+		if idx := slices.IndexFunc(queues, func(queue *QueueInfo) bool {
+			return queue.Name == key
 		}); idx >= 0 {
 			return idx
 		}
@@ -412,12 +442,11 @@ func (q *QueueDetails) resolveSelectedQueue(queues []*sidekiq.Queue, selected in
 
 func (q *QueueDetails) fetchQueueJobs(
 	ctx context.Context,
-	queues []*sidekiq.Queue,
-	selectedQueue int,
+	queue *sidekiq.Queue,
 	windowStart int,
 	windowSize int,
 ) ([]*sidekiq.PositionedEntry, int64, int, error) {
-	if len(queues) == 0 || selectedQueue < 0 || selectedQueue >= len(queues) {
+	if queue == nil {
 		return nil, 0, 0, nil
 	}
 
@@ -425,7 +454,6 @@ func (q *QueueDetails) fetchQueueJobs(
 		windowSize = max(queuesFallbackPageSize, 1) * queuesWindowPages
 	}
 
-	queue := queues[selectedQueue]
 	if q.filter != "" {
 		return q.fetchFilteredQueueJobs(ctx, queue, windowStart, windowSize)
 	}

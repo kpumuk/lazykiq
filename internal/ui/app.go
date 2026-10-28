@@ -318,8 +318,6 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			setter.SetQueue(msg.QueueName)
 		}
 		cmds = append(cmds, a.setActiveView(viewQueueDetails))
-		// Trigger immediate refresh to load the selected queue's jobs
-		cmds = append(cmds, a.updateView(viewQueueDetails, views.RefreshMsg{}))
 
 	case views.ShowProcessesListMsg:
 		cmds = append(cmds, a.pushView(viewProcessesList))

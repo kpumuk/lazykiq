@@ -1,9 +1,17 @@
 package sidekiq
 
 import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"math"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/redis/go-redis/v9"
 )
 
 func TestGetQueues(t *testing.T) {
@@ -17,6 +25,202 @@ func TestGetQueues(t *testing.T) {
 
 	if len(queues) != 0 {
 		t.Fatalf("len(queues) = %d, want 0", len(queues))
+	}
+}
+
+type queueMetadataHook struct {
+	batches    []int
+	commands   int
+	afterBatch func()
+	replyErr   error
+}
+
+func (h *queueMetadataHook) DialHook(next redis.DialHook) redis.DialHook { return next }
+
+func (h *queueMetadataHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
+	return func(ctx context.Context, cmd redis.Cmder) error {
+		h.commands++
+		return next(ctx, cmd)
+	}
+}
+
+func (h *queueMetadataHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
+	return func(ctx context.Context, cmds []redis.Cmder) error {
+		h.batches = append(h.batches, len(cmds))
+		h.commands += len(cmds)
+		if h.replyErr != nil {
+			cmds[0].SetErr(redis.Nil)
+			cmds[len(cmds)-1].SetErr(h.replyErr)
+			return redis.Nil
+		}
+		err := next(ctx, cmds)
+		if h.afterBatch != nil {
+			h.afterBatch()
+		}
+		return err
+	}
+}
+
+func TestFetchQueueMetadataBoundedPipelines(t *testing.T) {
+	for _, count := range []int{10, 100, 1000} {
+		t.Run(strconv.Itoa(count), func(t *testing.T) {
+			_, client := setupTestRedis(t)
+			// Warm up Redis's connection handshake before counting commands.
+			if _, err := client.redis.Pipelined(t.Context(), func(pipe redis.Pipeliner) error {
+				pipe.Ping(t.Context())
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			hook := &queueMetadataHook{}
+			client.AddHook(hook)
+			queues := make([]*Queue, count)
+			for i := range queues {
+				queues[i] = client.NewQueue(fmt.Sprintf("queue-%04d", count-i))
+			}
+			metadata, err := FetchQueueMetadata(t.Context(), queues)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(metadata) != count || hook.commands != 2*count || len(hook.batches) != (count+99)/100 {
+				t.Fatalf("queues=%d commands=%d batches=%v", len(metadata), hook.commands, hook.batches)
+			}
+			for _, size := range hook.batches {
+				if size > 200 {
+					t.Fatalf("unbounded batch: %d commands", size)
+				}
+			}
+			for i, info := range metadata {
+				if info.Name != queues[i].Name() || info.Size != 0 || info.Latency != 0 {
+					t.Fatalf("missing queue changed order or metadata: %+v", info)
+				}
+			}
+		})
+	}
+}
+
+func TestFetchQueueMetadataBestEffort(t *testing.T) {
+	mr, client := setupTestRedis(t)
+	enqueuedAt := time.Now().Add(-10 * time.Second).Truncate(time.Millisecond)
+	_, _ = mr.Lpush("queue:valid", fmt.Sprintf(`{"args":["%s"],"enqueued_at":%d}`, strings.Repeat("x", 1<<20), enqueuedAt.UnixMilli()))
+	_, _ = mr.Lpush("queue:invalid", "invalid json")
+	_ = mr.Set("queue:wrong-type", "value")
+	names := []string{"empty", "invalid", "valid", "wrong-type", "deleted"}
+	queues := make([]*Queue, len(names))
+	for i, name := range names {
+		queues[i] = client.NewQueue(name)
+	}
+	metadata, err := FetchQueueMetadata(t.Context(), queues)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, info := range metadata {
+		if info.Name != names[i] {
+			t.Fatalf("queue order changed: %+v", metadata)
+		}
+		if info.Name == "valid" {
+			if info.Size != 1 || info.Latency < 9 || info.Latency > 11 {
+				t.Fatalf("valid queue: %+v", info)
+			}
+			if info.OldestJobTime.Sub(enqueuedAt).Abs() > time.Microsecond {
+				t.Fatalf("oldest timestamp drifted from batch sample: %s, want %s", info.OldestJobTime, enqueuedAt)
+			}
+		} else if info.Latency != 0 {
+			t.Fatalf("invalid/empty queue: %+v", info)
+		}
+	}
+}
+
+func TestFetchQueueMetadataCancellation(t *testing.T) {
+	for name, during := range map[string]bool{"before": false, "between batches": true} {
+		t.Run(name, func(t *testing.T) {
+			_, client := setupTestRedis(t)
+			if _, err := client.redis.Pipelined(t.Context(), func(pipe redis.Pipeliner) error {
+				pipe.Ping(t.Context())
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			hook := &queueMetadataHook{afterBatch: cancel}
+			client.AddHook(hook)
+			if !during {
+				cancel()
+			}
+			queues := make([]*Queue, 101)
+			for i := range queues {
+				queues[i] = client.NewQueue(strconv.Itoa(i))
+			}
+			metadata, err := FetchQueueMetadata(ctx, queues)
+			if !errors.Is(err, context.Canceled) || metadata != nil {
+				t.Fatalf("partial canceled snapshot: %v, %v", metadata, err)
+			}
+			if len(hook.batches) > 1 {
+				t.Fatal("continued after cancellation")
+			}
+		})
+	}
+}
+
+func TestFetchQueueMetadataTransportFailure(t *testing.T) {
+	_, client := setupTestRedis(t)
+	_ = client.Close()
+	metadata, err := FetchQueueMetadata(t.Context(), []*Queue{client.NewQueue("default")})
+	if err == nil || metadata != nil {
+		t.Fatalf("transport failure returned a snapshot: %v, %v", metadata, err)
+	}
+}
+
+func TestFetchQueueMetadataMissingThenTransportFailure(t *testing.T) {
+	_, client := setupTestRedis(t)
+	client.AddHook(&queueMetadataHook{replyErr: io.EOF})
+	metadata, err := FetchQueueMetadata(t.Context(), []*Queue{client.NewQueue("default")})
+	if !errors.Is(err, io.EOF) || metadata != nil {
+		t.Fatalf("earlier missing entry masked failed reply: %v, %v", metadata, err)
+	}
+}
+
+func TestQueueLatencyTimestamp(t *testing.T) {
+	now := time.Unix(1780000010, 0)
+	for name, test := range map[string]struct {
+		payload string
+		want    float64
+		invalid bool
+	}{
+		"seconds":               {`{"enqueued_at":1780000000.25}`, 9.75, false},
+		"milliseconds":          {`{"enqueued_at":1780000000250}`, 9.75, false},
+		"future":                {`{"enqueued_at":1780000020}`, 0, false},
+		"negative":              {`{"enqueued_at":-1}`, 0, false},
+		"missing":               {`{"args":[{"enqueued_at":1780000000}]}`, 0, false},
+		"null":                  {`{"enqueued_at":null}`, 0, false},
+		"string":                {`{"enqueued_at":"1780000000"}`, 0, false},
+		"object":                {`{"enqueued_at":{"value":1780000000}}`, 0, false},
+		"wide nested args":      {`{"args":[{"data":"` + strings.Repeat("x", 1<<20) + `"}],"enqueued_at":1780000000}`, 10, false},
+		"invalid trailing args": {`{"enqueued_at":1780000000,"args":[}`, 0, true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			latency, err := queueLatency(test.payload, now)
+			if (err != nil) != test.invalid || math.Abs(latency-test.want) > 0.000001 {
+				t.Fatalf("latency=%v err=%v, want %v invalid=%v", latency, err, test.want, test.invalid)
+			}
+		})
+	}
+}
+
+func BenchmarkQueueLatencyTimestamp(b *testing.B) {
+	for _, width := range []int{32, 1024, 1 << 20} {
+		b.Run(strconv.Itoa(width), func(b *testing.B) {
+			payload := `{"args":["` + strings.Repeat("x", width) + `"],"enqueued_at":1780000000000}`
+			now := time.Unix(1780000010, 0)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for b.Loop() {
+				if _, err := queueLatency(payload, now); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }
 

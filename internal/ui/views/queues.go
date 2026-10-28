@@ -327,7 +327,7 @@ func (q *QueuesList) CancelRequests() {
 // fetchDataCmd fetches queues data from Redis.
 func (q *QueuesList) fetchDataCmd() tea.Cmd {
 	q.requestID++
-	requestID, filter := q.requestID, q.filter
+	requestID, filter := q.requestID, strings.ToLower(q.filter)
 	ctx := q.fetchRequest.Start(devtools.WithTracker(context.Background(), "queues.fetchDataCmd"))
 	return func() tea.Msg {
 		capabilities, paused, err := fetchQueueCapabilities(ctx, q.client)
@@ -345,30 +345,37 @@ func (q *QueuesList) fetchDataCmd() tea.Cmd {
 			return ConnectionErrorMsg{Err: err}
 		}
 
-		queueInfos := make([]*QueuesListInfo, 0, len(queues))
+		filtered := make([]*sidekiq.Queue, 0, len(queues))
 		for _, queue := range queues {
-			// Apply filter
-			if filter != "" && !strings.Contains(strings.ToLower(queue.Name()), strings.ToLower(filter)) {
+			if filter != "" && !strings.Contains(strings.ToLower(queue.Name()), filter) {
 				continue
 			}
 
-			size, _ := queue.Size(ctx)
-			latency, _ := queue.Latency(ctx)
-
+			filtered = append(filtered, queue)
+		}
+		metadata, err := sidekiq.FetchQueueMetadata(ctx, filtered)
+		if err != nil {
+			if requestctx.IsCanceled(err) {
+				return nil
+			}
+			return ConnectionErrorMsg{Err: err}
+		}
+		queueInfos := make([]*QueuesListInfo, len(metadata))
+		for i, queue := range metadata {
 			info := &QueuesListInfo{
-				Name:    queue.Name(),
-				Size:    size,
-				Latency: latency,
-				Paused:  paused[queue.Name()],
+				Name:    queue.Name,
+				Size:    queue.Size,
+				Latency: queue.Latency,
+				Paused:  paused[queue.Name],
 			}
 
-			// Calculate oldest job timestamp from latency
-			if size > 0 && latency > 0 {
+			// Use the metadata sample time, rather than the end of the whole fetch.
+			if queue.Size > 0 && queue.Latency > 0 {
 				info.HasOldestJob = true
-				info.OldestJobTime = time.Now().Add(-time.Duration(latency * float64(time.Second)))
+				info.OldestJobTime = queue.OldestJobTime
 			}
 
-			queueInfos = append(queueInfos, info)
+			queueInfos[i] = info
 		}
 
 		// Sort by name
