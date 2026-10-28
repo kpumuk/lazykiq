@@ -35,11 +35,13 @@ type JobMetrics struct {
 	periods []string
 	period  string
 
-	periodIdx    int
-	result       sidekiq.MetricsJobDetailResult
-	processed    *charts.ProcessedMetrics
-	focused      int
-	fetchRequest requestctx.Controller
+	periodIdx      int
+	result         sidekiq.MetricsJobDetailResult
+	processed      *charts.ProcessedMetrics
+	focused        int
+	fetchRequest   requestctx.Controller
+	histogramChart chartRenderCache
+	scatterChart   chartRenderCache
 }
 
 // NewJobMetrics creates a new job metrics view.
@@ -67,6 +69,7 @@ func (j *JobMetrics) Update(msg tea.Msg) (View, tea.Cmd) {
 		j.result = msg.result
 		// Pre-process histogram data once on arrival instead of every View() call
 		j.processed = charts.ProcessHistogramData(j.result.Hist, j.result.BucketCount)
+		j.clearCharts()
 		return j, nil
 
 	case RefreshMsg:
@@ -117,45 +120,6 @@ func (j *JobMetrics) View() string {
 	topChartHeight := max(topHeight-2, 0)
 	bottomChartHeight := max(bottomHeight-2, 0)
 
-	// Render top chart using histogram component
-	labels := sidekiq.MetricsHistogramLabels
-	if len(labels) > len(j.processed.BucketTotals) {
-		labels = labels[:len(j.processed.BucketTotals)]
-	}
-	histogramChart := histogram.New(
-		histogram.WithStyles(histogram.Styles{
-			Axis:  j.styles.ChartAxis,
-			Bar:   j.styles.ChartHistogram,
-			Muted: j.styles.Muted,
-		}),
-		histogram.WithSize(contentWidth, topChartHeight),
-		histogram.WithData(j.processed.BucketTotals, labels),
-		histogram.WithEmptyMessage(j.noDataMessage()),
-	)
-
-	// Render bottom chart using scatter component
-	scatterLabels := sidekiq.MetricsHistogramLabels
-	if j.processed.BucketCount > 0 && len(scatterLabels) > j.processed.BucketCount {
-		scatterLabels = scatterLabels[:j.processed.BucketCount]
-	}
-	scatterChart := scatter.New(
-		scatter.WithStyles(scatter.Styles{
-			Axis:  j.styles.ChartAxis,
-			Label: j.styles.ChartLabel,
-			Point: j.styles.ChartHistogram,
-			Muted: j.styles.Muted,
-		}),
-		scatter.WithSize(contentWidth, bottomChartHeight),
-		scatter.WithData(
-			j.processed.ScatterPoints,
-			j.processed.SortedBuckets,
-			scatterLabels,
-			j.processed.MaxCount,
-			j.processed.MaxBucket,
-		),
-		scatter.WithEmptyMessage(j.noDataMessage()),
-	)
-
 	frameStyles := frame.Styles{
 		Focused: frame.StyleState{
 			Title:  j.styles.Title,
@@ -176,7 +140,7 @@ func (j *JobMetrics) View() string {
 		frame.WithTitle("Execution Time Buckets"),
 		frame.WithTitlePadding(0),
 		frame.WithMeta(meta),
-		frame.WithContent(histogramChart.View()),
+		frame.WithContent(j.renderHistogram(contentWidth, topChartHeight)),
 		frame.WithPadding(1),
 		frame.WithSize(j.width, topHeight),
 		frame.WithMinHeight(5),
@@ -191,7 +155,7 @@ func (j *JobMetrics) View() string {
 		frame.WithStyles(frameStyles),
 		frame.WithTitle("Execution Scatter"),
 		frame.WithTitlePadding(0),
-		frame.WithContent(scatterChart.View()),
+		frame.WithContent(j.renderScatter(contentWidth, bottomChartHeight)),
 		frame.WithPadding(1),
 		frame.WithSize(j.width, bottomHeight),
 		frame.WithMinHeight(5),
@@ -268,6 +232,9 @@ func (j *JobMetrics) HelpSections() []HelpSection {
 
 // SetSize implements View.
 func (j *JobMetrics) SetSize(width, height int) View {
+	if j.width != width || j.height != height {
+		j.clearCharts()
+	}
 	j.width = width
 	j.height = height
 	_, bottom := splitJobMetricsHeights(height)
@@ -280,6 +247,7 @@ func (j *JobMetrics) SetSize(width, height int) View {
 // SetStyles implements View.
 func (j *JobMetrics) SetStyles(styles Styles) View {
 	j.styles = styles
+	j.clearCharts()
 	return j
 }
 
@@ -295,6 +263,7 @@ func (j *JobMetrics) SetJobMetrics(jobName, period string) {
 	}
 	j.result = sidekiq.MetricsJobDetailResult{}
 	j.processed = nil
+	j.clearCharts()
 	j.focused = 0
 }
 
@@ -306,12 +275,68 @@ func (j *JobMetrics) Dispose() {
 	j.period = j.periods[0]
 	j.result = sidekiq.MetricsJobDetailResult{}
 	j.processed = nil
+	j.clearCharts()
 	j.focused = 0
 }
 
 // CancelRequests stops in-flight fetches when the view is hidden.
 func (j *JobMetrics) CancelRequests() {
 	j.fetchRequest.Cancel()
+	j.clearCharts()
+}
+
+func (j *JobMetrics) renderHistogram(width, height int) string {
+	if output, cached := j.histogramChart.get(width, height); cached {
+		return output
+	}
+	labels := sidekiq.MetricsHistogramLabels
+	if len(labels) > len(j.processed.BucketTotals) {
+		labels = labels[:len(j.processed.BucketTotals)]
+	}
+	histogramChart := histogram.New(
+		histogram.WithStyles(histogram.Styles{
+			Axis:  j.styles.ChartAxis,
+			Bar:   j.styles.ChartHistogram,
+			Muted: j.styles.Muted,
+		}),
+		histogram.WithSize(width, height),
+		histogram.WithData(j.processed.BucketTotals, labels),
+		histogram.WithEmptyMessage(j.noDataMessage()),
+	)
+	return j.histogramChart.store(width, height, histogramChart.View())
+}
+
+func (j *JobMetrics) renderScatter(width, height int) string {
+	if output, cached := j.scatterChart.get(width, height); cached {
+		return output
+	}
+	scatterLabels := sidekiq.MetricsHistogramLabels
+	if j.processed.BucketCount > 0 && len(scatterLabels) > j.processed.BucketCount {
+		scatterLabels = scatterLabels[:j.processed.BucketCount]
+	}
+	scatterChart := scatter.New(
+		scatter.WithStyles(scatter.Styles{
+			Axis:  j.styles.ChartAxis,
+			Label: j.styles.ChartLabel,
+			Point: j.styles.ChartHistogram,
+			Muted: j.styles.Muted,
+		}),
+		scatter.WithSize(width, height),
+		scatter.WithData(
+			j.processed.ScatterPoints,
+			j.processed.SortedBuckets,
+			scatterLabels,
+			j.processed.MaxCount,
+			j.processed.MaxBucket,
+		),
+		scatter.WithEmptyMessage(j.noDataMessage()),
+	)
+	return j.scatterChart.store(width, height, scatterChart.View())
+}
+
+func (j *JobMetrics) clearCharts() {
+	j.histogramChart.clear()
+	j.scatterChart.clear()
 }
 
 func (j *JobMetrics) fetchCmd() tea.Cmd {
