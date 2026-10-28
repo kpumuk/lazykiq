@@ -8,6 +8,10 @@ Bubble Tea TUI for Sidekiq monitoring. Go 1.27 development toolchain.
 
 - Use flat branch names. Do not prefix with `feature/`, `perf/`, `fix/`, etc. unless explicitly requested.
 
+## Pull Requests
+
+Use [create-pull-request](.agents/skills/create-pull-request/SKILL.md) when preparing, raising, or updating a pull request. It defines PR prose, bug reproductions, VHS visual evidence, and optimization benchmarks.
+
 ## Code Quality
 
 - Make sure to always perform `mise run ci` to ensure code formatting matches the style of the repository, linters don't have any offenses, and tests pass.
