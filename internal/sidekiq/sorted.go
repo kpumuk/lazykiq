@@ -163,11 +163,12 @@ func (c *Client) scanSortedSetWindow(
 
 	limit := -1
 	if count > 0 {
-		limit = start + count
+		limit = sortedEntryWindowLimit(start, count)
 	}
 
 	result := SortedEntriesWindow{}
-	selected := make([]*SortedEntry, 0, max(min(limit, int(sortedSetScanCount)), 0))
+	var selected []*SortedEntry
+	selection := newSortedEntrySelection(limit, reverse)
 	var cursor uint64
 	for {
 		if err := ctx.Err(); err != nil {
@@ -175,6 +176,9 @@ func (c *Client) scanSortedSetWindow(
 		}
 		values, nextCursor, err := c.redis.ZScan(ctx, key, cursor, match, sortedSetScanCount).Result()
 		if err != nil {
+			return SortedEntriesWindow{}, err
+		}
+		if err := ctx.Err(); err != nil {
 			return SortedEntriesWindow{}, err
 		}
 
@@ -200,7 +204,7 @@ func (c *Client) scanSortedSetWindow(
 				selected = append(selected, entry)
 				continue
 			}
-			selected = insertSortedEntry(selected, entry, reverse, limit)
+			selection.add(entry)
 		}
 
 		cursor = nextCursor
@@ -209,18 +213,14 @@ func (c *Client) scanSortedSetWindow(
 		}
 	}
 
-	if limit < 0 {
-		sortSortedEntries(selected, reverse)
+	if limit >= 0 {
+		result.Entries = selection.window(start, count)
+		return result, nil
 	}
+	sortSortedEntries(selected, reverse)
 	if start >= len(selected) {
 		return result, nil
 	}
-	if count > 0 {
-		end := min(start+count, len(selected))
-		result.Entries = append([]*SortedEntry(nil), selected[start:end]...)
-		return result, nil
-	}
-
 	result.Entries = append([]*SortedEntry(nil), selected[start:]...)
 	return result, nil
 }
@@ -590,12 +590,21 @@ func (c *Client) scanSortedSetEntries(
 
 	var cursor uint64
 	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		values, nextCursor, err := c.redis.ZScan(ctx, key, cursor, match, sortedSetScanCount).Result()
 		if err != nil {
 			return err
 		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 
 		for i := 0; i+1 < len(values); i += 2 {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			score, err := strconv.ParseFloat(values[i+1], 64)
 			if err != nil {
 				continue
@@ -631,23 +640,99 @@ func sortSortedEntries(entries []*SortedEntry, reverse bool) {
 	})
 }
 
-func insertSortedEntry(entries []*SortedEntry, entry *SortedEntry, reverse bool, limit int) []*SortedEntry {
-	if limit == 0 {
-		return entries
+func sortedEntryWindowLimit(start, count int) int {
+	return start + min(count, math.MaxInt-start)
+}
+
+type rankedSortedEntry struct {
+	entry *SortedEntry
+	order int
+}
+
+// sortedEntrySelection retains the first limit entries in score order. The
+// arrival order preserves the scan's existing tie order for bounded windows.
+type sortedEntrySelection struct {
+	entries []rankedSortedEntry
+	limit   int
+	reverse bool
+	seen    int
+	heap    bool
+}
+
+func newSortedEntrySelection(limit int, reverse bool) sortedEntrySelection {
+	return sortedEntrySelection{
+		entries: make([]rankedSortedEntry, 0, max(min(limit, int(sortedSetScanCount)), 0)),
+		limit:   limit,
+		reverse: reverse,
+	}
+}
+
+func (s *sortedEntrySelection) before(a, b rankedSortedEntry) bool {
+	if a.entry.Score == b.entry.Score {
+		return a.order < b.order
+	}
+	return sortedEntryBefore(a.entry, b.entry, s.reverse)
+}
+
+func (s *sortedEntrySelection) add(entry *SortedEntry) {
+	if s.limit <= 0 {
+		return
+	}
+	candidate := rankedSortedEntry{entry: entry, order: s.seen}
+	s.seen++
+	if len(s.entries) < s.limit {
+		if len(s.entries) == cap(s.entries) {
+			capacity := cap(s.entries) + min(cap(s.entries), s.limit-cap(s.entries))
+			entries := make([]rankedSortedEntry, len(s.entries), capacity)
+			copy(entries, s.entries)
+			s.entries = entries
+		}
+		s.entries = append(s.entries, candidate)
+		return
 	}
 
-	pos := sort.Search(len(entries), func(i int) bool {
-		return sortedEntryBefore(entry, entries[i], reverse)
+	// Build the worst-first heap only when the prefix fills. Deep windows
+	// that include every match need only append and sort once.
+	if !s.heap {
+		for i := len(s.entries)/2 - 1; i >= 0; i-- {
+			s.down(i)
+		}
+		s.heap = true
+	}
+	if s.before(candidate, s.entries[0]) {
+		s.entries[0] = candidate
+		s.down(0)
+	}
+}
+
+func (s *sortedEntrySelection) down(parent int) {
+	for {
+		child := 2*parent + 1
+		if child >= len(s.entries) {
+			return
+		}
+		if right := child + 1; right < len(s.entries) && s.before(s.entries[child], s.entries[right]) {
+			child = right
+		}
+		if !s.before(s.entries[parent], s.entries[child]) {
+			return
+		}
+		s.entries[parent], s.entries[child] = s.entries[child], s.entries[parent]
+		parent = child
+	}
+}
+
+func (s *sortedEntrySelection) window(start, count int) []*SortedEntry {
+	if start >= len(s.entries) || count <= 0 {
+		return nil
+	}
+	sort.Slice(s.entries, func(i, j int) bool {
+		return s.before(s.entries[i], s.entries[j])
 	})
-	if limit > 0 && len(entries) == limit && pos == len(entries) {
-		return entries
-	}
-
-	entries = append(entries, nil)
-	copy(entries[pos+1:], entries[pos:])
-	entries[pos] = entry
-	if limit > 0 && len(entries) > limit {
-		entries = entries[:limit]
+	end := start + min(count, len(s.entries)-start)
+	entries := make([]*SortedEntry, end-start)
+	for i, selected := range s.entries[start:end] {
+		entries[i] = selected.entry
 	}
 	return entries
 }

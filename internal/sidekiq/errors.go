@@ -165,11 +165,12 @@ func (c *Client) collectErrorGroupEntries(
 	case count == 0:
 		limit = 0
 	case count > 0:
-		limit = start + count
+		limit = sortedEntryWindowLimit(start, count)
 	}
 
 	total := int64(0)
-	selected := make([]*SortedEntry, 0, max(min(limit, int(sortedSetScanCount)), 0))
+	var selected []*SortedEntry
+	selection := newSortedEntrySelection(limit, reverse)
 	err := c.scanSortedSetEntries(ctx, setKey, match, func(entry *SortedEntry) error {
 		if normalizedErrorGroupKeyFromEntry(entry) != groupKey {
 			return nil
@@ -180,27 +181,20 @@ func (c *Client) collectErrorGroupEntries(
 			selected = append(selected, entry)
 			return nil
 		}
-		selected = insertSortedEntry(selected, entry, reverse, limit)
+		selection.add(entry)
 		return nil
 	})
 	if err != nil {
 		return nil, 0, err
 	}
 
-	if limit < 0 {
-		sortSortedEntries(selected, reverse)
+	if limit >= 0 {
+		return selection.window(start, count), total, nil
 	}
-	if count == 0 {
-		return nil, total, nil
-	}
+	sortSortedEntries(selected, reverse)
 	if start >= len(selected) {
 		return nil, total, nil
 	}
-	if count > 0 {
-		end := min(start+count, len(selected))
-		return append([]*SortedEntry(nil), selected[start:end]...), total, nil
-	}
-
 	return append([]*SortedEntry(nil), selected[start:]...), total, nil
 }
 

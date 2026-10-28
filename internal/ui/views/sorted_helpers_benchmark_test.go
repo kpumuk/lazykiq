@@ -63,6 +63,35 @@ func BenchmarkFilteredSortedFirstWindow(b *testing.B) {
 	benchmarkFilteredSortedWindow(ctx, b, benchmarkSortedWindowConfig(client), []int{0})
 }
 
+func BenchmarkFilteredSortedWindowDepth(b *testing.B) {
+	for _, n := range []int{1000, 4000, 16000} {
+		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
+			client := setupSortedWindowBenchmarkRedisForSize(b, n)
+			for name, start := range map[string]int{
+				"first":  0,
+				"middle": n / 4,
+				"last":   n/2 - benchmarkSortedWindowSize,
+			} {
+				b.Run(name, func(b *testing.B) {
+					cfg := benchmarkSortedWindowConfig(client)
+					cfg.windowStart = start
+					b.ReportAllocs()
+					for b.Loop() {
+						got, err := fetchSortedWindow(b.Context(), cfg)
+						if err != nil {
+							b.Fatal(err)
+						}
+						if got.total != int64(n/2) || len(got.jobs) != benchmarkSortedWindowSize {
+							b.Fatalf("total=%d jobs=%d; want total=%d jobs=%d", got.total, len(got.jobs), n/2, benchmarkSortedWindowSize)
+						}
+						benchmarkSortedWindowSink = got
+					}
+				})
+			}
+		})
+	}
+}
+
 func benchmarkFilteredSortedWindow(
 	ctx context.Context,
 	b *testing.B,
@@ -115,6 +144,11 @@ func benchmarkSortedWindowConfig(client *sidekiq.Client) sortedWindowConfig {
 
 func setupSortedWindowBenchmarkRedis(b *testing.B) *sidekiq.Client {
 	b.Helper()
+	return setupSortedWindowBenchmarkRedisForSize(b, benchmarkSortedSetSize)
+}
+
+func setupSortedWindowBenchmarkRedisForSize(b *testing.B, size int) *sidekiq.Client {
+	b.Helper()
 
 	mr, err := miniredis.Run()
 	if err != nil {
@@ -130,7 +164,7 @@ func setupSortedWindowBenchmarkRedis(b *testing.B) *sidekiq.Client {
 		_ = client.Close()
 	})
 
-	for i := range benchmarkSortedSetSize {
+	for i := range size {
 		marker := benchmarkSortedFilterMissTag
 		if i%2 == 0 {
 			marker = benchmarkSortedFilterNeedle
