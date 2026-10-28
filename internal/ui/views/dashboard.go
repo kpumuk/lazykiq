@@ -3,6 +3,7 @@ package views
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -61,6 +62,9 @@ type Dashboard struct {
 	historyProcessed []int64
 	historyFailed    []int64
 
+	realtimeChart chartRenderCache
+	historyChart  chartRenderCache
+
 	redisInfo sidekiq.RedisInfo
 
 	redisInfoRequest requestctx.Controller
@@ -116,6 +120,7 @@ func (d *Dashboard) Update(msg tea.Msg) (View, tea.Cmd) {
 		d.realtimeFailed = append(d.realtimeFailed, deltaFailed)
 		d.realtimeTimes = append(d.realtimeTimes, msg.Data.UpdatedAt)
 		d.trimRealtimeSeries()
+		d.realtimeChart.clear()
 		return d, nil
 
 	case DashboardRedisInfoMsg:
@@ -123,9 +128,11 @@ func (d *Dashboard) Update(msg tea.Msg) (View, tea.Cmd) {
 		return d, nil
 
 	case DashboardHistoryMsg:
-		d.historyDates = msg.history.Dates
-		d.historyProcessed = msg.history.Processed
-		d.historyFailed = msg.history.Failed
+		// Own the inputs so later changes to the reply cannot stale the cache.
+		d.historyDates = slices.Clone(msg.history.Dates)
+		d.historyProcessed = slices.Clone(msg.history.Processed)
+		d.historyFailed = slices.Clone(msg.history.Failed)
+		d.historyChart.clear()
 		return d, nil
 
 	case RefreshMsg:
@@ -222,6 +229,10 @@ func (d *Dashboard) HelpSections() []HelpSection {
 
 // SetSize implements View.
 func (d *Dashboard) SetSize(width, height int) View {
+	if d.width != width || d.height != height {
+		d.realtimeChart.clear()
+		d.historyChart.clear()
+	}
 	d.width = width
 	d.height = height
 	d.seedRealtimeSeries()
@@ -232,11 +243,15 @@ func (d *Dashboard) SetSize(width, height int) View {
 // SetStyles implements View.
 func (d *Dashboard) SetStyles(styles Styles) View {
 	d.styles = styles
+	d.realtimeChart.clear()
+	d.historyChart.clear()
 	return d
 }
 
 // CancelRequests stops in-flight dashboard fetches when the view is hidden.
 func (d *Dashboard) CancelRequests() {
+	d.realtimeChart.clear()
+	d.historyChart.clear()
 	d.redisInfoRequest.Cancel()
 	d.historyRequest.Cancel()
 }
@@ -374,39 +389,43 @@ func (d *Dashboard) renderRealtimeContent(contentHeight int) string {
 		chartHeight = contentHeight
 	}
 
-	chart := timeseries.New(
-		timeseries.WithSize(width, chartHeight),
-		timeseries.WithSeries(
-			timeseries.Series{
-				Name:   "processed",
-				Times:  d.realtimeTimes,
-				Values: int64ToFloat64(d.realtimeProcessed),
-				Style:  d.styles.ChartSuccess,
-			},
-			timeseries.Series{
-				Name:   "failed",
-				Times:  d.realtimeTimes,
-				Values: int64ToFloat64(d.realtimeFailed),
-				Style:  d.styles.ChartFailure,
-			},
-		),
-		timeseries.WithStyles(timeseries.Styles{
-			Axis:  d.styles.ChartAxis,
-			Label: d.styles.ChartLabel,
-		}),
-		timeseries.WithXFormatter(realtimeTimeLabelFormatter()),
-		timeseries.WithYFormatter(shortYLabelFormatter()),
-		timeseries.WithXYSteps(2, 2),
-		timeseries.WithEmptyMessage("Loading..."),
-	)
+	chartOutput, cached := d.realtimeChart.get(width, chartHeight)
+	if !cached {
+		chart := timeseries.New(
+			timeseries.WithSize(width, chartHeight),
+			timeseries.WithSeries(
+				timeseries.Series{
+					Name:   "processed",
+					Times:  d.realtimeTimes,
+					Values: int64ToFloat64(d.realtimeProcessed),
+					Style:  d.styles.ChartSuccess,
+				},
+				timeseries.Series{
+					Name:   "failed",
+					Times:  d.realtimeTimes,
+					Values: int64ToFloat64(d.realtimeFailed),
+					Style:  d.styles.ChartFailure,
+				},
+			),
+			timeseries.WithStyles(timeseries.Styles{
+				Axis:  d.styles.ChartAxis,
+				Label: d.styles.ChartLabel,
+			}),
+			timeseries.WithXFormatter(realtimeTimeLabelFormatter()),
+			timeseries.WithYFormatter(shortYLabelFormatter()),
+			timeseries.WithXYSteps(2, 2),
+			timeseries.WithEmptyMessage("Loading..."),
+		)
+		chartOutput = d.realtimeChart.store(width, chartHeight, chart.View())
+	}
 
 	// Don't show legend if no data
 	if len(d.realtimeProcessed) == 0 {
-		return chart.View()
+		return chartOutput
 	}
 
 	legend := d.renderRealtimeLegend(width)
-	return chart.View() + "\n" + legend
+	return chartOutput + "\n" + legend
 }
 
 func (d *Dashboard) renderHistoryContent(contentHeight int) string {
@@ -423,39 +442,43 @@ func (d *Dashboard) renderHistoryContent(contentHeight int) string {
 		chartHeight = contentHeight
 	}
 
-	chart := timeseries.New(
-		timeseries.WithSize(width, chartHeight),
-		timeseries.WithSeries(
-			timeseries.Series{
-				Name:   "processed",
-				Times:  d.historyDates,
-				Values: int64ToFloat64(d.historyProcessed),
-				Style:  d.styles.ChartSuccess,
-			},
-			timeseries.Series{
-				Name:   "failed",
-				Times:  d.historyDates,
-				Values: int64ToFloat64(d.historyFailed),
-				Style:  d.styles.ChartFailure,
-			},
-		),
-		timeseries.WithStyles(timeseries.Styles{
-			Axis:  d.styles.ChartAxis,
-			Label: d.styles.ChartLabel,
-		}),
-		timeseries.WithXFormatter(historyTimeLabelFormatter()),
-		timeseries.WithYFormatter(shortYLabelFormatter()),
-		timeseries.WithXYSteps(2, 2),
-		timeseries.WithEmptyMessage("Loading..."),
-	)
+	chartOutput, cached := d.historyChart.get(width, chartHeight)
+	if !cached {
+		chart := timeseries.New(
+			timeseries.WithSize(width, chartHeight),
+			timeseries.WithSeries(
+				timeseries.Series{
+					Name:   "processed",
+					Times:  d.historyDates,
+					Values: int64ToFloat64(d.historyProcessed),
+					Style:  d.styles.ChartSuccess,
+				},
+				timeseries.Series{
+					Name:   "failed",
+					Times:  d.historyDates,
+					Values: int64ToFloat64(d.historyFailed),
+					Style:  d.styles.ChartFailure,
+				},
+			),
+			timeseries.WithStyles(timeseries.Styles{
+				Axis:  d.styles.ChartAxis,
+				Label: d.styles.ChartLabel,
+			}),
+			timeseries.WithXFormatter(historyTimeLabelFormatter()),
+			timeseries.WithYFormatter(shortYLabelFormatter()),
+			timeseries.WithXYSteps(2, 2),
+			timeseries.WithEmptyMessage("Loading..."),
+		)
+		chartOutput = d.historyChart.store(width, chartHeight, chart.View())
+	}
 
 	// Don't show legend if no data
 	if len(d.historyProcessed) == 0 {
-		return chart.View()
+		return chartOutput
 	}
 
 	legend := d.renderHistoryLegend(width)
-	return chart.View() + "\n" + legend
+	return chartOutput + "\n" + legend
 }
 
 func (d *Dashboard) renderRealtimeLegend(width int) string {
