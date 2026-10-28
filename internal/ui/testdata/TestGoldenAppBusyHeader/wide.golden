@@ -1,0 +1,24 @@
+ Processed: 0           Failed: 0              Busy: 0                Enqueued: 0            Retries: 0             Scheduled: 0           Dead: 0              
+  ctrl+1 worker-00000:12345  3/25  -                                                                                                     /       filter         
+  ctrl+2 worker-00001:12345  3/25  -                                                                                                     ctrl+u  reset filter   
+  ctrl+3 worker-00002:12345  3/25  -                                                                                                     s       select process 
+  ctrl+4 worker-00003:12345  3/25  -                                                                                                     ctrl+0  all processes  
+  ctrl+5 worker-00004:12345  3/25  -                                                                                                     t       toggle tree    
+╭─Active Jobs───────────────────────────────────────────────────────────────────────────────────────────────────╖PRC: 1000 • THR: 3000/25000 (12%) • RSS: 0 B╓─╮
+│ Process        TID    JID                      Queue           Age Class                    Args                                                             │
+│ ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────  │
+│ No active jobs                                                                                                                                               │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+  Dashboard                                                                                                                                                     
+  1 Dashboard  2 Busy  3 Queues  4 Retries  5 Scheduled  6 Dead  7 Errors  8 Metrics  q quit  ? help                                                    Lazykiq 

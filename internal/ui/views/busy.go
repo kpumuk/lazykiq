@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
@@ -43,9 +44,21 @@ type Busy struct {
 	filter          string
 	filterStyle     filterdialog.Styles
 	fetchRequest    requestctx.Controller
+	processHeader   *busyProcessHeader
 }
 
 const processGlyph = "⚙"
+
+const busyHeaderHeight = 5
+
+type busyProcessHeader struct {
+	maxNameLen    int
+	maxBusyLen    int
+	maxStartedLen int
+	lines         []string
+	selected      int
+	second        int64
+}
 
 // NewBusy creates a new Busy view.
 func NewBusy(client sidekiq.API) *Busy {
@@ -71,6 +84,7 @@ func (b *Busy) Update(msg tea.Msg) (View, tea.Cmd) {
 	switch msg := msg.(type) {
 	case busyDataMsg:
 		b.data = msg.data
+		b.processHeader = nil
 		b.ready = true
 		b.updateTableRows()
 		return b, nil
@@ -164,18 +178,7 @@ func (b *Busy) ShortHelp() []key.Binding {
 
 // HeaderLines implements HeaderLinesProvider.
 func (b *Busy) HeaderLines() []string {
-	lines := b.processListLines()
-	if len(lines) > 5 {
-		lines = lines[:5]
-	}
-	if len(lines) < 5 {
-		padding := make([]string, 5-len(lines))
-		lines = append(lines, padding...)
-	}
-	if len(lines) == 0 {
-		return make([]string, 5)
-	}
-	return lines
+	return b.processListLines(time.Now())
 }
 
 // HintBindings implements HintProvider.
@@ -215,6 +218,9 @@ func (b *Busy) TableHelp() []key.Binding {
 
 // SetSize implements View.
 func (b *Busy) SetSize(width, height int) View {
+	if b.width != width || b.height != height {
+		b.invalidateProcessHeader()
+	}
 	b.width = width
 	b.height = height
 	b.updateTableSize()
@@ -235,6 +241,7 @@ func (b *Busy) CancelRequests() {
 // SetStyles implements View.
 func (b *Busy) SetStyles(styles Styles) View {
 	b.styles = styles
+	b.invalidateProcessHeader()
 	b.table.SetStyles(tableStylesFromTheme(styles))
 	b.filterStyle = filterDialogStylesFromTheme(styles)
 	return b
@@ -281,6 +288,7 @@ func (b *Busy) reset() {
 	b.fetchRequest.Cancel()
 	b.ready = false
 	b.data = sidekiq.BusyData{}
+	b.processHeader = nil
 	b.filteredJobs = nil
 	b.rowJobIndex = nil
 	b.selectedProcess = -1
@@ -364,6 +372,7 @@ func (b *Busy) updateTableSize() {
 
 // updateTableRows converts job data to table rows.
 func (b *Busy) updateTableRows() {
+	b.invalidateProcessHeader()
 	b.normalizeSelectedProcess()
 	if b.filter != "" {
 		b.table.SetEmptyMessage("No matches")
@@ -591,40 +600,46 @@ func (b *Busy) jobsByProcess(selectedIdentity string) map[string][]sidekiq.Job {
 	return jobsByProcess
 }
 
-func (b *Busy) processListLines() []string {
-	if len(b.data.Processes) == 0 {
-		return nil
+func (b *Busy) invalidateProcessHeader() {
+	if b.processHeader != nil {
+		b.processHeader.lines = nil
+	}
+}
+
+func (b *Busy) processListLines(now time.Time) []string {
+	if b.processHeader == nil {
+		header := &busyProcessHeader{}
+		// Keep fleet-wide alignment metadata, without preparing hidden rows.
+		for _, proc := range b.data.Processes {
+			header.maxNameLen = max(header.maxNameLen, len(processIdentity(proc)))
+			header.maxBusyLen = max(header.maxBusyLen, len(fmt.Sprintf("%d/%d", proc.Busy, proc.Concurrency)))
+			header.maxStartedLen = max(header.maxStartedLen, len(processHeaderAge(proc.StartedAt, now)))
+		}
+		b.processHeader = header
+	}
+	header := b.processHeader
+	if header.lines != nil && header.selected == b.selectedProcess && header.second == now.Unix() {
+		return header.lines
 	}
 
-	names := make([]string, 0, len(b.data.Processes))
-	maxNameLen := 0
-	for _, proc := range b.data.Processes {
-		name := processIdentity(proc)
-		names = append(names, name)
-		if len(name) > maxNameLen {
-			maxNameLen = len(name)
-		}
+	start := max(0, b.selectedProcess-busyHeaderHeight+1)
+	end := min(start+busyHeaderHeight, len(b.data.Processes))
+	var started [busyHeaderHeight]string
+	maxStartedLen := header.maxStartedLen
+	for i := start; i < end; i++ {
+		started[i-start] = processHeaderAge(b.data.Processes[i].StartedAt, now)
+		maxStartedLen = max(maxStartedLen, len(started[i-start]))
 	}
 
-	maxBusyLen := 0
-	maxStartedLen := 0
-	for _, proc := range b.data.Processes {
-		busy := fmt.Sprintf("%d/%d", proc.Busy, proc.Concurrency)
-		started := display.DurationSince(proc.StartedAt)
-		if len(busy) > maxBusyLen {
-			maxBusyLen = len(busy)
+	lines := make([]string, busyHeaderHeight)
+	nameStyle := b.styles.Text.Bold(true).Width(header.maxNameLen)
+	for i := start; i < end; i++ {
+		proc := b.data.Processes[i]
+		name := nameStyle.Render(processIdentity(proc))
+		hotkeyText := "      "
+		if i < 9 {
+			hotkeyText = fmt.Sprintf("ctrl+%d", i+1)
 		}
-		if len(started) > maxStartedLen {
-			maxStartedLen = len(started)
-		}
-	}
-
-	lines := make([]string, 0, len(b.data.Processes))
-	nameStyle := b.styles.Text.Bold(true).Width(maxNameLen)
-	for i, proc := range b.data.Processes {
-		name := nameStyle.Render(names[i])
-
-		hotkeyText := fmt.Sprintf("ctrl+%d", i+1)
 		var hotkey string
 		if i == b.selectedProcess {
 			hotkey = b.styles.NavKey.Bold(true).Render(hotkeyText)
@@ -635,13 +650,22 @@ func (b *Busy) processListLines() []string {
 		name = hotkey + nameStyle.Render(name)
 
 		busy := fmt.Sprintf("%d/%d", proc.Busy, proc.Concurrency)
-		started := display.DurationSince(proc.StartedAt)
-		stats := b.styles.Muted.Render(fmt.Sprintf("  %*s  %*s", maxBusyLen, busy, maxStartedLen, started))
+		stats := b.styles.Muted.Render(fmt.Sprintf("  %*s  %*s", header.maxBusyLen, busy, maxStartedLen, started[i-start]))
 
-		lines = append(lines, name+stats)
+		lines[i-start] = name + stats
 	}
 
+	header.lines = lines
+	header.selected = b.selectedProcess
+	header.second = now.Unix()
 	return lines
+}
+
+func processHeaderAge(started, now time.Time) string {
+	if started.IsZero() {
+		return "-"
+	}
+	return display.Duration(int64(now.Sub(started).Seconds()))
 }
 
 func (b *Busy) renderProcessRow(proc sidekiq.Process, maxBusyLen, maxStartedLen, maxRSSLen int) string {
