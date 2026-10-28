@@ -665,7 +665,10 @@ func (m *Model) measureRows() {
 			continue
 		}
 		for i, cell := range row.Cells[:min(len(row.Cells), len(widths))] {
-			widths[i] = max(widths[i], lipgloss.Width(singleLine(cell)))
+			// Byte length bounds the display width after single-line normalization.
+			if len(cell) > widths[i] {
+				widths[i] = max(widths[i], lipgloss.Width(singleLine(cell)))
+			}
 		}
 	}
 	m.colWidths = widths

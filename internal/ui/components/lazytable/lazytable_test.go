@@ -3,6 +3,8 @@ package lazytable
 import (
 	"context"
 	"errors"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -86,6 +88,38 @@ func TestLazyTableAnchorKeepsSelection(t *testing.T) {
 
 	if got := m.Table().Cursor(); got != 1 {
 		t.Fatalf("expected cursor to stay on row-4 (index 1), got %d", got)
+	}
+}
+
+func TestLazyTableWindowKeepsHorizontalLayout(t *testing.T) {
+	m := newTestModel(table.WithColumns([]table.Column{{Title: "Job", Width: 4}, {Title: "Args", Width: 6}}))
+	m.SetSize(30, 5)
+	rows := make([]table.Row, 12)
+	for i := range rows {
+		rows[i] = tableRow(strconv.Itoa(i), "job", "TAIL")
+	}
+	rows[0].Cells[0] = strings.Repeat("x", 80)
+	m.RequestWindow(0, CursorStart)
+	m, _ = m.Update(DataMsg{RequestID: m.RequestID(), Result: FetchResult{Rows: rows[:9], Total: 100}})
+	m.Table().SetCursor(6)
+	m.Table().SetYOffset(4)
+	m.Table().ScrollToEnd()
+	before := m.Table().View()
+	if !strings.Contains(ansi.Strip(before), "TAIL") {
+		t.Fatal("horizontal end did not reach the argument column")
+	}
+
+	for _, start := range []int{3, 0, 3} {
+		m.RequestWindow(start, CursorKeep)
+		m, _ = m.Update(DataMsg{RequestID: m.RequestID(), Result: FetchResult{
+			Rows: rows[start : start+9], Total: 100, WindowStart: start,
+		}})
+		if m.Table().SelectedRow().ID != "6" || m.Table().View() != before {
+			t.Fatalf("window %d changed the selected row or horizontal viewport", start)
+		}
+		if first, last, total := m.Range(); first != 5 || last != 7 || total != 100 {
+			t.Fatalf("window %d changed the visible range: %d-%d/%d", start, first, last, total)
+		}
 	}
 }
 

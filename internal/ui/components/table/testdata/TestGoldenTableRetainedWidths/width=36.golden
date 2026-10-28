@@ -1,0 +1,27 @@
+                    Middle   Last   
+─────────────────────────────────── 
+xxxxxxxxxxxxxxxxx      old   tail   
+                        bb   TAIL   
+                                    
+                                    
+
+                    Middle   Last   
+─────────────────────────────────── 
+                        bb   TAIL   
+                                    
+                                    
+                                    
+
+First                               
+─────────────────────────────────── 
+界é                                 
+full override                       
+                                    
+                                    
+
+First      Middle       Last        
+─────────────────────────────────── 
+界é            bb       TAIL        
+full override                       
+                                    
+                                    
