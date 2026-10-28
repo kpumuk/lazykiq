@@ -24,6 +24,7 @@ import (
 // processesListDataMsg carries processes list data internally.
 type processesListDataMsg struct {
 	processes []sidekiq.Process
+	requestID uint64
 }
 
 // ProcessesList shows all Sidekiq processes in a table.
@@ -40,6 +41,7 @@ type ProcessesList struct {
 	frameStyles             frame.Styles
 	filterStyle             filterdialog.Styles
 	fetchRequest            requestctx.Controller
+	requestID               uint64
 }
 
 // NewProcessesList creates a new ProcessesList view.
@@ -63,6 +65,9 @@ func (p *ProcessesList) Init() tea.Cmd {
 func (p *ProcessesList) Update(msg tea.Msg) (View, tea.Cmd) {
 	switch msg := msg.(type) {
 	case processesListDataMsg:
+		if msg.requestID != p.requestID {
+			return p, nil
+		}
 		p.processes = msg.processes
 		p.ready = true
 		p.updateTableRows()
@@ -274,6 +279,7 @@ func (p *ProcessesList) Dispose() {
 // CancelRequests stops in-flight fetches when the view is hidden.
 func (p *ProcessesList) CancelRequests() {
 	p.fetchRequest.Cancel()
+	p.requestID++
 }
 
 // SetStyles implements View.
@@ -287,9 +293,14 @@ func (p *ProcessesList) SetStyles(styles Styles) View {
 
 // fetchDataCmd fetches processes data from Redis.
 func (p *ProcessesList) fetchDataCmd() tea.Cmd {
+	p.requestID++
+	requestID, filter := p.requestID, p.filter
 	ctx := p.fetchRequest.Start(devtools.WithTracker(context.Background(), "processes.fetchDataCmd"))
 	return func() tea.Msg {
-		data, err := p.client.GetBusyData(ctx, "")
+		data, err := p.client.GetProcessesData(ctx)
+		if ctx.Err() != nil {
+			return nil
+		}
 		if err != nil {
 			if requestctx.IsCanceled(err) {
 				return nil
@@ -297,24 +308,24 @@ func (p *ProcessesList) fetchDataCmd() tea.Cmd {
 			return ConnectionErrorMsg{Err: err}
 		}
 
-		processes := make([]sidekiq.Process, 0, len(data.Processes))
-		for _, process := range data.Processes {
-			if !p.matchesFilter(process) {
+		processes := make([]sidekiq.Process, 0, len(data))
+		for _, process := range data {
+			if !matchesProcessFilter(process, filter) {
 				continue
 			}
 			processes = append(processes, process)
 		}
 
-		return processesListDataMsg{processes: processes}
+		return processesListDataMsg{processes: processes, requestID: requestID}
 	}
 }
 
-func (p *ProcessesList) matchesFilter(proc sidekiq.Process) bool {
-	if p.filter == "" {
+func matchesProcessFilter(proc sidekiq.Process, filter string) bool {
+	if filter == "" {
 		return true
 	}
 
-	needle := strings.ToLower(p.filter)
+	needle := strings.ToLower(filter)
 	name := strings.ToLower(processIdentity(proc))
 	if strings.Contains(name, needle) {
 		return true
@@ -337,7 +348,7 @@ func (p *ProcessesList) matchesFilter(proc sidekiq.Process) bool {
 }
 
 func (p *ProcessesList) reset() {
-	p.fetchRequest.Cancel()
+	p.CancelRequests()
 	p.ready = false
 	p.processes = nil
 	p.table.SetRows(nil)

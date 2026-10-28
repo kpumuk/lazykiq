@@ -48,6 +48,9 @@ type API interface {
 	// GetProcesses fetches all process identities from Redis, sorted alphabetically.
 	GetProcesses(ctx context.Context) ([]*Process, error)
 
+	// GetProcessesData fetches process metadata and status without active jobs.
+	GetProcessesData(ctx context.Context) ([]Process, error)
+
 	// GetBusyData fetches detailed process and active job information from Redis.
 	// If filter is non-empty, only jobs whose raw payload contains the substring are returned.
 	GetBusyData(ctx context.Context, filter string) (BusyData, error)
