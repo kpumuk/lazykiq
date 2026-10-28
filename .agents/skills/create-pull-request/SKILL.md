@@ -11,11 +11,13 @@ Use for a prepared, focused Lazykiq change. Keep each PR about one independently
 
 Read `AGENTS.md`, any contribution guide, and the current PR template if present. Inspect the actual diff and relevant conversation or issue for the goal. Infer intent only when supported by that evidence; ask a short clarification if the motivation remains materially unclear.
 
-Preserve unrelated changes. Use flat branch names as required by `AGENTS.md`. Do not bundle unrelated fixes, create tickets, or rewrite existing commits merely to raise a PR.
+Preserve unrelated changes. Use flat branch names as required by `AGENTS.md`. Do not bundle unrelated fixes, create tickets, or squash or reword existing commits merely to raise a PR.
 
-Determine the repository, head, and intended base before collecting evidence. Prefer the user's explicit base, then the existing PR's base, then an explicit branch `gh-merge-base` configuration, then the remote default branch. A feature branch's tracking upstream does not establish the PR base. Refresh the relevant remote refs, pin the base and head SHAs, and inspect `git diff <base>...<head>` and the commits it contains. Resolve unexpected scope before publication.
+Determine the repository, head, and intended base before collecting evidence. Prefer the user's explicit base, then the existing PR's base, then an explicit branch `gh-merge-base` configuration, then the remote default branch. A feature branch's tracking upstream does not establish the PR base.
 
 If the change is uncommitted, make a focused commit when authorized, or record the exact working-tree patch used to collect evidence and replace that identifier with the matching final commit ID before publication. Do not label dirty-tree results as measurements of the unchanged `HEAD` commit.
+
+Before collecting final evidence, fetch the intended base from its remote and rebase the feature branch onto the latest fetched tip, normally `origin/main`. Resolve conflicts while preserving the intended change and unrelated work. Verify that the fetched base is an ancestor of `HEAD` with `git merge-base --is-ancestor <remote>/<base> HEAD`. Pin the resulting base and head SHAs, then inspect `git diff <base>...<head>` and the commits it contains. Resolve unexpected scope before publication.
 
 For before/after comparisons, pin the unpatched comparison revision, normally the merge base, and explain any different choice. Use separate checkouts or binaries so evidence comes from the stated revisions without disturbing the working tree. Evidence must cover the final proposed code; refresh affected evidence after material changes.
 
@@ -78,6 +80,8 @@ For a new visual feature, use `## Demo` with a short caption and the required me
 Prefer connected prose. Do not list changed files, narrate the diff, paste internal plans or chat history, or add routine test plans/checklists. Include only specific verification details that materially help assess the result. Link related issues deliberately; use a closing keyword only when the PR fully resolves the issue.
 
 ## Publish and verify
+
+Immediately before pushing, fetch the intended base again and verify that its latest tip is an ancestor of `HEAD`. If the base advanced, rebase again, update revision IDs, repeat validation, and refresh affected benchmark or visual evidence before publication.
 
 Run `mise run ci` and `git diff --check`. Check that relevant regressions and UI golden coverage required by `AGENTS.md` are present. Report failed or unavailable checks accurately and resolve failures before publishing unless the user explicitly directs otherwise.
 
