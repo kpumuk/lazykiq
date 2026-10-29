@@ -1,6 +1,7 @@
 package views
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -10,7 +11,61 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/exp/golden"
+
+	"github.com/kpumuk/lazykiq/internal/sidekiq"
 )
+
+type dashboardFetchClient struct {
+	sidekiq.API
+	daysOffset int64
+	version    string
+}
+
+func (c *dashboardFetchClient) GetStatsHistory(_ context.Context, days int) (sidekiq.StatsHistory, error) {
+	return sidekiq.StatsHistory{Processed: []int64{int64(days) + c.daysOffset}}, nil
+}
+
+func (c *dashboardFetchClient) GetRedisInfo(context.Context) (sidekiq.RedisInfo, error) {
+	return sidekiq.RedisInfo{Version: c.version}, nil
+}
+
+func TestDashboardHistoryFetchCapturesInputs(t *testing.T) {
+	for name, mutate := range map[string]func(*Dashboard){
+		"range index": func(d *Dashboard) { d.historyRangeIdx = 2 },
+		"range value": func(d *Dashboard) { d.historyRanges[d.historyRangeIdx] = 120 },
+		"client":      func(d *Dashboard) { d.client = &dashboardFetchClient{daysOffset: 1000} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			d := NewDashboard(&dashboardFetchClient{})
+			t.Cleanup(d.CancelRequests)
+			cmd := d.fetchHistoryCmd()
+			mutate(d)
+
+			msg, ok := cmd().(DashboardHistoryMsg)
+			if !ok {
+				t.Fatal("expected dashboard history")
+			}
+			if got := msg.history.Processed[0]; got != 30 {
+				t.Fatalf("request days = %d, want 30", got)
+			}
+		})
+	}
+}
+
+func TestDashboardRedisInfoFetchCapturesClient(t *testing.T) {
+	d := NewDashboard(&dashboardFetchClient{version: "original"})
+	t.Cleanup(d.CancelRequests)
+	cmd := d.fetchRedisInfoCmd()
+	d.client = &dashboardFetchClient{version: "replacement"}
+
+	msg, ok := cmd().(DashboardRedisInfoMsg)
+	if !ok {
+		t.Fatal("expected Redis info")
+	}
+	if got := msg.RedisInfo.Version; got != "original" {
+		t.Fatalf("client = %q, want original", got)
+	}
+}
 
 func testDashboard() *Dashboard {
 	d := NewDashboard(nil)

@@ -226,8 +226,9 @@ func (e *ErrorsSummary) fetchDataCmd(force bool) tea.Cmd {
 
 	e.refreshing = true
 	ctx := e.fetchRequest.Start(devtools.WithTracker(context.Background(), "errors.fetchDataCmd"))
+	client, filter := e.client, e.filter
 	return func() tea.Msg {
-		rows, meta, err := e.client.GetErrorSummary(ctx, e.filter)
+		rows, meta, err := client.GetErrorSummary(ctx, filter)
 		if err != nil {
 			if requestctx.IsCanceled(err) {
 				return nil

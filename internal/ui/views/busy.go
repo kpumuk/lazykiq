@@ -273,8 +273,9 @@ func (b *Busy) SetProcessIdentity(identity string) {
 // fetchDataCmd fetches busy data from Redis.
 func (b *Busy) fetchDataCmd() tea.Cmd {
 	ctx := b.fetchRequest.Start(devtools.WithTracker(context.Background(), "busy.fetchDataCmd"))
+	client, filter := b.client, b.filter
 	return func() tea.Msg {
-		data, err := b.client.GetBusyData(ctx, b.filter)
+		data, err := client.GetBusyData(ctx, filter)
 		if err != nil {
 			if requestctx.IsCanceled(err) {
 				return nil
