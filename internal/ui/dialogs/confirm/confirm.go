@@ -89,6 +89,14 @@ func New(opts ...Option) *Model {
 	return m
 }
 
+// Styles returns the current button styles.
+func (m *Model) Styles() Styles { return m.styles }
+
+// SetStyles updates colors while preserving dialog state.
+func (m *Model) SetStyles(styles Styles) {
+	m.styles = styles
+}
+
 // WithStyles sets the styles.
 func WithStyles(s Styles) Option {
 	return func(m *Model) {

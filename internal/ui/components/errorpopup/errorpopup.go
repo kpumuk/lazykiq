@@ -19,7 +19,7 @@ type Styles struct {
 
 // DefaultStyles returns default styles for the error popup.
 func DefaultStyles() Styles {
-	errorColor := theme.DefaultTheme.Error
+	errorColor := theme.DefaultTheme.Error.Resolve(true)
 	return Styles{
 		Title:   lipgloss.NewStyle().Foreground(errorColor).Bold(true),
 		Message: lipgloss.NewStyle().Faint(true),

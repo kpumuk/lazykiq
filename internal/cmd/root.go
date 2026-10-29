@@ -11,7 +11,6 @@ import (
 	"runtime/pprof"
 
 	tea "charm.land/bubbletea/v2"
-	"charm.land/fang/v2"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
@@ -45,10 +44,11 @@ func newRootCommand(version, commit, date, builtBy string) *cobra.Command {
 	var development bool
 	var enabledFeatures []string
 	rootCmd := &cobra.Command{
-		Use:   "lazykiq",
-		Short: "A terminal UI for Sidekiq.",
-		Long:  "A terminal UI for Sidekiq.",
-		Args:  cobra.NoArgs,
+		Use:          "lazykiq",
+		Short:        "A terminal UI for Sidekiq.",
+		Long:         "A terminal UI for Sidekiq.",
+		Args:         cobra.NoArgs,
+		SilenceUsage: true,
 	}
 
 	rootCmd.Version = buildVersion(version, commit, date, builtBy)
@@ -158,11 +158,7 @@ func newRootCommand(version, commit, date, builtBy string) *cobra.Command {
 func Execute(version, commit, date, builtBy string) error {
 	rootCmd := newRootCommand(version, commit, date, builtBy)
 
-	return fang.Execute(
-		context.Background(),
-		rootCmd,
-		fang.WithVersion(rootCmd.Version),
-		fang.WithoutCompletions(),
-		fang.WithoutManpage(),
-	)
+	rootCmd.CompletionOptions.DisableDefaultCmd = true
+	// Cobra dispatches help, version and errors without terminal negotiation.
+	return rootCmd.ExecuteContext(context.Background())
 }

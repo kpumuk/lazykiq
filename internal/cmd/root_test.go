@@ -57,3 +57,26 @@ func TestUnknownFeatureRejectedBeforeStartup(t *testing.T) {
 		t.Fatalf("Execute = %v", err)
 	}
 }
+
+func TestInformationalFlagsSkipStartup(t *testing.T) {
+	for _, flag := range []string{"--help", "--version"} {
+		t.Run(flag, func(t *testing.T) {
+			cmd := newRootCommand("test-version", "abc", "today", "builder")
+			var out strings.Builder
+			cmd.SetOut(&out)
+			cmd.SetErr(&out)
+			cmd.SetArgs([]string{flag})
+			cmd.RunE = func(*cobra.Command, []string) error { t.Fatal("informational flag started TUI"); return nil }
+			if err := cmd.Execute(); err != nil {
+				t.Fatal(err)
+			}
+			want := "--redis"
+			if flag == "--version" {
+				want = "test-version\ncommit: abc\nbuilt at: today\nbuilt by: builder"
+			}
+			if !strings.Contains(out.String(), want) {
+				t.Fatalf("missing %q in %q", want, out.String())
+			}
+		})
+	}
+}

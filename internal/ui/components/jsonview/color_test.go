@@ -1,12 +1,12 @@
 package jsonview
 
 import (
+	"bytes"
 	"encoding/json"
 	"strings"
 	"testing"
 
 	"charm.land/lipgloss/v2"
-	"charm.land/lipgloss/v2/compat"
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 
@@ -14,18 +14,11 @@ import (
 )
 
 func TestRenderLineSyntaxColors(t *testing.T) {
-	// These terminal settings are package globals; keep the subtests sequential.
-	oldProfile, oldBackground := compat.Profile, compat.HasDarkBackground
-	t.Cleanup(func() {
-		compat.Profile, compat.HasDarkBackground = oldProfile, oldBackground
-	})
 	for name, dark := range map[string]bool{"light": false, "dark": true} {
 		t.Run(name, func(t *testing.T) {
-			compat.HasDarkBackground = dark
 			for _, profile := range []colorprofile.Profile{colorprofile.ANSI, colorprofile.ANSI256, colorprofile.TrueColor} {
 				t.Run(profile.String(), func(t *testing.T) {
-					compat.Profile = profile
-					styles := syntaxColorStyles()
+					styles := syntaxColorStylesForBackground(dark)
 					for name, tc := range map[string]struct {
 						value any
 						style lipgloss.Style
@@ -45,7 +38,7 @@ func TestRenderLineSyntaxColors(t *testing.T) {
 							want := styles.Text.Render("  ") + styles.Key.Render(`"value"`) +
 								styles.Punctuation.Render(":") + styles.Text.Render(" ") + tc.style.Render(string(literal))
 							want += strings.Repeat(" ", 80-ansi.StringWidth(want))
-							if got := m.RenderLine(1, 0, 80); got != want {
+							if got := downsample(t, profile, m.RenderLine(1, 0, 80)); got != downsample(t, profile, want) {
 								t.Fatalf("colored tokens:\ngot  %q\nwant %q", got, want)
 							}
 							for _, rendered := range []string{styles.Key.Render(`"value"`), styles.Punctuation.Render(":"), tc.style.Render(string(literal))} {
@@ -84,8 +77,8 @@ func TestRenderLineSyntaxColors(t *testing.T) {
 	}
 }
 
-func syntaxColorStyles() Styles {
-	s := theme.NewStyles()
+func syntaxColorStylesForBackground(dark bool) Styles {
+	s := theme.NewStylesForBackground(dark)
 	return Styles{
 		Text:        s.ViewText,
 		Key:         s.JSONKey,
@@ -96,4 +89,14 @@ func syntaxColorStyles() Styles {
 		Punctuation: s.JSONPunctuation,
 		Muted:       s.ViewMuted,
 	}
+}
+
+func downsample(t *testing.T, profile colorprofile.Profile, text string) string {
+	t.Helper()
+	var out bytes.Buffer
+	w := colorprofile.Writer{Forward: &out, Profile: profile}
+	if _, err := w.Write([]byte(text)); err != nil {
+		t.Fatal(err)
+	}
+	return out.String()
 }

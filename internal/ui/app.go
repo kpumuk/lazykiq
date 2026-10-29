@@ -17,7 +17,9 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/components/stackbar"
 	"github.com/kpumuk/lazykiq/internal/ui/components/stats"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
+	confirmdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/confirm"
 	devtoolsdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/devtools"
+	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
 	helpdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/help"
 	"github.com/kpumuk/lazykiq/internal/ui/requestctx"
 	"github.com/kpumuk/lazykiq/internal/ui/theme"
@@ -68,6 +70,7 @@ type App struct {
 	errorPopup              errorpopup.Model
 	dialogs                 dialogs.DialogCmp
 	styles                  theme.Styles
+	darkBackground          bool
 	sidekiq                 sidekiq.API
 	connectionError         error
 	dangerousActionsEnabled bool
@@ -111,50 +114,6 @@ func New(client sidekiq.API, version string, dangerousActionsEnabled bool, devTr
 		viewJobMetrics:    views.NewJobMetrics(client),
 	}
 
-	// Apply styles to views
-	viewStyles := views.Styles{
-		Text:            styles.ViewText,
-		Muted:           styles.ViewMuted,
-		Title:           styles.ViewTitle,
-		MetricLabel:     styles.MetricLabel,
-		MetricValue:     styles.MetricValue,
-		TableHeader:     styles.TableHeader,
-		TableSelected:   styles.TableSelected,
-		TableSeparator:  styles.TableSeparator,
-		ScrollbarTrack:  styles.ScrollbarTrack,
-		ScrollbarThumb:  styles.ScrollbarThumb,
-		BoxPadding:      styles.BoxPadding,
-		BorderStyle:     styles.BorderStyle,
-		FocusBorder:     styles.FocusBorder,
-		NavKey:          styles.NavKey,
-		ChartAxis:       styles.ChartAxis,
-		ChartLabel:      styles.ChartLabel,
-		ChartSuccess:    styles.ChartSuccess,
-		ChartFailure:    styles.ChartFailure,
-		ChartHistogram:  styles.ChartHistogram,
-		JSONKey:         styles.JSONKey,
-		JSONString:      styles.JSONString,
-		JSONNumber:      styles.JSONNumber,
-		JSONBool:        styles.JSONBool,
-		JSONNull:        styles.JSONNull,
-		JSONPunctuation: styles.JSONPunctuation,
-		QueuePaused:     styles.QueuePaused,
-		QueueText:       styles.QueueText,
-		QueueWeight:     styles.QueueWeight,
-		FilterFocused:   styles.FilterFocused,
-		FilterBlurred:   styles.FilterBlurred,
-		DangerAction:    styles.ContextDangerKey,
-		NeutralAction:   styles.ContextKey,
-	}
-	for _, id := range viewOrder {
-		viewRegistry[id] = viewRegistry[id].SetStyles(viewStyles)
-	}
-	viewRegistry[viewQueuesList] = viewRegistry[viewQueuesList].SetStyles(viewStyles)
-	viewRegistry[viewProcessesList] = viewRegistry[viewProcessesList].SetStyles(viewStyles)
-	viewRegistry[viewErrorsDetails] = viewRegistry[viewErrorsDetails].SetStyles(viewStyles)
-	viewRegistry[viewJobDetail] = viewRegistry[viewJobDetail].SetStyles(viewStyles)
-	viewRegistry[viewJobMetrics] = viewRegistry[viewJobMetrics].SetStyles(viewStyles)
-
 	for _, view := range viewRegistry {
 		if toggle, ok := view.(views.DangerousActionsToggle); ok {
 			toggle.SetDangerousActionsEnabled(dangerousActionsEnabled)
@@ -167,69 +126,32 @@ func New(client sidekiq.API, version string, dangerousActionsEnabled bool, devTr
 		navViews[i] = navbar.ViewInfo{Name: viewRegistry[id].Name()}
 	}
 
-	return App{
-		keys:         keys,
-		viewStack:    []viewID{viewDashboard},
-		viewOrder:    viewOrder,
-		viewRegistry: viewRegistry,
-		metrics: stats.New(
-			stats.WithStyles(stats.Styles{
-				Bar:   styles.MetricsBar,
-				Fill:  styles.MetricsFill,
-				Label: styles.MetricsLabel,
-				Value: styles.MetricsValue,
-			}),
-		),
-		contextbar: contextbar.New(
-			contextbar.WithStyles(contextbar.Styles{
-				Bar:        styles.ContextBar,
-				Label:      styles.ContextLabel,
-				Value:      styles.ContextValue,
-				Key:        styles.ContextKey,
-				Desc:       styles.ContextDesc,
-				DangerKey:  styles.ContextDangerKey,
-				DangerDesc: styles.ContextDangerDesc,
-			}),
-			contextbar.WithHeight(contextbarDefaultHeight),
-		),
-		stackbar: stackbar.New(
-			stackbar.WithStyles(stackbar.Styles{
-				Bar:  styles.StackBar,
-				Item: styles.StackItem,
-			}),
-			stackbar.WithStack([]string{viewRegistry[viewDashboard].Name()}),
-		),
-		navbar: navbar.New(
-			navbar.WithStyles(navbar.Styles{
-				Bar:   styles.NavBar,
-				Key:   styles.NavKey,
-				Item:  styles.NavItem,
-				Quit:  styles.NavQuit,
-				Brand: styles.NavBrand,
-			}),
-			navbar.WithViews(navViews),
-			navbar.WithBrand(brand),
-			navbar.WithHelp(keys.Help),
-		),
-		errorPopup: errorpopup.New(
-			errorpopup.WithStyles(errorpopup.Styles{
-				Title:   styles.ErrorTitle,
-				Message: styles.ViewMuted,
-				Border:  styles.ErrorBorder,
-			}),
-		),
+	app := App{
+		keys:                    keys,
+		viewStack:               []viewID{viewDashboard},
+		viewOrder:               viewOrder,
+		viewRegistry:            viewRegistry,
+		metrics:                 stats.New(),
+		contextbar:              contextbar.New(contextbar.WithHeight(contextbarDefaultHeight)),
+		stackbar:                stackbar.New(stackbar.WithStack([]string{viewRegistry[viewDashboard].Name()})),
+		navbar:                  navbar.New(navbar.WithViews(navViews), navbar.WithBrand(brand), navbar.WithHelp(keys.Help)),
+		errorPopup:              errorpopup.New(),
 		dialogs:                 dialogs.NewDialogCmp(),
 		styles:                  styles,
+		darkBackground:          true,
 		sidekiq:                 client,
 		dangerousActionsEnabled: dangerousActionsEnabled,
 		devTracker:              devTracker,
 	}
+	app.applyStyles(styles)
+	return app
 }
 
 // Init implements tea.Model.
 func (a App) Init() tea.Cmd {
 	activeID := a.activeViewID()
 	return tea.Batch(
+		tea.RequestBackgroundColor,
 		a.viewRegistry[activeID].Init(),
 		a.metrics.Init(),
 		a.fetchStatsCmd(), // Fetch stats immediately
@@ -253,11 +175,19 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case dialogs.OpenDialogMsg, dialogs.CloseDialogMsg:
 		updated, cmd := a.dialogs.Update(msg)
 		a.dialogs = updated
+		a.styleDialogs()
 		a.syncContextbar()
 		return a, cmd
 	}
 
 	switch msg := msg.(type) {
+	case tea.BackgroundColorMsg:
+		if msg.Color != nil && a.darkBackground != msg.IsDark() {
+			a.darkBackground = msg.IsDark()
+			a.applyStyles(theme.NewStylesForBackground(a.darkBackground))
+		}
+		return a, nil
+
 	case tickMsg:
 		// Always fetch stats for metrics bar
 		cmds = append(cmds, a.fetchStatsCmd())
@@ -616,16 +546,6 @@ func (a App) toggleHelpDialog() tea.Cmd {
 	return func() tea.Msg {
 		return dialogs.OpenDialogMsg{
 			Model: helpdialog.New(
-				helpdialog.WithStyles(helpdialog.Styles{
-					Title:          a.styles.ViewTitle,
-					Border:         a.styles.FocusBorder,
-					Section:        a.styles.ViewTitle,
-					Key:            a.styles.ContextKey,
-					Desc:           a.styles.ViewText,
-					Muted:          a.styles.ViewMuted,
-					ScrollbarTrack: a.styles.ScrollbarTrack,
-					ScrollbarThumb: a.styles.ScrollbarThumb,
-				}),
 				helpdialog.WithSections(sections),
 			),
 		}
@@ -642,20 +562,6 @@ func (a App) toggleDevToolsDialog() tea.Cmd {
 
 	return func() tea.Msg {
 		opts := []devtoolsdialog.Option{
-			devtoolsdialog.WithStyles(devtoolsdialog.Styles{
-				Title:          a.styles.ViewTitle,
-				Border:         a.styles.FocusBorder,
-				Text:           a.styles.ViewText,
-				Muted:          a.styles.ViewMuted,
-				Prompt:         a.styles.MetricLabel,
-				Placeholder:    a.styles.ViewMuted,
-				Cursor:         a.styles.ViewText,
-				TableHeader:    a.styles.TableHeader,
-				TableSelected:  a.styles.TableSelected,
-				TableSeparator: a.styles.TableSeparator,
-				ScrollbarTrack: a.styles.ScrollbarTrack,
-				ScrollbarThumb: a.styles.ScrollbarThumb,
-			}),
 			devtoolsdialog.WithTitle("Dev Console"),
 			devtoolsdialog.WithTracker(a.devTracker),
 		}
@@ -899,4 +805,94 @@ func (a *App) popView() {
 func (a *App) popAndRefresh(id viewID) tea.Cmd {
 	a.popTopView()
 	return a.updateView(id, views.RefreshMsg{})
+}
+
+// applyStyles updates existing models, preserving navigation and input state.
+func (a *App) applyStyles(styles theme.Styles) {
+	a.styles = styles
+	viewStyles := views.Styles{
+		Text:            styles.ViewText,
+		Muted:           styles.ViewMuted,
+		Title:           styles.ViewTitle,
+		MetricLabel:     styles.MetricLabel,
+		MetricValue:     styles.MetricValue,
+		TableHeader:     styles.TableHeader,
+		TableSelected:   styles.TableSelected,
+		TableSeparator:  styles.TableSeparator,
+		ScrollbarTrack:  styles.ScrollbarTrack,
+		ScrollbarThumb:  styles.ScrollbarThumb,
+		BoxPadding:      styles.BoxPadding,
+		BorderStyle:     styles.BorderStyle,
+		FocusBorder:     styles.FocusBorder,
+		NavKey:          styles.NavKey,
+		ChartAxis:       styles.ChartAxis,
+		ChartLabel:      styles.ChartLabel,
+		ChartSuccess:    styles.ChartSuccess,
+		ChartFailure:    styles.ChartFailure,
+		ChartHistogram:  styles.ChartHistogram,
+		JSONKey:         styles.JSONKey,
+		JSONString:      styles.JSONString,
+		JSONNumber:      styles.JSONNumber,
+		JSONBool:        styles.JSONBool,
+		JSONNull:        styles.JSONNull,
+		JSONPunctuation: styles.JSONPunctuation,
+		QueuePaused:     styles.QueuePaused,
+		QueueText:       styles.QueueText,
+		QueueWeight:     styles.QueueWeight,
+		FilterFocused:   styles.FilterFocused,
+		FilterBlurred:   styles.FilterBlurred,
+		DangerAction:    styles.ContextDangerKey,
+		NeutralAction:   styles.ContextKey,
+	}
+	for id, view := range a.viewRegistry {
+		a.viewRegistry[id] = view.SetStyles(viewStyles)
+	}
+	a.metrics.SetStyles(stats.Styles{Bar: styles.MetricsBar, Fill: styles.MetricsFill, Label: styles.MetricsLabel, Value: styles.MetricsValue})
+	a.contextbar.SetStyles(contextbar.Styles{Bar: styles.ContextBar, Label: styles.ContextLabel, Value: styles.ContextValue, Key: styles.ContextKey, Desc: styles.ContextDesc, DangerKey: styles.ContextDangerKey, DangerDesc: styles.ContextDangerDesc})
+	a.stackbar.SetStyles(stackbar.Styles{Bar: styles.StackBar, Item: styles.StackItem})
+	a.navbar.SetStyles(navbar.Styles{Bar: styles.NavBar, Key: styles.NavKey, Item: styles.NavItem, Quit: styles.NavQuit, Brand: styles.NavBrand})
+	a.errorPopup.SetStyles(errorpopup.Styles{Title: styles.ErrorTitle, Message: styles.ViewMuted, Border: styles.ErrorBorder})
+	a.styleDialogs()
+}
+
+// styleDialogs also handles dialogs opened by commands that captured an older palette.
+func (a *App) styleDialogs() {
+	for _, dialog := range a.dialogs.Dialogs() {
+		switch m := dialog.(type) {
+		case *helpdialog.Model:
+			m.SetStyles(helpdialog.Styles{
+				Title:          a.styles.ViewTitle,
+				Border:         a.styles.FocusBorder,
+				Section:        a.styles.ViewTitle,
+				Key:            a.styles.ContextKey,
+				Desc:           a.styles.ViewText,
+				Muted:          a.styles.ViewMuted,
+				ScrollbarTrack: a.styles.ScrollbarTrack,
+				ScrollbarThumb: a.styles.ScrollbarThumb,
+			})
+		case *devtoolsdialog.Model:
+			m.SetStyles(devtoolsdialog.Styles{
+				Title:          a.styles.ViewTitle,
+				Border:         a.styles.FocusBorder,
+				Text:           a.styles.ViewText,
+				Muted:          a.styles.ViewMuted,
+				Prompt:         a.styles.MetricLabel,
+				Placeholder:    a.styles.ViewMuted,
+				Cursor:         a.styles.ViewText,
+				TableHeader:    a.styles.TableHeader,
+				TableSelected:  a.styles.TableSelected,
+				TableSeparator: a.styles.TableSeparator,
+				ScrollbarTrack: a.styles.ScrollbarTrack,
+				ScrollbarThumb: a.styles.ScrollbarThumb,
+			})
+		case *filterdialog.Model:
+			m.SetStyles(filterdialog.Styles{Title: a.styles.ViewTitle, Border: a.styles.FocusBorder, Prompt: a.styles.MetricLabel, Text: a.styles.ViewText, Placeholder: a.styles.ViewMuted, Cursor: a.styles.ViewText})
+		case *confirmdialog.Model:
+			yes := a.styles.ContextDangerKey
+			if m.Styles().ButtonYesActive.GetBackground() == m.Styles().ButtonNoActive.GetBackground() {
+				yes = a.styles.ContextKey
+			}
+			m.SetStyles(confirmdialog.Styles{Title: a.styles.ViewTitle, Border: a.styles.FocusBorder, Text: a.styles.ViewText, Muted: a.styles.ViewMuted, Button: a.styles.ViewMuted.Padding(0, 1), ButtonYesActive: yes, ButtonNoActive: a.styles.ContextKey})
+		}
+	}
 }
