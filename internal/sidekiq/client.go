@@ -138,7 +138,8 @@ func (c *Client) AddHook(h redis.Hook) {
 
 // DetectVersion detects which Sidekiq version is being used based on key format.
 // Uses SCAN to efficiently find any existing metrics key.
-// This should be called once at startup and the result is cached.
+// Successful observations, including VersionUnknown, are cached for the client
+// lifetime. Failed scans return VersionUnknown without caching, allowing retries.
 func (c *Client) DetectVersion(ctx context.Context) Version {
 	if c.versionDetected {
 		return c.version
@@ -159,7 +160,6 @@ func (c *Client) DetectVersion(ctx context.Context) Version {
 		// Redis can return zero keys and a cursor for the next scan.
 		keys, nextCursor, err := c.redis.Scan(ctx, cursor, "j|*", 100).Result()
 		if err != nil {
-			c.versionDetected = true
 			return VersionUnknown
 		}
 

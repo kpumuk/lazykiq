@@ -2,9 +2,12 @@ package sidekiq
 
 import (
 	"context"
+	"errors"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
@@ -160,6 +163,78 @@ func TestDetectVersion_CachesUnknown(t *testing.T) {
 	version2 := client.DetectVersion(ctx)
 	if version2 != VersionUnknown {
 		t.Errorf("Second call: DetectVersion() = %v, want VersionUnknown (cached)", version2)
+	}
+}
+
+func TestDetectVersion_RetriesFailedScan(t *testing.T) {
+	for name, failure := range map[string]struct {
+		context func() context.Context
+		err     string
+	}{
+		"cancelled": {context: func() context.Context {
+			ctx, cancel := context.WithCancel(t.Context())
+			cancel()
+			return ctx
+		}},
+		"deadline": {context: func() context.Context {
+			ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(-time.Second))
+			cancel()
+			return ctx
+		}},
+		"redis error": {context: t.Context, err: "ERR temporary scan failure"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			for key, version := range map[string]Version{
+				"j|20250102|12:00": Version7,
+				"j|250102|12:00":   Version8,
+			} {
+				t.Run(key, func(t *testing.T) {
+					mr, client := setupTestRedis(t)
+					_ = mr.Set(key, "data")
+					mr.SetError(failure.err)
+					if got := client.DetectVersion(failure.context()); got != VersionUnknown {
+						t.Fatalf("failed detection = %v, want VersionUnknown", got)
+					}
+					mr.SetError("")
+					periods := client.MetricsPeriodOrder(t.Context())
+					wantPeriods := MetricsPeriodOrder
+					if version == Version7 {
+						wantPeriods = MetricsPeriodOrderSidekiq7
+					}
+					if !slices.Equal(periods, wantPeriods) {
+						t.Errorf("recovered periods = %v, want %v", periods, wantPeriods)
+					}
+					if got := client.DetectVersion(t.Context()); got != version {
+						t.Errorf("recovered detection = %v, want %v", got, version)
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestDetectVersion_RetriesAfterPartialScanFailure(t *testing.T) {
+	calls := 0
+	client := newSelectionHookClient(t, func(_ context.Context, cmd *redis.ScanCmd) error {
+		calls++
+		switch calls {
+		case 1:
+			cmd.SetVal([]string{"j|20250102|12:00"}, 1)
+		case 2:
+			return errors.New("temporary scan failure")
+		default:
+			cmd.SetVal([]string{"j|250102|12:00"}, 0)
+		}
+		return nil
+	})
+	if got := client.DetectVersion(t.Context()); got != VersionUnknown {
+		t.Fatalf("partial scan failure = %v, want VersionUnknown", got)
+	}
+	if got := client.DetectVersion(t.Context()); got != Version8 {
+		t.Fatalf("recovered detection = %v, want Version8", got)
+	}
+	if calls != 3 {
+		t.Errorf("SCAN calls = %d, want 3", calls)
 	}
 }
 
