@@ -195,19 +195,20 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 
-	// Bubble Tea 2.1 passes mode 2031 reports through as Ultraviolet events.
-	case uv.DarkColorSchemeEvent:
-		a.setDarkBackground(true)
-		return a, nil
+	// Appearance preference can differ from the configured terminal theme.
+	// Resolve notifications against the actual background, just like startup.
+	case uv.DarkColorSchemeEvent, uv.LightColorSchemeEvent:
+		return a, tea.RequestBackgroundColor
 
-	case uv.LightColorSchemeEvent:
-		a.setDarkBackground(false)
-		return a, nil
+	case tea.FocusMsg:
+		cmds = append(cmds, tea.RequestBackgroundColor, a.updateView(a.activeViewID(), msg))
 
 	case tea.ResumeMsg:
 		return a, requestBackgroundCmd()
 
 	case tickMsg:
+		// Config reloads can change colors without an appearance notification.
+		cmds = append(cmds, tea.RequestBackgroundColor)
 		// Always fetch stats for metrics bar
 		cmds = append(cmds, a.fetchStatsCmd())
 
@@ -379,6 +380,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (a App) View() tea.View {
 	v := tea.NewView("")
 	v.AltScreen = true
+	v.ReportFocus = true
 
 	if !a.ready {
 		v.SetContent("Initializing...")
@@ -826,7 +828,6 @@ func (a *App) popAndRefresh(id viewID) tea.Cmd {
 	return a.updateView(id, views.RefreshMsg{})
 }
 
-// applyStyles updates existing models, preserving navigation and input state.
 func (a *App) setDarkBackground(dark bool) {
 	if a.darkBackground != dark {
 		a.darkBackground = dark
@@ -834,6 +835,7 @@ func (a *App) setDarkBackground(dark bool) {
 	}
 }
 
+// applyStyles updates existing models, preserving navigation and input state.
 func (a *App) applyStyles(styles theme.Styles) {
 	a.styles = styles
 	viewStyles := views.Styles{

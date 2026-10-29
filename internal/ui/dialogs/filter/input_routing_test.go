@@ -1,6 +1,7 @@
 package filter_test
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -53,6 +54,33 @@ func TestDialogTextInputMessagesThroughApp(t *testing.T) {
 				app, cmd = app.Update(msg)
 				if cmd != nil || dialog.View() != before {
 					t.Fatalf("unrelated %T restarted cursor", msg)
+				}
+			}
+			for range 2 {
+				app, _ = app.Update(tea.BlurMsg{})
+				blurred := dialog.View()
+				app, focus = app.Update(tea.FocusMsg{})
+				focused := dialog.View()
+				if focus == nil || focused == blurred {
+					t.Fatal("terminal refocus did not restore the dialog cursor")
+				}
+				batch, ok := focus().(tea.BatchMsg)
+				if !ok {
+					t.Fatal("terminal refocus must preserve background query and cursor commands")
+				}
+				queried, blinked := false, false
+				for _, cmd := range batch {
+					msg := cmd()
+					if _, ok := msg.(cursor.BlinkMsg); ok {
+						var next tea.Cmd
+						app, next = app.Update(msg)
+						blinked = next != nil && dialog.View() != focused
+					} else if reflect.DeepEqual(msg, tea.RequestBackgroundColor()) {
+						queried = true
+					}
+				}
+				if !queried || !blinked {
+					t.Fatal("terminal refocus lost the background query or blink continuation")
 				}
 			}
 			app, paste := app.Update(tea.PasteMsg{Content: "pasted 任务"})

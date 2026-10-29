@@ -6,15 +6,17 @@ import (
 	"image/color"
 	"io"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/alicebob/miniredis/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 	confirmdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/confirm"
 	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
@@ -24,12 +26,16 @@ import (
 
 type backgroundTerminal struct {
 	subscribed chan struct{}
+	queries    chan struct{}
 	once       sync.Once
 }
 
 func (t *backgroundTerminal) Write(data []byte) (int, error) {
 	if bytes.Contains(data, []byte(ansi.SetModeLightDark)) {
 		t.once.Do(func() { close(t.subscribed) })
+	}
+	for range bytes.Count(data, []byte(ansi.RequestBackgroundColor)) {
+		t.queries <- struct{}{}
 	}
 	return len(data), nil
 }
@@ -45,7 +51,7 @@ func (m backgroundProgram) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	updated, cmd := m.App.Update(msg)
 	m.App = updated.(App)
 	switch msg.(type) {
-	case tea.BackgroundColorMsg, uv.DarkColorSchemeEvent, uv.LightColorSchemeEvent:
+	case tea.BackgroundColorMsg:
 		m.palettes <- m.styles.ViewText
 	}
 	return m, cmd
@@ -55,11 +61,19 @@ func TestAppTerminalThemeChanges(t *testing.T) {
 	input, terminal := io.Pipe()
 	defer func() { _ = input.Close() }()
 	defer func() { _ = terminal.Close() }()
-	output := &backgroundTerminal{subscribed: make(chan struct{})}
-	palettes := make(chan lipgloss.Style, 3)
+	output := &backgroundTerminal{subscribed: make(chan struct{}), queries: make(chan struct{}, 8)}
+	palettes := make(chan lipgloss.Style, 8)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	p := tea.NewProgram(backgroundProgram{App: New(nil, "", false, nil), palettes: palettes},
+	mr := miniredis.RunT(t)
+	client, err := sidekiq.NewClient("redis://" + mr.Addr())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = client.Close() }()
+	app := New(client, "", false, nil)
+	app.viewRegistry[viewDashboard] = stubView{}
+	p := tea.NewProgram(backgroundProgram{App: app, palettes: palettes},
 		tea.WithInput(input), tea.WithOutput(output), tea.WithContext(ctx),
 		tea.WithWindowSize(120, 40), tea.WithoutSignalHandler())
 	done := make(chan error, 1)
@@ -70,31 +84,89 @@ func TestAppTerminalThemeChanges(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("terminal was not subscribed to theme changes")
 	}
-	// Feed real terminal bytes through Bubble Tea's input parser: start in light
-	// mode via OSC 11, then switch dark and back via Ghostty's mode 2031 reports.
+	// Feed real terminal bytes through Bubble Tea's input parser. Config changes
+	// need not send a notification, and appearance reports can disagree with OSC 11.
 	for _, tc := range []struct {
-		report string
-		dark   bool
+		notification string
+		message      tea.Msg
+		dark         bool
 	}{
-		{"\x1b]11;rgb:ffff/ffff/ffff\x1b\\", false},
-		{ansi.LightDarkReport(true), true},
-		{ansi.LightDarkReport(false), false},
+		{}, // Initial query: light background.
+		{notification: ansi.LightDarkReport(true), dark: true},
+		{notification: ansi.LightDarkReport(false), dark: true}, // Preference disagrees with theme.
+		{message: tickMsg{}}, // Silent config reload to light.
+		{message: tea.FocusMsg{}, dark: true},
 	} {
-		if _, err := io.WriteString(terminal, tc.report); err != nil {
+		if tc.notification != "" {
+			if _, err := io.WriteString(terminal, tc.notification); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if tc.message != nil {
+			p.Send(tc.message)
+		}
+		select {
+		case <-output.queries:
+		case <-ctx.Done():
+			t.Fatalf("background was not queried after %q / %T", tc.notification, tc.message)
+		}
+		report := "\x1b]11;rgb:ffff/ffff/ffff\x1b\\"
+		if tc.dark {
+			report = "\x1b]11;rgb:0000/0000/0000\x1b\\"
+		}
+		if _, err := io.WriteString(terminal, report); err != nil {
 			t.Fatal(err)
 		}
 		select {
 		case got := <-palettes:
 			if want := theme.NewStylesForBackground(tc.dark).ViewText; !reflect.DeepEqual(got, want) {
-				t.Fatalf("report %q did not refresh the palette", tc.report)
+				t.Fatalf("report %q did not refresh the palette", report)
 			}
 		case <-ctx.Done():
-			t.Fatalf("report %q was not handled", tc.report)
+			t.Fatalf("report %q was not handled", report)
 		}
 	}
 	p.Send(tea.QuitMsg{})
 	if err := <-done; err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestAppThemeChangeMatchesFreshDark(t *testing.T) {
+	mr := miniredis.RunT(t)
+	_, _ = mr.SetAdd("queues", "batch")
+	_, _ = mr.Lpush("queue:batch", `{"jid":"first","class":"TestJob","args":["example"]}`)
+	_, _ = mr.Lpush("queue:batch", `{"jid":"second","class":"TestJob","args":["other"]}`)
+	client, err := sidekiq.NewClient("redis://" + mr.Addr())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = client.Close() }()
+	for scene, withDialog := range map[string]bool{"queue": false, "open filter": true} {
+		t.Run(scene, func(t *testing.T) {
+			build := func(background color.Color) App {
+				app := New(client, "test", false, nil)
+				app = queueNavigationUpdate(t, app, tea.BackgroundColorMsg{Color: background})
+				app = queueNavigationUpdate(t, app, tea.WindowSizeMsg{Width: 120, Height: 30})
+				app = queueNavigationUpdate(t, app, views.ShowQueueDetailsMsg{QueueName: "batch"})
+				if withDialog {
+					updated, _ := app.Update(dialogs.OpenDialogMsg{Model: filterdialog.New(filterdialog.WithQuery("worker"))})
+					app = updated.(App)
+				}
+				return app
+			}
+			switched := build(color.White)
+			_ = switched.View() // Populate caches under the light palette.
+			switched = queueNavigationUpdate(t, switched, tea.BackgroundColorMsg{Color: color.Black})
+			fresh := build(color.Black)
+			got, want := switched.View(), fresh.View()
+			if !got.ReportFocus || !strings.Contains(got.Content, "TestJob") {
+				t.Fatal("missing focus reporting or populated queue fixture")
+			}
+			if got.Content != want.Content {
+				t.Fatal("light-to-dark rendering differs from a fresh dark start")
+			}
+		})
 	}
 }
 
