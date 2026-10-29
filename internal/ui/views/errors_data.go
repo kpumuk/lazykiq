@@ -3,6 +3,8 @@ package views
 import (
 	"fmt"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 )
 
@@ -27,8 +29,19 @@ func errorDisplay(job *sidekiq.SortedEntry) string {
 	}
 
 	errorStr := fmt.Sprintf("%s: %s", job.ErrorClass(), job.ErrorMessage())
-	if len(errorStr) > 100 {
-		errorStr = errorStr[:99] + "…"
+	if ansi.StringWidth(errorStr) <= 100 {
+		return errorStr
 	}
-	return errorStr
+	// Reserve one cell for the ellipsis and keep whole graphemes, including
+	// keycap emoji that start with an ASCII digit.
+	end, cells := 0, 0
+	for end < len(errorStr) {
+		cluster, width := ansi.FirstGraphemeCluster(errorStr[end:], ansi.GraphemeWidth)
+		if cells+width > 99 {
+			break
+		}
+		end += len(cluster)
+		cells += width
+	}
+	return errorStr[:end] + "…"
 }
