@@ -26,6 +26,11 @@ var featureRegistry = map[string]feature{
 	"ent": {requires: []string{"pro"}},
 }
 
+// FeatureNames returns the available optional features in alphabetical order.
+func FeatureNames() []string {
+	return slices.Sorted(maps.Keys(featureRegistry))
+}
+
 // ResolveFeatures combines explicitly selected features, rejecting unknown names.
 func ResolveFeatures(names []string) (Capabilities, error) {
 	var result Capabilities
@@ -37,7 +42,7 @@ func ResolveFeatures(names []string) (Capabilities, error) {
 		}
 		definition, ok := featureRegistry[name]
 		if !ok {
-			return fmt.Errorf("unknown feature %q (available: %s)", name, strings.Join(slices.Sorted(maps.Keys(featureRegistry)), ", "))
+			return fmt.Errorf("unknown feature %q (available: %s)", name, strings.Join(FeatureNames(), ", "))
 		}
 		enabled[name] = true
 		for _, dependency := range definition.requires {

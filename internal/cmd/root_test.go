@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"io"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -76,6 +78,65 @@ func TestInformationalFlagsSkipStartup(t *testing.T) {
 			}
 			if !strings.Contains(out.String(), want) {
 				t.Fatalf("missing %q in %q", want, out.String())
+			}
+		})
+	}
+}
+
+func TestShellCompletion(t *testing.T) {
+	for name, test := range map[string]struct {
+		args      []string
+		want      []string
+		directive cobra.ShellCompDirective
+	}{
+		"flag name":       {args: []string{"--re"}, want: []string{"--redis"}, directive: cobra.ShellCompDirectiveNoFileComp},
+		"features":        {args: []string{"--enable", ""}, want: []string{"ent", "pro"}, directive: cobra.ShellCompDirectiveNoFileComp},
+		"feature prefix":  {args: []string{"--enable=pr"}, want: []string{"pro"}, directive: cobra.ShellCompDirectiveNoFileComp},
+		"comma separated": {args: []string{"--enable", "pro,e"}, want: []string{"pro,ent"}, directive: cobra.ShellCompDirectiveNoFileComp},
+		"after comma":     {args: []string{"--enable", "ent,"}, want: []string{"ent,pro"}, directive: cobra.ShellCompDirectiveNoFileComp},
+		"repeated flag":   {args: []string{"--enable=pro", "--enable", ""}, want: []string{"ent"}, directive: cobra.ShellCompDirectiveNoFileComp},
+		"all selected":    {args: []string{"--enable=pro,ent", "--enable", ""}, directive: cobra.ShellCompDirectiveNoFileComp},
+		"unknown feature": {args: []string{"--enable", "unknown"}, directive: cobra.ShellCompDirectiveNoFileComp},
+		"redis URL":       {args: []string{"--redis", ""}, directive: cobra.ShellCompDirectiveNoFileComp},
+		"no positional":   {args: []string{""}, directive: cobra.ShellCompDirectiveNoFileComp},
+		"profile file":    {args: []string{"--cpuprofile", ""}, directive: cobra.ShellCompDirectiveDefault},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cmd := newRootCommand("test", "", "", "")
+			var out strings.Builder
+			cmd.SetOut(&out)
+			cmd.SetErr(io.Discard)
+			cmd.SetArgs(append([]string{cobra.ShellCompNoDescRequestCmd}, test.args...))
+			cmd.RunE = func(*cobra.Command, []string) error { t.Fatal("completion started TUI"); return nil }
+			if err := cmd.Execute(); err != nil {
+				t.Fatal(err)
+			}
+			lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+			wantDirective := ":" + strconv.Itoa(int(test.directive))
+			if got := lines[len(lines)-1]; got != wantDirective {
+				t.Fatalf("directive = %q, want %q", got, wantDirective)
+			}
+			if got := lines[:len(lines)-1]; !slices.Equal(got, test.want) {
+				t.Fatalf("completions = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestCompletionScriptsSkipStartup(t *testing.T) {
+	for _, shell := range []string{"bash", "zsh", "fish", "powershell"} {
+		t.Run(shell, func(t *testing.T) {
+			cmd := newRootCommand("test", "", "", "")
+			var out strings.Builder
+			cmd.SetOut(&out)
+			cmd.SetErr(io.Discard)
+			cmd.SetArgs([]string{"completion", shell})
+			cmd.RunE = func(*cobra.Command, []string) error { t.Fatal("script generation started TUI"); return nil }
+			if err := cmd.Execute(); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(out.String(), "lazykiq") || strings.Contains(out.String(), "\x1b") {
+				t.Fatalf("invalid %s completion script", shell)
 			}
 		})
 	}

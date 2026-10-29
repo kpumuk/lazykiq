@@ -3,7 +3,7 @@ title: "Configuration"
 description: "Configure Lazykiq flags and Redis connection."
 summary: "Configure Lazykiq flags and Redis connection."
 date: 2025-12-30T00:00:00Z
-lastmod: 2026-10-27T00:00:00Z
+lastmod: 2026-10-29T00:00:00Z
 draft: false
 weight: 25
 toc: true
@@ -26,6 +26,27 @@ FLAGS
   --redis        redis URL (redis://localhost:6379/0)
   -v --version   version for lazykiq
 ```
+
+## Shell completion
+
+Generate completion scripts with `lazykiq completion bash`, `lazykiq completion zsh`,
+`lazykiq completion fish`, or `lazykiq completion powershell`.
+
+For the current Zsh session, run this after `compinit`:
+
+```zsh
+source <(lazykiq completion zsh)
+```
+
+For Bash with `bash-completion` installed:
+
+```bash
+source <(lazykiq completion bash)
+```
+
+Completion suggests flag names and available `--enable` features, including
+comma-separated and repeated selections. The `--cpuprofile` flag uses file
+completion. Run `lazykiq completion <shell> --help` for installation instructions.
 
 ## Connect to Redis
 
