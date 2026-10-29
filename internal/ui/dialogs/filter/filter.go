@@ -243,7 +243,15 @@ func (m *Model) applySize() {
 	m.inputBox = lipgloss.NewStyle().Width(contentWidth).MaxWidth(contentWidth)
 	promptWidth := lipgloss.Width(m.input.Prompt)
 	// textinput renders a virtual cursor that adds one extra column.
-	m.input.SetWidth(max(contentWidth-promptWidth-1, 1))
+	width := max(contentWidth-promptWidth-1, 1)
+	if width != m.input.Width() {
+		position := m.input.Position()
+		m.input.SetWidth(width)
+		// Visiting the end rebuilds the cached scroll window even when the
+		// original cursor is inside the old window.
+		m.input.CursorEnd()
+		m.input.SetCursor(position)
+	}
 }
 
 func (m *Model) syncPlaceholder() {

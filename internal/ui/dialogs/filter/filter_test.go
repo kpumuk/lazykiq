@@ -1,6 +1,7 @@
 package filter
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
@@ -340,4 +341,93 @@ func TestGoldenFilterDialog(t *testing.T) {
 
 	output := ansi.Strip(m.View())
 	golden.RequireEqual(t, []byte(output))
+}
+
+func TestInputResize(t *testing.T) {
+	t.Parallel()
+
+	for name, text := range map[string]string{
+		"ASCII":     strings.Repeat("abcdefghij", 16),
+		"wide":      strings.Repeat("任务世界", 40),
+		"combining": strings.Repeat("cafe\u0301", 32),
+	} {
+		for position, pos := range map[string]int{
+			"beginning": 0,
+			"middle":    len([]rune(text)) / 2,
+			"end":       len([]rune(text)),
+		} {
+			t.Run(name+"/"+position, func(t *testing.T) {
+				t.Parallel()
+				m := New()
+				m, _ = updateModel(t, m, tea.WindowSizeMsg{Width: 240, Height: 30})
+				m.Init()
+				m.input.SetValue(text)
+				m.input.SetCursor(pos)
+				for _, width := range []int{180, 80, 44, 100, 400, 44} {
+					m, cmd := updateModel(t, m, tea.WindowSizeMsg{Width: width, Height: 30})
+					if cmd != nil {
+						t.Fatal("resize restarted cursor work")
+					}
+					input := m.input.View()
+					output := m.View()
+					if m.input.View() != input {
+						t.Fatal("render changed input geometry")
+					}
+					visible := strings.TrimSpace(strings.TrimPrefix(ansi.Strip(input), m.input.Prompt))
+					if got, want := ansi.StringWidth(visible), min(m.input.Width(), ansi.StringWidth(text)); got < want-1 {
+						t.Fatalf("width %d: visible text width %d, want at least %d", width, got, want-1)
+					}
+					if m.input.Position() != pos || m.input.Value() != text || !m.input.Focused() {
+						t.Fatal("resize changed editing state")
+					}
+					// The virtual cursor is the reverse-video cell in the rendered row.
+					cursor := strings.Index(output, "\x1b[7")
+					if cursor < 0 {
+						t.Fatalf("width %d: cursor clipped from dialog: %q", width, output)
+					}
+					rowStart := strings.LastIndex(output[:cursor], "\n") + 1
+					x := ansi.StringWidth(output[rowStart:cursor])
+					if x < 2 || x >= m.width-2 {
+						t.Fatalf("width %d: cursor column %d outside content", width, x)
+					}
+					char := " "
+					if pos < len([]rune(text)) {
+						char = string([]rune(text)[pos])
+					}
+					if !strings.HasPrefix(ansi.Strip(output[cursor:]), char) {
+						t.Fatalf("width %d: cursor is not on %q", width, char)
+					}
+					for line := range strings.SplitSeq(output, "\n") {
+						if got := ansi.StringWidth(line); got != m.width {
+							t.Fatalf("width %d: dialog row width %d, want %d", width, got, m.width)
+						}
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestGoldenInputResize(t *testing.T) {
+	for name, tc := range map[string]struct {
+		text     string
+		position int
+	}{
+		"ASCII_end":      {text: strings.Repeat("abcdefghij", 8), position: 80},
+		"Unicode_middle": {text: strings.Repeat("任务cafe\u0301", 16), position: 56},
+	} {
+		t.Run(name, func(t *testing.T) {
+			m := New()
+			m, _ = updateModel(t, m, tea.WindowSizeMsg{Width: 180, Height: 30})
+			m.Init()
+			m.input.SetValue(tc.text)
+			m.input.SetCursor(tc.position)
+			for _, width := range []int{44, 120} {
+				m, _ = updateModel(t, m, tea.WindowSizeMsg{Width: width, Height: 30})
+				t.Run(strconv.Itoa(width), func(t *testing.T) {
+					golden.RequireEqual(t, []byte(ansi.Strip(m.View())))
+				})
+			}
+		})
+	}
 }

@@ -203,7 +203,6 @@ func (m *Model) View() string {
 	contentHeight := m.contentHeight()
 	tableHeight := max(contentHeight-2, 1)
 	m.table.SetSize(contentWidth, tableHeight)
-	m.syncInputWidth(contentWidth)
 
 	divider := strings.Repeat("─", contentWidth)
 	if divider != "" {
@@ -303,6 +302,7 @@ func (m *Model) applySize() {
 	m.col = 0
 	contentWidth := m.contentWidth()
 	m.inputContainer = lipgloss.NewStyle().Width(contentWidth).MaxWidth(contentWidth)
+	m.syncInputWidth(contentWidth)
 }
 
 func (m *Model) contentWidth() int {
@@ -315,8 +315,16 @@ func (m *Model) contentHeight() int {
 
 func (m *Model) syncInputWidth(contentWidth int) {
 	promptWidth := lipgloss.Width(m.input.Prompt)
-	width := max(contentWidth-promptWidth, 1)
-	m.input.SetWidth(width)
+	// textinput renders a virtual cursor that adds one extra column.
+	width := max(contentWidth-promptWidth-1, 1)
+	if width != m.input.Width() {
+		position := m.input.Position()
+		m.input.SetWidth(width)
+		// Visiting the end rebuilds the cached scroll window even when the
+		// original cursor is inside the old window.
+		m.input.CursorEnd()
+		m.input.SetCursor(position)
+	}
 }
 
 func (m *Model) syncEntries() {
