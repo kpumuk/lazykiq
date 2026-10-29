@@ -4,7 +4,6 @@ package devtools
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -398,9 +397,10 @@ func (m *Model) appendResult(output string, err error) {
 		return
 	}
 	if err != nil {
-		output = "error: " + err.Error()
+		output = devtools.FormatError(err)
+	} else {
+		output = devtools.FormatResult(output)
 	}
-	output = normalizeOneLine(output)
 	m.tracker.AppendLog(devtools.LogEntry{
 		Time:   time.Now(),
 		Origin: "console",
@@ -477,35 +477,7 @@ func toAnyArgs(args []string) []any {
 }
 
 func formatRedisResult(result any) string {
-	if result == nil {
-		return "(nil)"
-	}
-	switch value := result.(type) {
-	case string:
-		return normalizeOneLine(value)
-	case []byte:
-		return normalizeOneLine(string(value))
-	case []string:
-		return normalizeOneLine(strings.Join(value, " "))
-	case []any:
-		parts := make([]string, 0, len(value))
-		for _, item := range value {
-			parts = append(parts, fmt.Sprint(item))
-		}
-		return normalizeOneLine(strings.Join(parts, " "))
-	default:
-		return normalizeOneLine(fmt.Sprint(value))
-	}
-}
-
-func normalizeOneLine(value string) string {
-	replacer := strings.NewReplacer(
-		"\r\n", "\\n",
-		"\n", "\\n",
-		"\r", "\\n",
-		"\t", "\\t",
-	)
-	return replacer.Replace(value)
+	return devtools.FormatResult(result)
 }
 
 func formatDuration(d time.Duration) string {
