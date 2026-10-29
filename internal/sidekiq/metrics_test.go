@@ -1,6 +1,8 @@
 package sidekiq
 
 import (
+	"context"
+	"slices"
 	"testing"
 	"time"
 )
@@ -714,6 +716,37 @@ func TestGetMetricsJobDetail_Sidekiq8_Hourly(t *testing.T) {
 
 func TestGetMetricsJobDetail_Sidekiq7_Minutely(t *testing.T) {
 	t.Skip("Skipped: Minutely granularity uses BITFIELD_RO (histogram data) not supported by miniredis")
+}
+
+func TestGetMetricsJobDetail_Sidekiq7_RecoversAfterCancelledDetection(t *testing.T) {
+	// BITFIELD_RO needs a real server. The helper starts a private Unix-socket
+	// Redis with persistence disabled; use a client with an empty version cache.
+	server := benchmarkPrivateSortedRedis(t)
+	client := &Client{redis: server.redis}
+	ctx := t.Context()
+	now := time.Now().UTC()
+	// Cover a minute boundary between seeding and fetching a one-minute window.
+	for _, ts := range []time.Time{now, now.Add(time.Minute)} {
+		key := metricsRollupKeySidekiq7(ts, MetricsGranularityMinutely)
+		if err := client.redis.HSet(ctx, key, "Worker|p", 3, "Worker|ms", 1000).Err(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	if got := client.DetectVersion(cancelled); got != VersionUnknown {
+		t.Fatalf("cancelled detection = %v, want VersionUnknown", got)
+	}
+	result, err := client.GetMetricsJobDetail(ctx, "Worker", MetricsPeriod{Minutes: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Totals.Processed != 3 || result.Totals.Milliseconds != 1000 {
+		t.Errorf("recovered totals = %+v, want 3 processed and 1000 ms", result.Totals)
+	}
+	if got := client.MetricsPeriodOrder(ctx); !slices.Equal(got, MetricsPeriodOrderSidekiq7) {
+		t.Errorf("recovered periods = %v, want %v", got, MetricsPeriodOrderSidekiq7)
+	}
 }
 
 func TestGetMetricsJobDetail_ZeroPeriod(t *testing.T) {
