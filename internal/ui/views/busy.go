@@ -83,7 +83,14 @@ func (b *Busy) Init() tea.Cmd {
 func (b *Busy) Update(msg tea.Msg) (View, tea.Cmd) {
 	switch msg := msg.(type) {
 	case busyDataMsg:
+		identity := b.selectedIdentity()
 		b.data = msg.data
+		b.selectedProcess = -1
+		if identity != "" {
+			b.selectedProcess = slices.IndexFunc(b.data.Processes, func(proc sidekiq.Process) bool {
+				return proc.Identity == identity
+			})
+		}
 		b.processHeader = nil
 		b.ready = true
 		b.updateTableRows()
