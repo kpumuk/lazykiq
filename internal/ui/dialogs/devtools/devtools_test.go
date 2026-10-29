@@ -143,6 +143,36 @@ func TestDevToolsCtrlUClearsInput(t *testing.T) {
 	}
 }
 
+func TestDevToolsPaste(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct{ content, want string }{
+		"ASCII":     {content: "PING", want: "PING"},
+		"Unicode":   {content: "ECHO 任务", want: "ECHO 任务"},
+		"multiline": {content: "ECHO\nhello\tworld", want: "ECHO hello world"},
+		"CRLF":      {content: "ECHO\r\nhello", want: "ECHO  hello"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			m := New()
+			m.Init()
+			m, cmd := updateModel(t, m, tea.PasteMsg{Content: tc.content})
+			if got := m.input.Value(); got != tc.want {
+				t.Fatalf("input = %q, want %q", got, tc.want)
+			}
+			if cmd == nil {
+				t.Fatal("paste lost cursor command")
+			}
+
+			m, _ = updateModel(t, m, keyCode(tea.KeyTab))
+			m, cmd = updateModel(t, m, tea.PasteMsg{Content: "ignored"})
+			if m.input.Value() != tc.want || cmd != nil {
+				t.Fatal("table-focused paste changed input or started cursor work")
+			}
+		})
+	}
+}
+
 func TestDevToolsExecuteInputNoClient(t *testing.T) {
 	t.Parallel()
 
