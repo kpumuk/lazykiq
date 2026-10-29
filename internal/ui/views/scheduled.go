@@ -124,8 +124,9 @@ func (s *Scheduled) Update(msg tea.Msg) (View, tea.Cmd) {
 		case "enter":
 			// Show detail for selected job
 			if idx := s.lazy.Table().Cursor(); idx >= 0 && idx < len(s.jobs) {
+				job := s.jobs[idx].JobRecord
 				return s, func() tea.Msg {
-					return ShowJobDetailMsg{Job: s.jobs[idx].JobRecord}
+					return ShowJobDetailMsg{Job: job}
 				}
 			}
 			return s, nil
