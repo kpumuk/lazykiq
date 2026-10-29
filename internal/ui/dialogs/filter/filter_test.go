@@ -202,6 +202,34 @@ func TestFilterDialogCtrlUClearsInput(t *testing.T) {
 	}
 }
 
+func TestFilterDialogPaste(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct{ content, want string }{
+		"ASCII":     {content: "critical", want: "critical"},
+		"Unicode":   {content: "任务 café", want: "任务 café"},
+		"multiline": {content: "one\ntwo\tthree", want: "one two three"},
+		"CRLF":      {content: "one\r\ntwo", want: "one  two"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			m := New(WithQuery("[]"))
+			m.Init()
+			m.input.SetCursor(1)
+			m, cmd := updateModel(t, m, tea.PasteMsg{Content: tc.content})
+			if got, want := m.input.Value(), "["+tc.want+"]"; got != want {
+				t.Fatalf("input = %q, want %q", got, want)
+			}
+			if cmd == nil {
+				t.Fatal("paste lost cursor command")
+			}
+			if m.query != "[]" {
+				t.Fatal("paste applied query before submission")
+			}
+		})
+	}
+}
+
 func TestFilterDialogEscCloses(t *testing.T) {
 	t.Parallel()
 
