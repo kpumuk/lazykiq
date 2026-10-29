@@ -230,3 +230,52 @@ func TestJobDetailMultilineScrollBounds(t *testing.T) {
 		t.Fatal("height change did not clamp multiline scrolling")
 	}
 }
+
+func TestJobDetailUnicodeHorizontalScroll(t *testing.T) {
+	for name, text := range map[string]string{
+		"wide":      strings.Repeat("界", 80),
+		"multibyte": strings.Repeat("é", 80),
+		"combining": strings.Repeat("e\u0301", 80),
+		"emoji":     strings.Repeat("👩🏽‍💻🇨🇦", 80),
+	} {
+		t.Run(name, func(t *testing.T) {
+			view := NewJobDetail()
+			view.SetSize(100, 20)
+			view.SetJob(sidekiq.NewJobRecord(fmt.Sprintf(`{"args":[%q]}`, text+"TAIL"), "default"))
+			view.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+			assertEnd := func() {
+				t.Helper()
+				view.Update(tea.KeyPressMsg{Code: tea.KeyEnd})
+				contentWidth := view.rightWidth - 2 - 2*jobDetailPanelPadding
+				want := max(lipgloss.Width(view.jobJSON())-contentWidth, 0)
+				if view.rightXOffset != want {
+					t.Fatalf("End offset = %d; want %d", view.rightXOffset, want)
+				}
+				view.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+				if view.rightXOffset != want || !strings.Contains(ansi.Strip(view.renderRightPanel()), `TAIL"`) {
+					t.Fatal("right edge lost content or scrolled past End")
+				}
+			}
+			assertEnd()
+			view.Update(tea.KeyPressMsg{Code: tea.KeyHome})
+			if view.rightXOffset != 0 || !strings.Contains(ansi.Strip(view.renderRightPanel()), `"args"`) {
+				t.Fatal("Home did not restore the beginning")
+			}
+			assertEnd()
+			view.SetSize(180, 20)
+			contentWidth := view.rightWidth - 2 - 2*jobDetailPanelPadding
+			if want := max(lipgloss.Width(view.jobJSON())-contentWidth, 0); view.rightXOffset != want {
+				t.Fatalf("resize offset = %d; want %d", view.rightXOffset, want)
+			}
+			assertEnd()
+			view.SetSize(80, 20)
+			assertEnd()
+			view.SetJob(sidekiq.NewJobRecord(`{"args":["shortTAIL"]}`, "default"))
+			if view.rightXOffset != 0 {
+				t.Fatal("replacement retained the previous offset")
+			}
+			view.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+			assertEnd()
+		})
+	}
+}

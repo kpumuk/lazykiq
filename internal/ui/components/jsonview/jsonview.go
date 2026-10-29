@@ -142,7 +142,7 @@ func (m Model) LineCount() int {
 	return len(m.lines)
 }
 
-// MaxWidth returns the maximum line width.
+// MaxWidth returns the maximum line width in terminal cells.
 func (m Model) MaxWidth() int {
 	return m.maxWidth
 }
@@ -170,10 +170,16 @@ func (m *Model) SetValue(value any) {
 		m.tokens = nil
 	}
 
-	for _, line := range m.lines {
-		if len(line) > m.maxWidth {
-			m.maxWidth = len(line)
+	for i, line := range m.lines {
+		width := 0
+		if m.tokens != nil {
+			for _, token := range m.tokens[i] {
+				width += token.width()
+			}
+		} else {
+			width = ansi.StringWidth(line)
 		}
+		m.maxWidth = max(m.maxWidth, width)
 	}
 }
 

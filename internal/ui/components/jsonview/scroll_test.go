@@ -218,3 +218,52 @@ func TestGoldenJSONViewUnicodeScroll(t *testing.T) {
 	}
 	golden.RequireEqual(t, []byte(output.String()))
 }
+
+func TestMaxWidthTerminalCells(t *testing.T) {
+	for name, value := range map[string]any{
+		"ascii":          strings.Repeat("x", 80),
+		"multibyte":      strings.Repeat("é", 40),
+		"wide":           strings.Repeat("界", 40),
+		"combining":      strings.Repeat("e\u0301", 40),
+		"emoji":          strings.Repeat("👩🏽‍💻🇨🇦1️⃣", 40),
+		"zero width":     strings.Repeat("\u200b\u0301", 40),
+		"escaped":        strings.Repeat("\"\\\n\x1b[31m", 40),
+		"unicode keys":   map[string]any{strings.Repeat("界", 40): "é"},
+		"multiple lines": map[string]any{"ascii": "short", "args": []any{strings.Repeat("界e\u0301👩🏽‍💻", 40)}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			m := New()
+			m.SetValue(value)
+			data, err := json.MarshalIndent(value, "", "  ")
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := lipgloss.Width(string(data))
+			if m.MaxWidth() != want {
+				t.Fatalf("MaxWidth = %d; want %d terminal cells", m.MaxWidth(), want)
+			}
+			m.SetValue("short")
+			if m.MaxWidth() != 7 {
+				t.Fatalf("replacement width = %d; want 7", m.MaxWidth())
+			}
+			m.SetValue(nil)
+			if m.MaxWidth() != 0 {
+				t.Fatalf("cleared width = %d; want 0", m.MaxWidth())
+			}
+		})
+	}
+}
+
+func TestGoldenJSONViewEnd(t *testing.T) {
+	m := New()
+	m.SetValue(map[string]any{"args": strings.Repeat("界e\u0301👩🏽‍💻", 40) + "TAIL"})
+	var output strings.Builder
+	for _, width := range []int{10, 20, 40} {
+		offset := max(m.MaxWidth()-width, 0)
+		fmt.Fprintf(&output, "width=%d offset=%d\n", width, offset)
+		for line := range strings.SplitSeq(ansi.Strip(renderAll(m, offset, width)), "\n") {
+			fmt.Fprintf(&output, "%q\n", line)
+		}
+	}
+	golden.RequireEqual(t, []byte(output.String()))
+}
