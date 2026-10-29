@@ -77,6 +77,16 @@ func (q *QueuesList) Init() tea.Cmd {
 
 // Update implements View.
 func (q *QueuesList) Update(msg tea.Msg) (View, tea.Cmd) {
+	if result, ok := msg.(ReadResultMsg); ok {
+		if result.Owner != q || !result.Current() {
+			return q, nil
+		}
+		if result.Err != nil {
+			return q, nil
+		}
+		msg = result.Data
+	}
+
 	switch msg := msg.(type) {
 	case queuesListDataMsg:
 		if msg.requestID != q.requestID || q.actions.busy {
@@ -330,19 +340,13 @@ func (q *QueuesList) fetchDataCmd() tea.Cmd {
 	q.requestID++
 	requestID, filter := q.requestID, strings.ToLower(q.filter)
 	ctx := q.fetchRequest.Start(devtools.WithTracker(context.Background(), "queues.fetchDataCmd"))
-	return func() tea.Msg {
+	return readCmd(ctx, q, func() tea.Msg {
 		capabilities, paused, err := fetchQueueCapabilities(ctx, q.client)
 		if err != nil {
-			if requestctx.IsCanceled(err) {
-				return nil
-			}
 			return ConnectionErrorMsg{Err: err}
 		}
 		queues, err := q.client.GetQueues(ctx)
 		if err != nil {
-			if requestctx.IsCanceled(err) {
-				return nil
-			}
 			return ConnectionErrorMsg{Err: err}
 		}
 
@@ -356,9 +360,6 @@ func (q *QueuesList) fetchDataCmd() tea.Cmd {
 		}
 		metadata, err := sidekiq.FetchQueueMetadata(ctx, filtered)
 		if err != nil {
-			if requestctx.IsCanceled(err) {
-				return nil
-			}
 			return ConnectionErrorMsg{Err: err}
 		}
 		queueInfos := make([]*QueuesListInfo, len(metadata))
@@ -389,7 +390,7 @@ func (q *QueuesList) fetchDataCmd() tea.Cmd {
 			capabilities: capabilities,
 			requestID:    requestID,
 		}
-	}
+	})
 }
 
 func (q *QueuesList) reset() {

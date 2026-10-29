@@ -78,7 +78,7 @@ func TestQueueViewsMetadataFanout(t *testing.T) {
 			client.AddHook(hook)
 			list := NewQueuesList(client)
 			msg := list.fetchDataCmd()()
-			if _, ok := msg.(queuesListDataMsg); !ok {
+			if _, ok := msg.(ReadResultMsg).Data.(queuesListDataMsg); !ok {
 				t.Fatalf("list result: %T %+v", msg, msg)
 			}
 			if len(hook.commands) != 2+2*count || len(hook.batches) != (count+99)/100 {

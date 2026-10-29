@@ -64,6 +64,16 @@ func (j *JobMetrics) Init() tea.Cmd {
 
 // Update implements View.
 func (j *JobMetrics) Update(msg tea.Msg) (View, tea.Cmd) {
+	if result, ok := msg.(ReadResultMsg); ok {
+		if result.Owner != j || !result.Current() {
+			return j, nil
+		}
+		if result.Err != nil {
+			return j, nil
+		}
+		msg = result.Data
+	}
+
 	switch msg := msg.(type) {
 	case jobMetricsDataMsg:
 		j.result = msg.result
@@ -253,6 +263,7 @@ func (j *JobMetrics) SetStyles(styles Styles) View {
 
 // SetJobMetrics sets the job name and period to display.
 func (j *JobMetrics) SetJobMetrics(jobName, period string) {
+	j.CancelRequests()
 	j.jobName = jobName
 	if idx := slices.Index(j.periods, period); idx >= 0 {
 		j.periodIdx = idx
@@ -345,20 +356,17 @@ func (j *JobMetrics) fetchCmd() tea.Cmd {
 	client := j.client
 	periods := j.periods
 	ctx := j.fetchRequest.Start(devtools.WithTracker(context.Background(), "job_metrics.fetchCmd"))
-	return func() tea.Msg {
+	return readCmd(ctx, j, func() tea.Msg {
 		params, ok := sidekiq.MetricsPeriods[period]
 		if !ok {
 			params = sidekiq.MetricsPeriods[periods[0]]
 		}
 		result, err := client.GetMetricsJobDetail(ctx, jobName, params)
 		if err != nil {
-			if requestctx.IsCanceled(err) {
-				return nil
-			}
 			return ConnectionErrorMsg{Err: err}
 		}
 		return jobMetricsDataMsg{result: result}
-	}
+	})
 }
 
 func (j *JobMetrics) adjustPeriod(delta int) (View, tea.Cmd) {

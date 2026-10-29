@@ -70,11 +70,11 @@ func TestProcessesListFetchErrors(t *testing.T) {
 			t.Cleanup(view.CancelRequests)
 			msg := view.fetchDataCmd()()
 			if tc.wantMessage {
-				result, ok := msg.(ConnectionErrorMsg)
+				result, ok := msg.(ReadResultMsg)
 				if !ok || !errors.Is(result.Err, tc.err) {
 					t.Fatalf("fetch error: %T %+v", msg, msg)
 				}
-			} else if msg != nil {
+			} else if result, ok := msg.(ReadResultMsg); !ok || !errors.Is(result.Err, context.Canceled) {
 				t.Fatalf("canceled fetch returned %T", msg)
 			}
 		})
@@ -135,7 +135,7 @@ func TestProcessesListCapturesFilter(t *testing.T) {
 	view.filter = "old"
 	cmd := view.fetchDataCmd()
 	view.filter = "new"
-	msg := cmd().(processesListDataMsg)
+	msg := cmd().(ReadResultMsg).Data.(processesListDataMsg)
 	if len(msg.processes) != 1 || msg.processes[0].Identity != "old:1:nonce" {
 		t.Fatalf("command read a later filter: %+v", msg.processes)
 	}

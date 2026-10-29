@@ -133,7 +133,7 @@ func BenchmarkProcessesFetch(b *testing.B) {
 			b.ResetTimer()
 			for b.Loop() {
 				msg := cmd()
-				if result, ok := msg.(processesListDataMsg); !ok || len(result.processes) != workload.processes {
+				if result, ok := msg.(ReadResultMsg).Data.(processesListDataMsg); !ok || len(result.processes) != workload.processes {
 					b.Fatalf("fetch result: %T %+v", msg, msg)
 				}
 			}

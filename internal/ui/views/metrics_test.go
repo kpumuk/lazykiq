@@ -212,14 +212,14 @@ func TestMetricsFailedRefreshAndReentry(t *testing.T) {
 	m.Update(m.Init()())
 	client.err = errors.New("metrics unavailable")
 	_, refresh := m.Update(RefreshMsg{})
-	if msg, ok := refresh().(ConnectionErrorMsg); !ok || !errors.Is(msg.Err, client.err) {
+	if msg, ok := refresh().(ReadResultMsg); !ok || !errors.Is(msg.Err, client.err) {
 		t.Fatal("refresh did not report its connection error")
 	}
 	if !m.ready || len(m.rows) != 1 {
 		t.Fatal("failed refresh discarded the active snapshot")
 	}
 	m.Dispose()
-	if _, ok := m.Init()().(ConnectionErrorMsg); !ok {
+	if _, ok := m.Init()().(ReadResultMsg); !ok {
 		t.Fatal("reentry did not report its connection error")
 	}
 	if m.ready || m.result.Jobs != nil || m.rows != nil || len(m.table.Rows()) != 0 {

@@ -118,7 +118,7 @@ func TestBusyFetchCapturesInputs(t *testing.T) {
 			cmd := b.fetchDataCmd()
 			mutate(b)
 
-			msg, ok := cmd().(busyDataMsg)
+			msg, ok := cmd().(ReadResultMsg).Data.(busyDataMsg)
 			if !ok {
 				t.Fatal("expected busy data")
 			}

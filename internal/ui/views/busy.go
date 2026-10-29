@@ -81,6 +81,16 @@ func (b *Busy) Init() tea.Cmd {
 
 // Update implements View.
 func (b *Busy) Update(msg tea.Msg) (View, tea.Cmd) {
+	if result, ok := msg.(ReadResultMsg); ok {
+		if result.Owner != b || !result.Current() {
+			return b, nil
+		}
+		if result.Err != nil {
+			return b, nil
+		}
+		msg = result.Data
+	}
+
 	switch msg := msg.(type) {
 	case busyDataMsg:
 		identity := b.selectedIdentity()
@@ -281,16 +291,13 @@ func (b *Busy) SetProcessIdentity(identity string) {
 func (b *Busy) fetchDataCmd() tea.Cmd {
 	ctx := b.fetchRequest.Start(devtools.WithTracker(context.Background(), "busy.fetchDataCmd"))
 	client, filter := b.client, b.filter
-	return func() tea.Msg {
+	return readCmd(ctx, b, func() tea.Msg {
 		data, err := client.GetBusyData(ctx, filter)
 		if err != nil {
-			if requestctx.IsCanceled(err) {
-				return nil
-			}
 			return ConnectionErrorMsg{Err: err}
 		}
 		return busyDataMsg{data: data}
-	}
+	})
 }
 
 func (b *Busy) reset() {
