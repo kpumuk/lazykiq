@@ -23,9 +23,10 @@ import (
 
 // metricsListMsg carries list metrics data.
 type metricsListMsg struct {
-	result  sidekiq.MetricsTopJobsResult
-	periods []string
-	period  string
+	result    sidekiq.MetricsTopJobsResult
+	periods   []string
+	period    string
+	requestID uint64
 }
 
 type metricsRow struct {
@@ -52,6 +53,7 @@ type Metrics struct {
 	filterStyle  filterdialog.Styles
 	table        table.Model
 	fetchRequest requestctx.Controller
+	requestID    uint64
 }
 
 // NewMetrics creates a new Metrics view.
@@ -79,6 +81,9 @@ func (m *Metrics) Init() tea.Cmd {
 func (m *Metrics) Update(msg tea.Msg) (View, tea.Cmd) {
 	switch msg := msg.(type) {
 	case metricsListMsg:
+		if msg.requestID != m.requestID {
+			return m, nil
+		}
 		m.applyPeriodState(msg.periods, msg.period)
 		m.result = msg.result
 		m.ready = true
@@ -240,6 +245,22 @@ func (m *Metrics) SetSize(width, height int) View {
 // CancelRequests stops in-flight fetches when the view is hidden.
 func (m *Metrics) CancelRequests() {
 	m.fetchRequest.Cancel()
+	m.requestID++
+}
+
+// Dispose releases the snapshot while preserving period and filter preferences.
+func (m *Metrics) Dispose() {
+	m.CancelRequests()
+	m.ready = false
+	m.result = sidekiq.MetricsTopJobsResult{}
+	m.rows = nil
+	m.resetScroll = false
+	m.table = table.New(
+		table.WithColumns(metricsColumns),
+		table.WithStyles(tableStylesFromTheme(m.styles)),
+		table.WithEmptyMessage("No recent metrics"),
+	)
+	m.updateTableSize()
 }
 
 // SetStyles implements View.
@@ -261,12 +282,20 @@ var metricsColumns = []table.Column{
 }
 
 func (m *Metrics) fetchListCmd() tea.Cmd {
+	m.requestID++
+	requestID := m.requestID
 	period := m.period
 	filter := m.filter
 	client := m.client
 	ctx := m.fetchRequest.Start(devtools.WithTracker(context.Background(), "metrics.fetchListCmd"))
 	return func() tea.Msg {
+		if ctx.Err() != nil {
+			return nil
+		}
 		periods := normalizeMetricsPeriods(client.MetricsPeriodOrder(ctx))
+		if ctx.Err() != nil {
+			return nil
+		}
 		queryPeriod := period
 		if !slices.Contains(periods, queryPeriod) {
 			queryPeriod = periods[0]
@@ -274,6 +303,9 @@ func (m *Metrics) fetchListCmd() tea.Cmd {
 
 		params := sidekiq.MetricsPeriods[queryPeriod]
 		result, err := client.GetMetricsTopJobs(ctx, params, filter)
+		if ctx.Err() != nil {
+			return nil
+		}
 		if err != nil {
 			if requestctx.IsCanceled(err) {
 				return nil
@@ -281,9 +313,10 @@ func (m *Metrics) fetchListCmd() tea.Cmd {
 			return ConnectionErrorMsg{Err: err}
 		}
 		return metricsListMsg{
-			result:  result,
-			periods: periods,
-			period:  queryPeriod,
+			requestID: requestID,
+			result:    result,
+			periods:   periods,
+			period:    queryPeriod,
 		}
 	}
 }
