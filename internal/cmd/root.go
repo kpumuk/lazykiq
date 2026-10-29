@@ -9,9 +9,12 @@ import (
 	"runtime"
 	"runtime/debug"
 	"runtime/pprof"
+	"slices"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/fang/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
@@ -45,10 +48,12 @@ func newRootCommand(version, commit, date, builtBy string) *cobra.Command {
 	var development bool
 	var enabledFeatures []string
 	rootCmd := &cobra.Command{
-		Use:   "lazykiq",
-		Short: "A terminal UI for Sidekiq.",
-		Long:  "A terminal UI for Sidekiq.",
-		Args:  cobra.NoArgs,
+		Use:               "lazykiq",
+		Short:             "A terminal UI for Sidekiq.",
+		Long:              "A terminal UI for Sidekiq.",
+		Args:              cobra.NoArgs,
+		ValidArgsFunction: cobra.NoFileCompletions,
+		SilenceUsage:      true,
 	}
 
 	rootCmd.Version = buildVersion(version, commit, date, builtBy)
@@ -93,6 +98,14 @@ func newRootCommand(version, commit, date, builtBy string) *cobra.Command {
 		}
 		return pflag.NormalizedName(name)
 	})
+	for flag, complete := range map[string]cobra.CompletionFunc{
+		"enable": completeFeatures,
+		"redis":  cobra.NoFileCompletions,
+	} {
+		if err := rootCmd.RegisterFlagCompletionFunc(flag, complete); err != nil {
+			panic(err)
+		}
+	}
 
 	rootCmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		features, err := sidekiq.ResolveFeatures(enabledFeatures)
@@ -144,6 +157,9 @@ func newRootCommand(version, commit, date, builtBy string) *cobra.Command {
 
 		app := ui.New(client, version, enableDangerousActions, tracker)
 		p := tea.NewProgram(app)
+		// Bubble Tea does not manage the custom appearance-reporting mode.
+		// Disable it after terminal ownership returns, including on errors.
+		defer func() { _, _ = fmt.Fprint(os.Stdout, ansi.ResetModeLightDark) }()
 		if _, err := p.Run(); err != nil {
 			return fmt.Errorf("run lazykiq: %w", err)
 		}
@@ -154,6 +170,25 @@ func newRootCommand(version, commit, date, builtBy string) *cobra.Command {
 	return rootCmd
 }
 
+func completeFeatures(cmd *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	enabled, err := cmd.Flags().GetStringSlice("enable")
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveError
+	}
+
+	parts := strings.Split(toComplete, ",")
+	partial := parts[len(parts)-1]
+	prefix := strings.TrimSuffix(toComplete, partial)
+	selected := parts[:len(parts)-1]
+	var completions []string
+	for _, name := range sidekiq.FeatureNames() {
+		if strings.HasPrefix(name, partial) && !slices.Contains(enabled, name) && !slices.Contains(selected, name) {
+			completions = append(completions, prefix+name)
+		}
+	}
+	return completions, cobra.ShellCompDirectiveNoFileComp
+}
+
 // Execute initializes and runs the lazykiq terminal application.
 func Execute(version, commit, date, builtBy string) error {
 	rootCmd := newRootCommand(version, commit, date, builtBy)
@@ -161,8 +196,7 @@ func Execute(version, commit, date, builtBy string) error {
 	return fang.Execute(
 		context.Background(),
 		rootCmd,
-		fang.WithVersion(rootCmd.Version),
-		fang.WithoutCompletions(),
+		fang.WithoutVersion(),
 		fang.WithoutManpage(),
 	)
 }

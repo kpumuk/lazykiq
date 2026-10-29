@@ -18,3 +18,17 @@ func TestQueuePausedStyle(t *testing.T) {
 		t.Fatal("paused status must not add badge padding")
 	}
 }
+
+func TestPaletteResolutionIsIndependent(t *testing.T) {
+	dark := NewStyles()
+	light := NewStylesForBackground(false)
+	if dark.ViewText.GetForeground() == light.ViewText.GetForeground() {
+		t.Fatal("light and dark text colors match")
+	}
+	if dark.ViewText.GetForeground() != NewStyles().ViewText.GetForeground() {
+		t.Fatal("resolving light palette changed the fallback")
+	}
+	if dark.ChartHistogram.GetForeground() == light.ChartHistogram.GetForeground() {
+		t.Fatal("chart palette did not change")
+	}
+}

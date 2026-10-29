@@ -78,8 +78,8 @@ internal/
 
 - Views implement `views.View` interface
 - Components own package-local `Styles`, `DefaultStyles()`, `WithStyles()`, and `SetStyles()`; compose them from `theme.NewStyles()` at app/view boundaries
-- Theme uses AdaptiveColor; no runtime toggle
-- All color values must live in `theme.DefaultTheme`; no inline colors outside it (dashboard charts are the only temporary exception while ntcharts uses lipgloss v1)
+- Theme resolves centralized light/dark ColorPairs in app-owned state from Bubble Tea background replies, with a dark no-reply fallback; never query the terminal from palette initialization
+- All color values must live in `theme.DefaultTheme`; no inline colors outside it
 - Border title/meta: use `components/frame` (title is on the top border line)
 - No emojis in UI except strategically placed glyphs from Nerd Font, such as "⚙" - keep text clean and professional
 - Shared components: no lipgloss.NewStyle() calls in render paths - pass all styles via struct/DefaultStyles
