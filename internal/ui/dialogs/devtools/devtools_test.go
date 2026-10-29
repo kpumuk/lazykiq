@@ -1,6 +1,9 @@
 package devtools
 
 import (
+	"context"
+	"errors"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -246,4 +249,110 @@ func TestGoldenDevToolsDialog(t *testing.T) {
 
 	output := ansi.Strip(m.View())
 	golden.RequireEqual(t, []byte(output))
+}
+
+type consoleClient struct {
+	do func(context.Context, ...any) (any, error)
+}
+
+func (c consoleClient) Do(ctx context.Context, args ...any) (any, error) { return c.do(ctx, args...) }
+
+func TestDevToolsExecuteFullInput(t *testing.T) {
+	t.Parallel()
+	payload := strings.Repeat("界", 65536)
+	resultValue := []any{payload, []any{payload}}
+	tracker := coredevtools.NewTracker()
+	m := New(WithTracker(tracker), WithClient(consoleClient{do: func(ctx context.Context, args ...any) (any, error) {
+		if coredevtools.OriginFromContext(ctx) != "console" || len(args) != 3 || args[0] != "SET" || args[1] != "key" || args[2] != payload {
+			t.Error("execution arguments truncated or origin lost")
+		}
+		return resultValue, nil
+	}}))
+	m.input.SetValue("SET key \"" + payload + "\"")
+	cmd := m.executeInput()
+	if m.input.Value() != "" {
+		t.Fatal("input not cleared")
+	}
+	msg, ok := cmd().(commandResultMsg)
+	if !ok || msg.err != nil || len(msg.output) > coredevtools.DisplayByteLimit || !strings.Contains(msg.output, "[truncated]") {
+		t.Fatal("unbounded or invalid result message")
+	}
+	if resultValue[0] != payload {
+		t.Fatal("actual result changed")
+	}
+	m.Update(msg)
+	entries := tracker.LogEntries()
+	if len(entries) != 1 || entries[0].Entry.Command != msg.output || entries[0].Entry.Kind != coredevtools.EntryResult {
+		t.Fatal("result not logged")
+	}
+}
+
+func TestDevToolsResultErrors(t *testing.T) {
+	t.Parallel()
+	tests := map[string]error{
+		"cancellation": context.Canceled,
+		"wide":         errors.New(strings.Repeat("failure\r\n", 65536)),
+	}
+	for name, err := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			tracker := coredevtools.NewTracker()
+			m := New(WithTracker(tracker), WithClient(consoleClient{do: func(context.Context, ...any) (any, error) { return "ignored", err }}))
+			m.input.SetValue("GET key")
+			msg := m.executeInput()()
+			m.Update(msg)
+			output := tracker.LogEntries()[0].Entry.Command
+			if len(output) > coredevtools.DisplayByteLimit || !strings.HasPrefix(output, "error: ") || strings.ContainsAny(output, "\r\n") || strings.Contains(output, "ignored") {
+				t.Fatal("invalid error preview")
+			}
+			if name == "cancellation" && output != "error: context canceled" {
+				t.Fatal(output)
+			}
+			if name == "wide" && !strings.HasSuffix(output, " [truncated]") {
+				t.Fatal("missing truncation indicator")
+			}
+		})
+	}
+}
+
+func TestDevToolsTruncatedLayout(t *testing.T) {
+	t.Parallel()
+	for _, width := range []int{80, 120, 160} {
+		t.Run(strconv.Itoa(width), func(t *testing.T) {
+			t.Parallel()
+			tracker := seedTracker()
+			m := New(WithTracker(tracker))
+			m.appendResult(formatRedisResult(strings.Repeat("界", 4096)), nil)
+			m.Update(tea.WindowSizeMsg{Width: width, Height: 24})
+			m.syncEntries()
+			m.table.ScrollToEnd()
+			output := ansi.Strip(m.View())
+			if !strings.Contains(output, "[truncated]") {
+				t.Fatal("truncation indicator not accessible at horizontal end")
+			}
+			lines := strings.Split(output, "\n")
+			if len(lines) != m.height {
+				t.Fatalf("height=%d, want %d", len(lines), m.height)
+			}
+			for _, line := range lines {
+				if ansi.StringWidth(line) != width {
+					t.Fatalf("line width=%d, want %d", ansi.StringWidth(line), width)
+				}
+			}
+		})
+	}
+}
+
+func TestGoldenDevToolsTruncated(t *testing.T) {
+	tracker := seedTracker()
+	tracker.AppendLog(coredevtools.LogEntry{
+		Time: time.Date(2024, 1, 2, 3, 4, 6, 0, time.UTC), Origin: "console",
+		Entry: coredevtools.Entry{Kind: coredevtools.EntryResult, Command: formatRedisResult(strings.Repeat("界", 4096))},
+	})
+	m := New(WithTracker(tracker))
+	m.Init()
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 24})
+	m.syncEntries()
+	m.table.ScrollToEnd()
+	golden.RequireEqual(t, []byte(ansi.Strip(m.View())))
 }
