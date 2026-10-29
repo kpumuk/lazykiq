@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -36,8 +37,10 @@ func DisableRedisLogging() {
 type Client struct {
 	redis           *redis.Client
 	displayRedisURL string
+	versionMu       sync.Mutex
 	version         Version
 	versionDetected bool
+	versionPending  chan struct{}
 	capabilities    Capabilities
 }
 
@@ -141,10 +144,57 @@ func (c *Client) AddHook(h redis.Hook) {
 // Successful observations, including VersionUnknown, are cached for the client
 // lifetime. Failed scans return VersionUnknown without caching, allowing retries.
 func (c *Client) DetectVersion(ctx context.Context) Version {
-	if c.versionDetected {
-		return c.version
-	}
+	for {
+		c.versionMu.Lock()
+		if c.versionDetected {
+			version := c.version
+			c.versionMu.Unlock()
+			return version
+		}
+		if ctx.Err() != nil {
+			c.versionMu.Unlock()
+			return VersionUnknown
+		}
+		if pending := c.versionPending; pending != nil {
+			c.versionMu.Unlock()
+			select {
+			case <-ctx.Done():
+				return VersionUnknown
+			case <-pending:
+				// Retry if the previous caller's scan failed or was cancelled.
+				continue
+			}
+		}
 
+		pending := make(chan struct{})
+		c.versionPending = pending
+		c.versionMu.Unlock()
+
+		version, err := c.detectVersion(ctx)
+
+		c.versionMu.Lock()
+		if err == nil {
+			c.version = version
+			c.versionDetected = true
+		}
+		c.versionPending = nil
+		close(pending)
+		c.versionMu.Unlock()
+		return version
+	}
+}
+
+// MetricsPeriodOrder returns the appropriate period order based on detected Sidekiq version.
+// Sidekiq 7 metrics are limited to 8 hours.
+func (c *Client) MetricsPeriodOrder(ctx context.Context) []string {
+	version := c.DetectVersion(ctx)
+	if version == Version7 {
+		return MetricsPeriodOrderSidekiq7
+	}
+	return MetricsPeriodOrder
+}
+
+func (c *Client) detectVersion(ctx context.Context) (Version, error) {
 	// Sidekiq 8 uses j|YYMMDD|H:M (6-digit date)
 	// Sidekiq 7 uses j|YYYYMMDD|H:M (8-digit date)
 	// We can distinguish by the date portion length after "j|"
@@ -160,16 +210,14 @@ func (c *Client) DetectVersion(ctx context.Context) Version {
 		// Redis can return zero keys and a cursor for the next scan.
 		keys, nextCursor, err := c.redis.Scan(ctx, cursor, "j|*", 100).Result()
 		if err != nil {
-			return VersionUnknown
+			return VersionUnknown, err
 		}
 
 		for _, key := range keys {
 			processed++
 			switch metricsKeyVersion(key) {
 			case Version8:
-				c.version = Version8
-				c.versionDetected = true
-				return c.version
+				return Version8, nil
 			case Version7:
 				found7 = true
 			case VersionUnknown:
@@ -182,29 +230,11 @@ func (c *Client) DetectVersion(ctx context.Context) Version {
 		}
 	}
 
-	if processed == 0 {
-		c.versionDetected = true
-		return VersionUnknown
-	}
 	if found7 {
-		c.version = Version7
-		c.versionDetected = true
-		return c.version
+		return Version7, nil
 	}
 
-	c.version = VersionUnknown
-	c.versionDetected = true
-	return c.version
-}
-
-// MetricsPeriodOrder returns the appropriate period order based on detected Sidekiq version.
-// Sidekiq 7 metrics are limited to 8 hours.
-func (c *Client) MetricsPeriodOrder(ctx context.Context) []string {
-	version := c.DetectVersion(ctx)
-	if version == Version7 {
-		return MetricsPeriodOrderSidekiq7
-	}
-	return MetricsPeriodOrder
+	return VersionUnknown, nil
 }
 
 func metricsKeyVersion(key string) Version {
