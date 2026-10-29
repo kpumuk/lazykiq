@@ -1,12 +1,19 @@
 package ui
 
 import (
+	"bytes"
+	"context"
 	"image/color"
+	"io"
 	"reflect"
+	"sync"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 	confirmdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/confirm"
@@ -14,6 +21,82 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/theme"
 	"github.com/kpumuk/lazykiq/internal/ui/views"
 )
+
+type backgroundTerminal struct {
+	subscribed chan struct{}
+	once       sync.Once
+}
+
+func (t *backgroundTerminal) Write(data []byte) (int, error) {
+	if bytes.Contains(data, []byte(ansi.SetModeLightDark)) {
+		t.once.Do(func() { close(t.subscribed) })
+	}
+	return len(data), nil
+}
+
+type backgroundProgram struct {
+	App
+	palettes chan lipgloss.Style
+}
+
+func (m backgroundProgram) Init() tea.Cmd  { return requestBackgroundCmd() }
+func (m backgroundProgram) View() tea.View { return tea.NewView("") }
+func (m backgroundProgram) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	updated, cmd := m.App.Update(msg)
+	m.App = updated.(App)
+	switch msg.(type) {
+	case tea.BackgroundColorMsg, uv.DarkColorSchemeEvent, uv.LightColorSchemeEvent:
+		m.palettes <- m.styles.ViewText
+	}
+	return m, cmd
+}
+
+func TestAppTerminalThemeChanges(t *testing.T) {
+	input, terminal := io.Pipe()
+	defer func() { _ = input.Close() }()
+	defer func() { _ = terminal.Close() }()
+	output := &backgroundTerminal{subscribed: make(chan struct{})}
+	palettes := make(chan lipgloss.Style, 3)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	p := tea.NewProgram(backgroundProgram{App: New(nil, "", false, nil), palettes: palettes},
+		tea.WithInput(input), tea.WithOutput(output), tea.WithContext(ctx),
+		tea.WithWindowSize(120, 40), tea.WithoutSignalHandler())
+	done := make(chan error, 1)
+	go func() { _, err := p.Run(); done <- err }()
+	defer p.Kill()
+	select {
+	case <-output.subscribed:
+	case <-ctx.Done():
+		t.Fatal("terminal was not subscribed to theme changes")
+	}
+	// Feed real terminal bytes through Bubble Tea's input parser: start in light
+	// mode via OSC 11, then switch dark and back via Ghostty's mode 2031 reports.
+	for _, tc := range []struct {
+		report string
+		dark   bool
+	}{
+		{"\x1b]11;rgb:ffff/ffff/ffff\x1b\\", false},
+		{ansi.LightDarkReport(true), true},
+		{ansi.LightDarkReport(false), false},
+	} {
+		if _, err := io.WriteString(terminal, tc.report); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case got := <-palettes:
+			if want := theme.NewStylesForBackground(tc.dark).ViewText; !reflect.DeepEqual(got, want) {
+				t.Fatalf("report %q did not refresh the palette", tc.report)
+			}
+		case <-ctx.Done():
+			t.Fatalf("report %q was not handled", tc.report)
+		}
+	}
+	p.Send(tea.QuitMsg{})
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
 
 type paletteView struct {
 	stubView

@@ -8,6 +8,8 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/kpumuk/lazykiq/internal/devtools"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
@@ -151,12 +153,18 @@ func New(client sidekiq.API, version string, dangerousActionsEnabled bool, devTr
 func (a App) Init() tea.Cmd {
 	activeID := a.activeViewID()
 	return tea.Batch(
-		tea.RequestBackgroundColor,
+		requestBackgroundCmd(),
 		a.viewRegistry[activeID].Init(),
 		a.metrics.Init(),
 		a.fetchStatsCmd(), // Fetch stats immediately
 		tickCmd(),         // Start the ticker for subsequent updates
 	)
+}
+
+// requestBackgroundCmd subscribes to live appearance changes (DEC mode 2031)
+// and queries the initial background for terminals that only support OSC 11.
+func requestBackgroundCmd() tea.Cmd {
+	return tea.Batch(tea.Raw(ansi.SetModeLightDark), tea.RequestBackgroundColor)
 }
 
 // tickCmd returns a command that sends a tick message after 5 seconds.
@@ -182,11 +190,22 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.BackgroundColorMsg:
-		if msg.Color != nil && a.darkBackground != msg.IsDark() {
-			a.darkBackground = msg.IsDark()
-			a.applyStyles(theme.NewStylesForBackground(a.darkBackground))
+		if msg.Color != nil {
+			a.setDarkBackground(msg.IsDark())
 		}
 		return a, nil
+
+	// Bubble Tea 2.1 passes mode 2031 reports through as Ultraviolet events.
+	case uv.DarkColorSchemeEvent:
+		a.setDarkBackground(true)
+		return a, nil
+
+	case uv.LightColorSchemeEvent:
+		a.setDarkBackground(false)
+		return a, nil
+
+	case tea.ResumeMsg:
+		return a, requestBackgroundCmd()
 
 	case tickMsg:
 		// Always fetch stats for metrics bar
@@ -808,6 +827,13 @@ func (a *App) popAndRefresh(id viewID) tea.Cmd {
 }
 
 // applyStyles updates existing models, preserving navigation and input state.
+func (a *App) setDarkBackground(dark bool) {
+	if a.darkBackground != dark {
+		a.darkBackground = dark
+		a.applyStyles(theme.NewStylesForBackground(dark))
+	}
+}
+
 func (a *App) applyStyles(styles theme.Styles) {
 	a.styles = styles
 	viewStyles := views.Styles{
