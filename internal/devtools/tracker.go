@@ -548,16 +548,18 @@ func (w *displayWriter) mapValue(v reflect.Value, depth int) {
 		if right.Kind() == reflect.Interface {
 			right = right.Elem()
 		}
-		if kind := left.Kind(); kind == right.Kind() {
-			if kind >= reflect.Int && kind <= reflect.Int64 {
-				return cmp.Compare(left.Int(), right.Int())
-			}
-			if kind >= reflect.Uint && kind <= reflect.Uintptr {
-				return cmp.Compare(left.Uint(), right.Uint())
-			}
-			if kind == reflect.Float32 || kind == reflect.Float64 {
-				return cmp.Compare(left.Float(), right.Float())
-			}
+		kind := left.Kind()
+		if kind != right.Kind() {
+			return cmp.Compare(kind, right.Kind())
+		}
+		if kind >= reflect.Int && kind <= reflect.Int64 {
+			return cmp.Compare(left.Int(), right.Int())
+		}
+		if kind >= reflect.Uint && kind <= reflect.Uintptr {
+			return cmp.Compare(left.Uint(), right.Uint())
+		}
+		if kind == reflect.Float32 || kind == reflect.Float64 {
+			return cmp.Compare(left.Float(), right.Float())
 		}
 		return strings.Compare(a.key, b.key)
 	})

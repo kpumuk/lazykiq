@@ -282,3 +282,13 @@ func TestTrackerPipelineOrder(t *testing.T) {
 		}
 	}
 }
+
+func TestMixedMapPreviewOrder(t *testing.T) {
+	t.Parallel()
+	values := map[any]any{2: "a", 10: "b", "15": "c"}
+	for range 100 {
+		if got := FormatResult(values); got != "map[2:a 10:b 15:c]" {
+			t.Fatalf("inconsistent mixed-key ordering: %q", got)
+		}
+	}
+}
