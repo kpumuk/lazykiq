@@ -279,51 +279,35 @@ func NewStyles() Styles {
 // Bubble Tea performs output color-profile conversion.
 func NewStylesForBackground(isDark bool) Styles {
 	t := DefaultTheme
+	text := lipgloss.NewStyle().Foreground(t.Text.Resolve(isDark))
+	muted := lipgloss.NewStyle().Foreground(t.TextMuted.Resolve(isDark))
+	border := lipgloss.NewStyle().Foreground(t.Border.Resolve(isDark))
+	focusBorder := lipgloss.NewStyle().Foreground(t.BorderFocus.Resolve(isDark))
+	key := text.Background(t.Border.Resolve(isDark)).Padding(0, 1)
+	metrics := lipgloss.NewStyle().
+		Foreground(t.MetricsText.Resolve(isDark)).
+		Background(t.MetricsBarBg.Resolve(isDark))
+
 	return Styles{
 		// Metrics bar
-		MetricsBar: lipgloss.NewStyle().
-			Foreground(t.MetricsText.Resolve(isDark)).
-			Background(t.MetricsBarBg.Resolve(isDark)).
-			Padding(0, 0),
+		MetricsBar: metrics.Padding(0, 0),
 
 		MetricsFill: lipgloss.NewStyle().
 			Background(t.MetricsBarBg.Resolve(isDark)),
 
-		MetricsLabel: lipgloss.NewStyle().
-			Foreground(t.MetricsText.Resolve(isDark)).
-			Background(t.MetricsBarBg.Resolve(isDark)),
-
-		MetricsValue: lipgloss.NewStyle().
-			Foreground(t.MetricsText.Resolve(isDark)).
-			Background(t.MetricsBarBg.Resolve(isDark)).
-			Bold(true),
-
-		MetricLabel: lipgloss.NewStyle().
-			Foreground(t.TextMuted.Resolve(isDark)),
-
-		MetricValue: lipgloss.NewStyle().
-			Foreground(t.Text.Resolve(isDark)).
-			Bold(true),
+		MetricsLabel: metrics,
+		MetricsValue: metrics.Bold(true),
+		MetricLabel:  muted,
+		MetricValue:  text.Bold(true),
 
 		// Navbar
 		NavBar: lipgloss.NewStyle().
 			Padding(0, 1),
 
-		NavItem: lipgloss.NewStyle().
-			Foreground(t.TextMuted.Resolve(isDark)).
-			PaddingRight(1),
-
-		NavKey: lipgloss.NewStyle().
-			Foreground(t.Text.Resolve(isDark)).
-			Background(t.Border.Resolve(isDark)).
-			Padding(0, 1),
-
-		NavQuit: lipgloss.NewStyle().
-			Foreground(t.TextMuted.Resolve(isDark)).
-			PaddingRight(1),
-
-		NavBrand: lipgloss.NewStyle().
-			Foreground(t.TextMuted.Resolve(isDark)),
+		NavItem:  muted.PaddingRight(1),
+		NavKey:   key,
+		NavQuit:  muted.PaddingRight(1),
+		NavBrand: muted,
 
 		// Stack bar
 		StackBar: lipgloss.NewStyle().
@@ -339,37 +323,26 @@ func NewStylesForBackground(isDark bool) Styles {
 			Foreground(t.Primary.Resolve(isDark)).
 			Bold(true),
 
-		ViewText: lipgloss.NewStyle().
-			Foreground(t.Text.Resolve(isDark)),
-
-		ViewMuted: lipgloss.NewStyle().
-			Foreground(t.TextMuted.Resolve(isDark)),
+		ViewText:  text,
+		ViewMuted: muted,
 
 		// Table
-		TableHeader: lipgloss.NewStyle().
-			Foreground(t.Text.Resolve(isDark)).
-			Bold(true),
+		TableHeader: text.Bold(true),
 
 		TableSelected: lipgloss.NewStyle().
 			Foreground(t.TableSelectedFg.Resolve(isDark)).
 			Background(t.TableSelectedBg.Resolve(isDark)),
 
-		TableSeparator: lipgloss.NewStyle().
-			Foreground(t.Border.Resolve(isDark)),
-		ScrollbarTrack: lipgloss.NewStyle().
-			Foreground(t.Border.Resolve(isDark)),
-		ScrollbarThumb: lipgloss.NewStyle().
-			Foreground(t.BorderFocus.Resolve(isDark)),
+		TableSeparator: border,
+		ScrollbarTrack: border,
+		ScrollbarThumb: focusBorder,
 
 		// Layout helpers
 		BoxPadding: lipgloss.NewStyle().
 			Padding(0, 1),
 
-		BorderStyle: lipgloss.NewStyle().
-			Foreground(t.Border.Resolve(isDark)),
-
-		FocusBorder: lipgloss.NewStyle().
-			Foreground(t.BorderFocus.Resolve(isDark)),
+		BorderStyle: border,
+		FocusBorder: focusBorder,
 
 		ChartSuccess: lipgloss.NewStyle().
 			Foreground(t.Success.Resolve(isDark)),
@@ -432,26 +405,15 @@ func NewStylesForBackground(isDark bool) Styles {
 		ContextBar: lipgloss.NewStyle().
 			Padding(0, 1),
 
-		ContextLabel: lipgloss.NewStyle().
-			Foreground(t.TextMuted.Resolve(isDark)),
+		ContextLabel: muted,
+		ContextValue: text,
+		ContextKey:   key,
+		ContextDesc:  muted,
 
-		ContextValue: lipgloss.NewStyle().
-			Foreground(t.Text.Resolve(isDark)),
-
-		ContextKey: lipgloss.NewStyle().
-			Foreground(t.Text.Resolve(isDark)).
-			Background(t.Border.Resolve(isDark)).
-			Padding(0, 1),
-
-		ContextDesc: lipgloss.NewStyle().
-			Foreground(t.TextMuted.Resolve(isDark)),
-
-		ContextDangerKey: lipgloss.NewStyle().
-			Foreground(t.Text.Resolve(isDark)).
+		ContextDangerKey: text.
 			Background(t.DangerBg.Resolve(isDark)).
 			Padding(0, 1),
 
-		ContextDangerDesc: lipgloss.NewStyle().
-			Foreground(t.Text.Resolve(isDark)),
+		ContextDangerDesc: text,
 	}
 }

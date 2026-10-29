@@ -50,8 +50,7 @@ func (m backgroundProgram) View() tea.View { return tea.NewView("") }
 func (m backgroundProgram) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	updated, cmd := m.App.Update(msg)
 	m.App = updated.(App)
-	switch msg.(type) {
-	case tea.BackgroundColorMsg:
+	if _, ok := msg.(tea.BackgroundColorMsg); ok {
 		m.palettes <- m.styles.ViewText
 	}
 	return m, cmd

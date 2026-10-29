@@ -139,7 +139,6 @@ func New(client sidekiq.API, version string, dangerousActionsEnabled bool, devTr
 		navbar:                  navbar.New(navbar.WithViews(navViews), navbar.WithBrand(brand), navbar.WithHelp(keys.Help)),
 		errorPopup:              errorpopup.New(),
 		dialogs:                 dialogs.NewDialogCmp(),
-		styles:                  styles,
 		darkBackground:          true,
 		sidekiq:                 client,
 		dangerousActionsEnabled: dangerousActionsEnabled,
@@ -829,10 +828,11 @@ func (a *App) popAndRefresh(id viewID) tea.Cmd {
 }
 
 func (a *App) setDarkBackground(dark bool) {
-	if a.darkBackground != dark {
-		a.darkBackground = dark
-		a.applyStyles(theme.NewStylesForBackground(dark))
+	if a.darkBackground == dark {
+		return
 	}
+	a.darkBackground = dark
+	a.applyStyles(theme.NewStylesForBackground(dark))
 }
 
 // applyStyles updates existing models, preserving navigation and input state.
