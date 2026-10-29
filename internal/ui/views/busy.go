@@ -129,8 +129,9 @@ func (b *Busy) Update(msg tea.Msg) (View, tea.Cmd) {
 			if idx := b.table.Cursor(); idx >= 0 && idx < len(b.rowJobIndex) {
 				jobIdx := b.rowJobIndex[idx]
 				if jobIdx >= 0 && jobIdx < len(b.filteredJobs) {
+					job := b.filteredJobs[jobIdx].JobRecord
 					return b, func() tea.Msg {
-						return ShowJobDetailMsg{Job: b.filteredJobs[jobIdx].JobRecord}
+						return ShowJobDetailMsg{Job: job}
 					}
 				}
 			}

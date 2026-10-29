@@ -141,8 +141,9 @@ func (q *QueuesList) Update(msg tea.Msg) (View, tea.Cmd) {
 		case "enter":
 			// Show queue details for selected queue
 			if idx := q.table.Cursor(); idx >= 0 && idx < len(q.queues) {
+				queueName := q.queues[idx].Name
 				return q, func() tea.Msg {
-					return ShowQueueDetailsMsg{QueueName: q.queues[idx].Name}
+					return ShowQueueDetailsMsg{QueueName: queueName}
 				}
 			}
 			return q, nil

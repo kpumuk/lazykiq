@@ -124,8 +124,9 @@ func (d *Dead) Update(msg tea.Msg) (View, tea.Cmd) {
 		case "enter":
 			// Show detail for selected job
 			if idx := d.lazy.Table().Cursor(); idx >= 0 && idx < len(d.jobs) {
+				job := d.jobs[idx].JobRecord
 				return d, func() tea.Msg {
-					return ShowJobDetailMsg{Job: d.jobs[idx].JobRecord}
+					return ShowJobDetailMsg{Job: job}
 				}
 			}
 			return d, nil
