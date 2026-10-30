@@ -4,19 +4,20 @@ import "charm.land/bubbles/v2/key"
 
 // KeyMap defines all global keybindings.
 type KeyMap struct {
-	Quit     key.Binding
-	View1    key.Binding
-	View2    key.Binding
-	View3    key.Binding
-	View4    key.Binding
-	View5    key.Binding
-	View6    key.Binding
-	View7    key.Binding
-	View8    key.Binding
-	Tab      key.Binding
-	ShiftTab key.Binding
-	Help     key.Binding
-	DevTools key.Binding
+	Quit      key.Binding
+	QuitModal key.Binding
+	View1     key.Binding
+	View2     key.Binding
+	View3     key.Binding
+	View4     key.Binding
+	View5     key.Binding
+	View6     key.Binding
+	View7     key.Binding
+	View8     key.Binding
+	Tab       key.Binding
+	ShiftTab  key.Binding
+	Help      key.Binding
+	DevTools  key.Binding
 }
 
 // DefaultKeyMap returns the default keybindings.
@@ -25,6 +26,10 @@ func DefaultKeyMap() KeyMap {
 		Quit: key.NewBinding(
 			key.WithKeys("q", "ctrl+c"),
 			key.WithHelp("q", "quit"),
+		),
+		QuitModal: key.NewBinding(
+			key.WithKeys("ctrl+c"),
+			key.WithHelp("ctrl+c", "quit"),
 		),
 		View1: key.NewBinding(
 			key.WithKeys("1"),

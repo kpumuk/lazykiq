@@ -300,7 +300,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyPressMsg:
 		if a.dialogs.HasDialogs() {
-			if key.Matches(msg, a.keys.Quit) {
+			if key.Matches(msg, a.keys.QuitModal) {
 				return a, tea.Quit
 			}
 			updated, cmd := a.dialogs.Update(msg)
