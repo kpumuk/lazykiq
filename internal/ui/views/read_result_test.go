@@ -236,3 +236,34 @@ func TestJobMetricsClassReplacementInvalidatesImmediately(t *testing.T) {
 		t.Fatal("old class data reappeared before new class fetched")
 	}
 }
+
+func TestViewReadLifetimes(t *testing.T) {
+	for name, fixture := range readFixtures(&readClient{}) {
+		t.Run(name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			fixture.view.(ContextSetter).SetContext(ctx)
+			t.Cleanup(fixture.view.(RequestCanceler).CancelRequests)
+			first := fixture.fetch()().(ReadResultMsg)
+			second := fixture.fetch()().(ReadResultMsg)
+			if first.Current() || !second.Current() || ctx.Err() != nil {
+				t.Fatal("replacement must preserve the parent and cancel only the old read")
+			}
+			fixture.view.(RequestCanceler).CancelRequests()
+			if second.Current() || ctx.Err() != nil {
+				t.Fatal("hiding must preserve the parent and cancel the read")
+			}
+			if disposable, ok := fixture.view.(Disposable); ok {
+				disposable.Dispose()
+			}
+			third := fixture.fetch()().(ReadResultMsg)
+			if !third.Current() {
+				t.Fatal("reopened view lost its parent lifetime")
+			}
+			cancel()
+			if third.Current() {
+				t.Fatal("view read survived application cancellation")
+			}
+		})
+	}
+}

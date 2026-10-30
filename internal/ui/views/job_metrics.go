@@ -1,7 +1,6 @@
 package views
 
 import (
-	"context"
 	"slices"
 	"strings"
 
@@ -27,6 +26,7 @@ type jobMetricsDataMsg struct {
 
 // JobMetrics shows per-job execution metrics.
 type JobMetrics struct {
+	requestctx.Scope
 	client  sidekiq.API
 	width   int
 	height  int
@@ -355,7 +355,7 @@ func (j *JobMetrics) fetchCmd() tea.Cmd {
 	period := j.period
 	client := j.client
 	periods := j.periods
-	ctx := j.fetchRequest.Start(devtools.WithTracker(context.Background(), "job_metrics.fetchCmd"))
+	ctx := j.fetchRequest.Start(devtools.WithTracker(j.Context(), "job_metrics.fetchCmd"))
 	return readCmd(ctx, j, func() tea.Msg {
 		params, ok := sidekiq.MetricsPeriods[period]
 		if !ok {

@@ -63,7 +63,7 @@ func (a *queueActions) pauseDialog(name string, paused bool, styles Styles) tea.
 	}
 }
 
-func (a *queueActions) confirm(msg confirmdialog.ActionMsg, client sidekiq.API) tea.Cmd {
+func (a *queueActions) confirm(parent context.Context, msg confirmdialog.ActionMsg, client sidekiq.API) tea.Cmd {
 	if a.busy || a.pending == nil || msg.Target != a.pending.target {
 		return nil
 	}
@@ -75,8 +75,8 @@ func (a *queueActions) confirm(msg confirmdialog.ActionMsg, client sidekiq.API) 
 	a.busy = true
 	a.generation++
 	generation := a.generation
+	ctx := devtools.WithTracker(parent, "queues.mutate")
 	return func() tea.Msg {
-		ctx := devtools.WithTracker(context.Background(), "queues.mutate")
 		queue := client.NewQueue(action.name)
 		var err error
 		if action.verb == "delete" {

@@ -1,7 +1,6 @@
 package views
 
 import (
-	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -29,6 +28,7 @@ type processesListDataMsg struct {
 
 // ProcessesList shows all Sidekiq processes in a table.
 type ProcessesList struct {
+	requestctx.Scope
 	client                  sidekiq.API
 	width                   int
 	height                  int
@@ -305,7 +305,7 @@ func (p *ProcessesList) SetStyles(styles Styles) View {
 func (p *ProcessesList) fetchDataCmd() tea.Cmd {
 	p.requestID++
 	requestID, filter := p.requestID, p.filter
-	ctx := p.fetchRequest.Start(devtools.WithTracker(context.Background(), "processes.fetchDataCmd"))
+	ctx := p.fetchRequest.Start(devtools.WithTracker(p.Context(), "processes.fetchDataCmd"))
 	return readCmd(ctx, p, func() tea.Msg {
 		data, err := p.client.GetProcessesData(ctx)
 		if ctx.Err() != nil {
@@ -414,8 +414,8 @@ func (p *ProcessesList) confirmProcessActionCmd(title, message, action, identity
 }
 
 func (p *ProcessesList) pauseProcessCmd(identity string) tea.Cmd {
+	ctx := devtools.WithTracker(p.Context(), "processes.pauseProcessCmd")
 	return func() tea.Msg {
-		ctx := devtools.WithTracker(context.Background(), "processes.pauseProcessCmd")
 		if err := p.client.NewProcess(identity).Pause(ctx); err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}
@@ -424,8 +424,8 @@ func (p *ProcessesList) pauseProcessCmd(identity string) tea.Cmd {
 }
 
 func (p *ProcessesList) stopProcessCmd(identity string) tea.Cmd {
+	ctx := devtools.WithTracker(p.Context(), "processes.stopProcessCmd")
 	return func() tea.Msg {
-		ctx := devtools.WithTracker(context.Background(), "processes.stopProcessCmd")
 		if err := p.client.NewProcess(identity).Stop(ctx); err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}

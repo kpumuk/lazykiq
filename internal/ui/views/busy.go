@@ -1,7 +1,6 @@
 package views
 
 import (
-	"context"
 	"fmt"
 	"maps"
 	"slices"
@@ -30,6 +29,7 @@ type busyDataMsg struct {
 
 // Busy shows active workers/processes.
 type Busy struct {
+	requestctx.Scope
 	client          sidekiq.API
 	width           int
 	height          int
@@ -289,7 +289,7 @@ func (b *Busy) SetProcessIdentity(identity string) {
 
 // fetchDataCmd fetches busy data from Redis.
 func (b *Busy) fetchDataCmd() tea.Cmd {
-	ctx := b.fetchRequest.Start(devtools.WithTracker(context.Background(), "busy.fetchDataCmd"))
+	ctx := b.fetchRequest.Start(devtools.WithTracker(b.Context(), "busy.fetchDataCmd"))
 	client, filter := b.client, b.filter
 	return readCmd(ctx, b, func() tea.Msg {
 		data, err := client.GetBusyData(ctx, filter)

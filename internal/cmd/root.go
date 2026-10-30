@@ -12,7 +12,6 @@ import (
 	"slices"
 	"strings"
 
-	tea "charm.land/bubbletea/v2"
 	"charm.land/fang/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/spf13/cobra"
@@ -155,12 +154,11 @@ func newRootCommand(version, commit, date, builtBy string) *cobra.Command {
 			client.AddHook(tracker.Hook())
 		}
 
-		app := ui.New(client, version, enableDangerousActions, tracker)
-		p := tea.NewProgram(app)
+		app := ui.NewWithContext(cmd.Context(), client, version, enableDangerousActions, tracker)
 		// Bubble Tea does not manage the custom appearance-reporting mode.
 		// Disable it after terminal ownership returns, including on errors.
 		defer func() { _, _ = fmt.Fprint(os.Stdout, ansi.ResetModeLightDark) }()
-		if _, err := p.Run(); err != nil {
+		if _, err := app.Run(); err != nil {
 			return fmt.Errorf("run lazykiq: %w", err)
 		}
 

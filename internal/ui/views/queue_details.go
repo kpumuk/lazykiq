@@ -129,7 +129,7 @@ func (q *QueueDetails) Update(msg tea.Msg) (View, tea.Cmd) {
 		if !q.dangerousActionsEnabled {
 			return q, nil
 		}
-		cmd := q.actions.confirm(msg, q.client)
+		cmd := q.actions.confirm(q.Context(), msg, q.client)
 		if cmd != nil {
 			q.lazy.CancelRequest()
 		}

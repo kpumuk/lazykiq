@@ -35,3 +35,21 @@ func (c *Controller) Cancel() {
 func IsCanceled(err error) bool {
 	return errors.Is(err, context.Canceled)
 }
+
+// Scope supplies the parent context for a component's reads and mutations.
+// SetContext must be called before the component starts issuing commands.
+// The zero value uses a background context for standalone components.
+type Scope struct {
+	context context.Context
+}
+
+// SetContext binds subsequent commands to the owner's lifetime.
+func (s *Scope) SetContext(ctx context.Context) { s.context = ctx }
+
+// Context returns the owner's lifetime context.
+func (s Scope) Context() context.Context {
+	if s.context == nil {
+		return context.Background()
+	}
+	return s.context
+}

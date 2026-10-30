@@ -419,8 +419,8 @@ func (d *Dead) openRetryAllConfirm() tea.Cmd {
 }
 
 func (d *Dead) deleteJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
+	ctx := devtools.WithTracker(d.Context(), "dead.deleteJobCmd")
 	return func() tea.Msg {
-		ctx := devtools.WithTracker(context.Background(), "dead.deleteJobCmd")
 		if err := d.client.DeleteSortedEntry(ctx, sidekiq.SortedSetDead, entry); err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}
@@ -429,8 +429,8 @@ func (d *Dead) deleteJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
 }
 
 func (d *Dead) deleteAllCmd() tea.Cmd {
+	ctx := devtools.WithTracker(d.Context(), "dead.deleteAllCmd")
 	return func() tea.Msg {
-		ctx := devtools.WithTracker(context.Background(), "dead.deleteAllCmd")
 		if err := d.client.DeleteAllSortedEntries(ctx, sidekiq.SortedSetDead); err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}
@@ -439,8 +439,8 @@ func (d *Dead) deleteAllCmd() tea.Cmd {
 }
 
 func (d *Dead) retryNowJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
+	ctx := devtools.WithTracker(d.Context(), "dead.retryNowJobCmd")
 	return func() tea.Msg {
-		ctx := devtools.WithTracker(context.Background(), "dead.retryNowJobCmd")
 		if err := d.client.EnqueueSortedEntry(ctx, sidekiq.SortedSetDead, entry); err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}
@@ -449,8 +449,8 @@ func (d *Dead) retryNowJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
 }
 
 func (d *Dead) retryAllCmd() tea.Cmd {
+	ctx := devtools.WithTracker(d.Context(), "dead.retryAllCmd")
 	return func() tea.Msg {
-		ctx := devtools.WithTracker(context.Background(), "dead.retryAllCmd")
 		if err := d.client.EnqueueAllSortedEntries(ctx, sidekiq.SortedSetDead); err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}

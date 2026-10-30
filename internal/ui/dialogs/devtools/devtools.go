@@ -16,6 +16,7 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
+	"github.com/kpumuk/lazykiq/internal/ui/requestctx"
 )
 
 // DialogID identifies the dev tools dialog.
@@ -62,6 +63,7 @@ type redisCommander interface {
 
 // Model defines state for the dev tools console.
 type Model struct {
+	requestctx.Scope
 	styles         Styles
 	title          string
 	client         redisCommander
@@ -398,13 +400,14 @@ func (m *Model) executeInput() tea.Cmd {
 		return nil
 	}
 
+	ctx := devtools.WithOrigin(m.Context(), "console")
+	client := m.client
 	return func() tea.Msg {
 		args, err := parseRedisArgs(raw)
 		if err != nil {
 			return commandResultMsg{err: err}
 		}
-		ctx := devtools.WithOrigin(context.Background(), "console")
-		result, err := m.client.Do(ctx, toAnyArgs(args)...)
+		result, err := client.Do(ctx, toAnyArgs(args)...)
 		return commandResultMsg{output: formatRedisResult(result), err: err}
 	}
 }
