@@ -228,9 +228,9 @@ func TestDevToolsExecuteInputNoClient(t *testing.T) {
 		t.Fatalf("input value = %q, want empty", got)
 	}
 	msg := cmd()
-	result, ok := msg.(commandResultMsg)
+	result, ok := msg.(CommandResultMsg)
 	if !ok {
-		t.Fatalf("message type = %T, want commandResultMsg", msg)
+		t.Fatalf("message type = %T, want CommandResultMsg", msg)
 	}
 	if result.err == nil || !strings.Contains(result.err.Error(), "redis client not available") {
 		t.Fatalf("error = %v, want redis client not available", result.err)
@@ -318,7 +318,7 @@ func TestDevToolsExecuteEmptyQuotedValue(t *testing.T) {
 			if cmd == nil {
 				t.Fatal("Enter did not execute the command")
 			}
-			result, ok := cmd().(commandResultMsg)
+			result, ok := cmd().(CommandResultMsg)
 			if !ok || result.err != nil || result.output != "OK" {
 				t.Fatalf("console result = %+v, want OK", result)
 			}
@@ -398,7 +398,7 @@ func TestDevToolsExecuteFullInput(t *testing.T) {
 	if m.input.Value() != "" {
 		t.Fatal("input not cleared")
 	}
-	msg, ok := cmd().(commandResultMsg)
+	msg, ok := cmd().(CommandResultMsg)
 	if !ok || msg.err != nil || len(msg.output) > coredevtools.DisplayByteLimit || !strings.Contains(msg.output, "[truncated]") {
 		t.Fatal("unbounded or invalid result message")
 	}
@@ -447,7 +447,7 @@ func TestDevToolsTruncatedLayout(t *testing.T) {
 			t.Parallel()
 			tracker := seedTracker()
 			m := New(WithTracker(tracker))
-			m.appendResult(formatRedisResult(strings.Repeat("界", 4096)), nil)
+			appendResult(tracker, formatRedisResult(strings.Repeat("界", 4096)), nil)
 			m.Update(tea.WindowSizeMsg{Width: width, Height: 24})
 			m.syncEntries()
 			m.table.ScrollToEnd()
@@ -568,5 +568,71 @@ func TestGoldenInputResize(t *testing.T) {
 				})
 			}
 		})
+	}
+}
+
+func TestCommandResultCollection(t *testing.T) {
+	t.Parallel()
+	tracker := coredevtools.NewTracker()
+	m := New(WithTracker(tracker), WithClient(consoleClient{do: func(context.Context, ...any) (any, error) { return "PONG", nil }}))
+	m.input.SetValue("PING")
+	first := m.executeInput()().(CommandResultMsg)
+	m.input.SetValue("PING")
+	second := m.executeInput()().(CommandResultMsg)
+	other := coredevtools.NewTracker()
+	first.Collect(other)
+	if len(other.LogEntries()) != 0 {
+		t.Fatal("result reached unrelated tracker")
+	}
+	second.Collect(tracker)
+	first.Collect(tracker)
+	m.Update(first)
+	m.Update(second)
+	if len(tracker.LogEntries()) != 2 {
+		t.Fatal("independent operations with identical output were lost or duplicated")
+	}
+
+	// Eviction must not make an old completion eligible for collection again.
+	for range 700 {
+		m.input.SetValue("PING")
+		msg := m.executeInput()()
+		m.Update(msg)
+	}
+	before := tracker.LogEntries()
+	if len(before) != 500 || before[0].Seq != 202 || before[499].Seq != 701 {
+		t.Fatalf("unexpected retained log: count=%d first=%d last=%d", len(before), before[0].Seq, before[len(before)-1].Seq)
+	}
+	first.Collect(tracker)
+	after := tracker.LogEntries()
+	if len(after) != 500 || after[0].Seq != before[0].Seq || after[499].Seq != before[499].Seq {
+		t.Fatal("duplicate resurrected an evicted result")
+	}
+}
+
+func TestCommandResultExpiredLifetime(t *testing.T) {
+	t.Parallel()
+	tracker := coredevtools.NewTracker()
+	m := New(WithTracker(tracker), WithClient(consoleClient{do: func(context.Context, ...any) (any, error) { return "PONG", nil }}))
+	ctx, cancel := context.WithCancel(context.Background())
+	m.SetContext(ctx)
+	m.input.SetValue("PING")
+	msg := m.executeInput()()
+	cancel()
+	m.Update(msg)
+	if len(tracker.LogEntries()) != 0 {
+		t.Fatal("expired completion appended a result")
+	}
+}
+
+func TestCommandResultWithoutClient(t *testing.T) {
+	t.Parallel()
+	tracker := coredevtools.NewTracker()
+	m := New(WithTracker(tracker))
+	m.input.SetValue("PING")
+	msg := m.executeInput()()
+	m.Update(msg)
+	m.Update(msg)
+	if entries := tracker.LogEntries(); len(entries) != 1 || entries[0].Entry.Command != "error: redis client not available" {
+		t.Fatalf("missing-client log = %+v", entries)
 	}
 }

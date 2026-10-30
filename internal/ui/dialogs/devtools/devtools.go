@@ -52,9 +52,30 @@ var logColumns = []table.Column{
 	{Title: "Command", Width: 0},
 }
 
-type commandResultMsg struct {
-	output string
-	err    error
+// CommandResultMsg delivers a console operation independently of dialog visibility.
+type CommandResultMsg struct {
+	operation *commandOperation
+	output    string
+	err       error
+}
+
+// commandOperation belongs to the app lifetime, not a console activation.
+// Only the event loop reads or changes collected; commands only carry identity.
+type commandOperation struct {
+	tracker   *devtools.Tracker
+	context   context.Context
+	collected bool
+}
+
+// Collect appends this operation once to its originating tracker. Call only
+// from the event loop; expired app lifetimes cannot publish late results.
+func (msg CommandResultMsg) Collect(tracker *devtools.Tracker) {
+	op := msg.operation
+	if op == nil || tracker == nil || op.tracker != tracker || op.collected || op.context.Err() != nil {
+		return
+	}
+	op.collected = true
+	appendResult(tracker, msg.output, msg.err)
 }
 
 type redisCommander interface {
@@ -150,8 +171,8 @@ func (m *Model) Update(msg tea.Msg) (dialogs.DialogModel, tea.Cmd) {
 		m.windowHeight = msg.Height
 		m.applySize()
 		return m, nil
-	case commandResultMsg:
-		m.appendResult(msg.output, msg.err)
+	case CommandResultMsg:
+		msg.Collect(m.tracker)
 		return m, nil
 	case tea.KeyPressMsg:
 		switch msg.String() {
@@ -385,10 +406,11 @@ func entryCommandLabel(entry devtools.Entry) string {
 }
 
 func (m *Model) executeInput() tea.Cmd {
+	op := &commandOperation{tracker: m.tracker, context: m.Context()}
 	if m.client == nil {
 		m.input.SetValue("")
 		return func() tea.Msg {
-			return commandResultMsg{err: errors.New("redis client not available")}
+			return CommandResultMsg{operation: op, err: errors.New("redis client not available")}
 		}
 	}
 
@@ -405,15 +427,15 @@ func (m *Model) executeInput() tea.Cmd {
 	return func() tea.Msg {
 		args, err := parseRedisArgs(raw)
 		if err != nil {
-			return commandResultMsg{err: err}
+			return CommandResultMsg{operation: op, err: err}
 		}
 		result, err := client.Do(ctx, toAnyArgs(args)...)
-		return commandResultMsg{output: formatRedisResult(result), err: err}
+		return CommandResultMsg{operation: op, output: formatRedisResult(result), err: err}
 	}
 }
 
-func (m *Model) appendResult(output string, err error) {
-	if m.tracker == nil {
+func appendResult(tracker *devtools.Tracker, output string, err error) {
+	if tracker == nil {
 		return
 	}
 	if err != nil {
@@ -421,7 +443,7 @@ func (m *Model) appendResult(output string, err error) {
 	} else {
 		output = devtools.FormatResult(output)
 	}
-	m.tracker.AppendLog(devtools.LogEntry{
+	tracker.AppendLog(devtools.LogEntry{
 		Time:   time.Now(),
 		Origin: "console",
 		Entry: devtools.Entry{
