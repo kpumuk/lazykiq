@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/x/exp/golden"
 
 	coredevtools "github.com/kpumuk/lazykiq/internal/devtools"
+	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 )
 
@@ -126,6 +127,45 @@ func TestDevToolsToggleFocus(t *testing.T) {
 	m, _ = updateModel(t, m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
 	if !m.inputFocused {
 		t.Fatalf("inputFocused = false, want true")
+	}
+}
+
+func TestDevToolsNavigationFocus(t *testing.T) {
+	for name, tc := range map[string]struct {
+		key    tea.KeyPressMsg
+		cursor int
+		text   string
+	}{
+		"j":         {key: keyText("j"), cursor: 16, text: "j"},
+		"k":         {key: keyText("k"), cursor: 14, text: "k"},
+		"down":      {key: keyCode(tea.KeyDown), cursor: 16},
+		"up":        {key: keyCode(tea.KeyUp), cursor: 14},
+		"page down": {key: keyCode(tea.KeyPgDown), cursor: 25},
+		"page up":   {key: keyCode(tea.KeyPgUp), cursor: 5},
+	} {
+		for _, inputFocused := range []bool{true, false} {
+			t.Run(name+"/input="+strconv.FormatBool(inputFocused), func(t *testing.T) {
+				m := New()
+				m.Init()
+				rows := make([]table.Row, 30)
+				for i := range rows {
+					rows[i] = table.Row{ID: strconv.Itoa(i), Cells: []string{strconv.Itoa(i)}}
+				}
+				m.table.SetRows(rows)
+				m.table.SetCursor(15)
+				if !inputFocused {
+					m, _ = updateModel(t, m, keyCode(tea.KeyTab))
+				}
+				m, _ = updateModel(t, m, tc.key)
+				wantCursor, wantText := tc.cursor, ""
+				if inputFocused && tc.text != "" {
+					wantCursor, wantText = 15, tc.text
+				}
+				if m.table.Cursor() != wantCursor || m.input.Value() != wantText {
+					t.Fatalf("cursor/input = %d/%q, want %d/%q", m.table.Cursor(), m.input.Value(), wantCursor, wantText)
+				}
+			})
+		}
 	}
 }
 

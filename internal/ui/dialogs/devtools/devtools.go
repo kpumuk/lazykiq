@@ -171,7 +171,7 @@ func (m *Model) Update(msg tea.Msg) (dialogs.DialogModel, tea.Cmd) {
 
 		if m.inputFocused {
 			switch msg.String() {
-			case "up", "k", "down", "j", "pgup", "pgdown":
+			case "up", "down", "pgup", "pgdown":
 				updated, cmd := m.table.Update(msg)
 				m.table = updated
 				return m, cmd

@@ -12,10 +12,145 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/kpumuk/lazykiq/internal/devtools"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
+	devtoolsdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/devtools"
+	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
 	"github.com/kpumuk/lazykiq/internal/ui/views"
 )
+
+func appWithInputDialog(t *testing.T, console bool) App {
+	t.Helper()
+	app := New(nil, "", false, devtools.NewTracker())
+	updated, _ := app.Update(tea.WindowSizeMsg{Width: 300, Height: 40})
+	app = updated.(App)
+	var model dialogs.DialogModel = filterdialog.New()
+	if console {
+		_, cmd := app.Update(tea.KeyPressMsg{Code: tea.KeyF12})
+		model = cmd().(dialogs.OpenDialogMsg).Model
+	}
+	updated, _ = app.Update(dialogs.OpenDialogMsg{Model: model})
+	return updated.(App)
+}
+
+func TestAppDialogPrintableInput(t *testing.T) {
+	for name, console := range map[string]bool{"filter": false, "console": true} {
+		t.Run(name, func(t *testing.T) {
+			app := appWithInputDialog(t, console)
+			var want strings.Builder
+			for r := ' '; r <= '~'; r++ {
+				if console && r == '~' { // The console deliberately reserves its toggle.
+					continue
+				}
+				want.WriteRune(r)
+				updated, _ := app.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
+				app = updated.(App)
+				output := ansi.Strip(app.dialogs.ActiveModel().View())
+				if !strings.Contains(output, want.String()) {
+					t.Fatalf("after typing %q, want input %q in:\n%s", r, want.String(), output)
+				}
+				if app.activeViewID() != viewDashboard || len(app.dialogs.Dialogs()) != 1 {
+					t.Fatal("printable input triggered app navigation")
+				}
+			}
+		})
+	}
+}
+
+func TestAppDialogInterrupt(t *testing.T) {
+	for name, tc := range map[string]struct{ console, table bool }{
+		"filter": {}, "console input": {console: true}, "console table": {console: true, table: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			app := appWithInputDialog(t, tc.console)
+			if tc.table {
+				updated, _ := app.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+				app = updated.(App)
+			}
+			_, cmd := app.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+			if cmd == nil {
+				t.Fatal("Ctrl+C did not return a quit command")
+			}
+			if msg := cmd(); msg != tea.Quit() {
+				t.Fatalf("Ctrl+C returned %T, want tea.QuitMsg", msg)
+			}
+		})
+	}
+}
+
+func TestAppDialogCloseKeys(t *testing.T) {
+	for name, tc := range map[string]struct {
+		console bool
+		key     tea.KeyPressMsg
+	}{
+		"filter escape":  {key: tea.KeyPressMsg{Code: tea.KeyEsc}},
+		"console escape": {console: true, key: tea.KeyPressMsg{Code: tea.KeyEsc}},
+		"console f12":    {console: true, key: tea.KeyPressMsg{Code: tea.KeyF12}},
+		"console tilde":  {console: true, key: tea.KeyPressMsg{Code: '~', Text: "~"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			for _, table := range []bool{false, true} {
+				if table && !tc.console {
+					continue
+				}
+				app := appWithInputDialog(t, tc.console)
+				app.viewStack = []viewID{viewDashboard, viewJobDetail}
+				if table {
+					updated, _ := app.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+					app = updated.(App)
+				}
+				updated, cmd := app.Update(tc.key)
+				app = updated.(App)
+				if cmd == nil {
+					t.Fatal("missing close command")
+				}
+				msg := cmd()
+				if _, ok := msg.(dialogs.CloseDialogMsg); !ok {
+					t.Fatalf("close key returned %T", msg)
+				}
+				updated, _ = app.Update(msg)
+				app = updated.(App)
+				if app.dialogs.HasDialogs() || app.activeViewID() != viewJobDetail {
+					t.Fatal("close key failed to close just the dialog")
+				}
+			}
+		})
+	}
+}
+
+func TestAppConsoleFocusRouting(t *testing.T) {
+	app := appWithInputDialog(t, true)
+	for _, key := range []tea.KeyPressMsg{
+		{Code: 'q', Text: "q"},
+		{Code: tea.KeyTab},
+		{Code: 'j', Text: "j"},
+		{Code: 'k', Text: "k"},
+		{Code: tea.KeyTab, Mod: tea.ModShift},
+		{Code: 'j', Text: "j"},
+		{Code: 'k', Text: "k"},
+	} {
+		updated, _ := app.Update(key)
+		app = updated.(App)
+	}
+	if app.dialogs.ActiveDialogID() != devtoolsdialog.DialogID ||
+		!strings.Contains(ansi.Strip(app.dialogs.ActiveModel().View()), "redis> qjk") {
+		t.Fatal("Tab/Shift+Tab failed to transfer input ownership")
+	}
+}
+
+func TestAppQuitWithoutDialog(t *testing.T) {
+	for _, key := range []tea.KeyPressMsg{{Code: 'q', Text: "q"}, {Code: 'c', Mod: tea.ModCtrl}} {
+		app := New(nil, "", false, nil)
+		_, cmd := app.Update(key)
+		if cmd == nil {
+			t.Fatalf("%s did not quit", key.String())
+		}
+		if msg := cmd(); msg != tea.Quit() {
+			t.Fatalf("%s returned %T", key.String(), msg)
+		}
+	}
+}
 
 func TestAppDashboardShortTerminal(t *testing.T) {
 	client, err := sidekiq.NewClient("redis://localhost:6379/0")
