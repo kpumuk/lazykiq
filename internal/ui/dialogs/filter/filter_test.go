@@ -53,77 +53,34 @@ func collectMsgs(t *testing.T, cmd tea.Cmd) []tea.Msg {
 
 func TestFilterDialogEnterApplyAndClear(t *testing.T) {
 	t.Parallel()
-
-	m := New(WithQuery("old"))
-	m.Init()
-	m.input.SetValue("new")
-	m.input.CursorEnd()
-
-	m, cmd := updateModel(t, m, keyCode(tea.KeyEnter))
-	msgs := collectMsgs(t, cmd)
-
-	var gotAction *ActionMsg
-	gotClose := false
-	for _, msg := range msgs {
-		switch v := msg.(type) {
-		case ActionMsg:
-			gotAction = &v
-		case dialogs.CloseDialogMsg:
-			gotClose = true
-		default:
-			t.Fatalf("unexpected message %T", msg)
-		}
-	}
-	if gotAction == nil {
-		t.Fatal("expected ActionMsg")
-	}
-	if gotAction.Action != ActionApply {
-		t.Fatalf("Action = %v, want %v", gotAction.Action, ActionApply)
-	}
-	if gotAction.Query != "new" {
-		t.Fatalf("Query = %q, want %q", gotAction.Query, "new")
-	}
-	if !gotClose {
-		t.Fatal("expected CloseDialogMsg")
-	}
-	if m.query != "new" {
-		t.Fatalf("query = %q, want %q", m.query, "new")
-	}
-
-	m = New(WithQuery("old"))
-	m.Init()
-	m.input.SetValue("   ")
-	m.input.CursorEnd()
-
-	m, cmd = updateModel(t, m, keyCode(tea.KeyEnter))
-	msgs = collectMsgs(t, cmd)
-
-	gotAction = nil
-	gotClose = false
-	for _, msg := range msgs {
-		switch v := msg.(type) {
-		case ActionMsg:
-			gotAction = &v
-		case dialogs.CloseDialogMsg:
-			gotClose = true
-		default:
-			t.Fatalf("unexpected message %T", msg)
-		}
-	}
-	if gotAction == nil {
-		t.Fatal("expected ActionMsg")
-	}
-	if gotAction.Action != ActionClear {
-		t.Fatalf("Action = %v, want %v", gotAction.Action, ActionClear)
-	}
-	if gotAction.Query != "" {
-		t.Fatalf("Query = %q, want empty", gotAction.Query)
-	}
-	if !gotClose {
-		t.Fatal("expected CloseDialogMsg")
-	}
-	if m.query != "" {
-		t.Fatalf("query = %q, want empty", m.query)
+	for name, tc := range map[string]struct {
+		input  string
+		action Action
+		query  string
+	}{
+		"apply": {"new", ActionApply, "new"},
+		"clear": {"   ", ActionClear, ""},
+		"trim":  {"  spaced  ", ActionApply, "spaced"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			m := New(WithQuery("old"))
+			m.Init()
+			m.input.SetValue(tc.input)
+			_, cmd := updateModel(t, m, keyCode(tea.KeyEnter))
+			result, ok := cmd().(dialogs.CloseDialogMsg)
+			if !ok {
+				t.Fatal("submission must return one apply-and-close message")
+			}
+			action, ok := result.Action.(ActionMsg)
+			if !ok || action.Action != tc.action || action.Query != tc.query {
+				t.Fatalf("action = %#v", result.Action)
+			}
+			m.input.SetValue("changed after submission")
+			if again := cmd().(dialogs.CloseDialogMsg).Action.(ActionMsg); again != action {
+				t.Fatalf("command read mutable input: %#v", again)
+			}
+		})
 	}
 }
 
@@ -158,34 +115,6 @@ func TestFilterDialogEnterTrimmedSameCloses(t *testing.T) {
 	}
 	if _, ok := msgs[0].(dialogs.CloseDialogMsg); !ok {
 		t.Fatalf("message type = %T, want dialogs.CloseDialogMsg", msgs[0])
-	}
-}
-
-func TestFilterDialogEnterTrimsWhitespace(t *testing.T) {
-	t.Parallel()
-
-	m := New()
-	m.Init()
-	m.input.SetValue("  spaced  ")
-	m.input.CursorEnd()
-
-	_, cmd := updateModel(t, m, keyCode(tea.KeyEnter))
-	msgs := collectMsgs(t, cmd)
-
-	var gotAction *ActionMsg
-	for _, msg := range msgs {
-		if v, ok := msg.(ActionMsg); ok {
-			gotAction = &v
-		}
-	}
-	if gotAction == nil {
-		t.Fatal("expected ActionMsg")
-	}
-	if gotAction.Action != ActionApply {
-		t.Fatalf("Action = %v, want %v", gotAction.Action, ActionApply)
-	}
-	if gotAction.Query != "spaced" {
-		t.Fatalf("Query = %q, want %q", gotAction.Query, "spaced")
 	}
 }
 

@@ -71,8 +71,7 @@ func TestAppRejectsDeferredSearchErrors(t *testing.T) {
 								app.cancelViewRequests(id)
 							}
 						})
-						updated, start := app.Update(filterdialog.ActionMsg{Action: filterdialog.ActionApply, Query: "old query"})
-						app = updated.(App)
+						start := submitFilter(&app, "old query")
 						fetch := start().(tea.BatchMsg)[1]
 						updated, delivery := app.Update(fetch())
 						app = updated.(App)
@@ -85,7 +84,13 @@ func TestAppRejectsDeferredSearchErrors(t *testing.T) {
 							errorMsg = delivery()
 						}
 						if tc.action != nil {
-							updated, _ = app.Update(tc.action)
+							var updated tea.Model
+							if action, ok := tc.action.(filterdialog.ActionMsg); ok {
+								submitFilter(&app, action.Query)
+								updated = app
+							} else {
+								updated, _ = app.Update(tc.action)
+							}
 							app = updated.(App)
 						}
 						if !produceBeforeAction {
@@ -165,11 +170,11 @@ func TestAppCanSwitchViewsAndQuitDuringSearch(t *testing.T) {
 	batch := initial().(tea.BatchMsg)
 	updated, _ = app.Update(batch[1]())
 	app = updated.(App)
-	updated, cmd := app.Update(filterdialog.ActionMsg{Action: filterdialog.ActionApply, Query: "needle"})
+	cmd := submitFilter(&app, "needle")
 	frames := make(chan string, 16)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	p := tea.NewProgram(searchProgramModel{app: updated.(App), initial: cmd, frames: frames},
+	p := tea.NewProgram(searchProgramModel{app: app, initial: cmd, frames: frames},
 		tea.WithInput(nil), tea.WithOutput(io.Discard), tea.WithoutRenderer(),
 		tea.WithWindowSize(120, 30), tea.WithContext(ctx), tea.WithoutSignalHandler())
 	done := make(chan error, 1)

@@ -219,6 +219,8 @@ func (d stubDialogs) GetLayers() []*lipgloss.Layer                { return d.lay
 func (d stubDialogs) ActiveModel() dialogs.DialogModel            { return nil }
 func (d stubDialogs) ActiveDialogID() dialogs.DialogID            { return "" }
 
+func (d stubDialogs) ActiveSession() *dialogs.Session { return nil }
+
 type cancelableStubView struct {
 	name         string
 	cancelations int

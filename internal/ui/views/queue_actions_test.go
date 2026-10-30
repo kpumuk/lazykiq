@@ -249,23 +249,19 @@ func TestQueueConfirmationPreservesFirstAction(t *testing.T) {
 			manager, _ = manager.Update(open())
 			manager, confirm := manager.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
 			mutations := 0
-			for _, command := range confirm().(tea.BatchMsg) {
-				switch msg := command().(type) {
-				case confirmdialog.ActionMsg:
-					_, mutation := view.Update(msg)
-					if mutation == nil {
-						t.Fatal("visible confirmation did not execute original action")
-					}
-					result := mutation().(QueueActionResultMsg)
-					if result.Err != nil {
-						t.Fatal(result.Err)
-					}
-					view.Update(result)
-					mutations++
-				case dialogs.CloseDialogMsg:
-					manager, _ = manager.Update(msg)
-				}
+			completion := confirm().(dialogs.CloseDialogMsg)
+			manager, _ = manager.Update(completion)
+			_, mutation := view.Update(completion.Action)
+			if mutation == nil {
+				t.Fatal("visible confirmation did not execute original action")
 			}
+			result := mutation().(QueueActionResultMsg)
+			if result.Err != nil {
+				t.Fatal(result.Err)
+			}
+			view.Update(result)
+			mutations++
+
 			if mutations != 1 || manager.HasDialogs() {
 				t.Fatal("confirmation did not finish exactly once")
 			}
@@ -287,8 +283,7 @@ func TestQueueConfirmationPreservesFirstAction(t *testing.T) {
 	}
 }
 
-// escapeReopenModel runs the dialog lifecycle through Bubble Tea so ordered
-// commands are exercised by the real runtime, including its private sequenceMsg.
+// escapeReopenModel runs atomic dialog completion and reopening through Bubble Tea.
 type escapeReopenModel struct {
 	manager   dialogs.DialogCmp
 	escape    tea.Cmd
@@ -304,20 +299,16 @@ func (m *escapeReopenModel) Init() tea.Cmd  { return m.escape }
 func (m *escapeReopenModel) View() tea.View { return tea.NewView("") }
 func (m *escapeReopenModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case confirmdialog.ActionMsg:
-		command := m.onAction(msg)
-		if msg.Confirmed {
+	case dialogs.CloseDialogMsg:
+		action := msg.Action.(confirmdialog.ActionMsg)
+		command := m.onAction(action)
+		if action.Confirmed {
 			m.confirmed = command != nil
 			return m, tea.Quit
 		}
 		m.canceled = true
-	case dialogs.CloseDialogMsg:
 		if m.reopened {
 			return m, nil
-		}
-		if !m.canceled {
-			m.failure = "dialog closed before cancellation reached its owner"
-			return m, tea.Quit
 		}
 		m.manager, _ = m.manager.Update(msg)
 		open := m.reopen()
@@ -327,7 +318,6 @@ func (m *escapeReopenModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.manager, _ = m.manager.Update(open())
 		m.reopened = true
-		var command tea.Cmd
 		m.manager, command = m.manager.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
 		return m, command
 	}

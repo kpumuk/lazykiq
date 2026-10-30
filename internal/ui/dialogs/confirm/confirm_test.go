@@ -34,123 +34,36 @@ func updateModel(t *testing.T, m *Model, msg tea.Msg) (*Model, tea.Cmd) {
 	return updated, cmd
 }
 
-func collectMsgs(t *testing.T, cmd tea.Cmd) []tea.Msg {
-	t.Helper()
-	if cmd == nil {
-		return nil
-	}
-	msg := cmd()
-	if msg == nil {
-		return nil
-	}
-	switch m := msg.(type) {
-	case tea.BatchMsg:
-		var out []tea.Msg
-		for _, c := range m {
-			out = append(out, collectMsgs(t, c)...)
-		}
-		return out
-	default:
-		return []tea.Msg{m}
-	}
-}
-
-func TestConfirmDialogYesNoKeys(t *testing.T) {
+func TestConfirmDialogCompletion(t *testing.T) {
 	t.Parallel()
-
-	tests := map[string]struct {
-		msg           tea.Msg
-		wantConfirmed bool
+	for name, tc := range map[string]struct {
+		key       tea.KeyPressMsg
+		selection Selection
+		confirmed bool
 	}{
-		"yes": {msg: keyText("y"), wantConfirmed: true},
-		"no":  {msg: keyText("n"), wantConfirmed: false},
-	}
-
-	for name, tc := range tests {
+		"yes":        {keyText("y"), SelectionNo, true},
+		"no":         {keyText("n"), SelectionYes, false},
+		"escape":     {keyCode(tea.KeyEsc), SelectionYes, false},
+		"enter yes":  {keyCode(tea.KeyEnter), SelectionYes, true},
+		"enter no":   {keyCode(tea.KeyEnter), SelectionNo, false},
+		"enter none": {keyCode(tea.KeyEnter), SelectionNone, false},
+	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			m := New(WithTarget("queue"))
-			m.Init()
-
-			_, cmd := updateModel(t, m, tc.msg)
-			msgs := collectMsgs(t, cmd)
-
-			var action *ActionMsg
-			gotClose := false
-			for _, msg := range msgs {
-				switch v := msg.(type) {
-				case ActionMsg:
-					action = &v
-				case dialogs.CloseDialogMsg:
-					gotClose = true
-				default:
-					t.Fatalf("unexpected message %T", msg)
-				}
+			m.selection = tc.selection
+			_, cmd := updateModel(t, m, tc.key)
+			result, ok := cmd().(dialogs.CloseDialogMsg)
+			if !ok {
+				t.Fatal("confirmation must return one result-and-close message")
 			}
-			if action == nil {
-				t.Fatal("expected ActionMsg")
+			action, ok := result.Action.(ActionMsg)
+			if !ok || action.Confirmed != tc.confirmed || action.Target != "queue" {
+				t.Fatalf("action = %#v", result.Action)
 			}
-			if action.Confirmed != tc.wantConfirmed {
-				t.Fatalf("Confirmed = %v, want %v", action.Confirmed, tc.wantConfirmed)
-			}
-			if action.Target != "queue" {
-				t.Fatalf("Target = %q, want %q", action.Target, "queue")
-			}
-			if !gotClose {
-				t.Fatal("expected CloseDialogMsg")
-			}
-		})
-	}
-}
-
-func TestConfirmDialogEnterUsesSelection(t *testing.T) {
-	t.Parallel()
-
-	tests := map[string]struct {
-		start         Selection
-		wantConfirmed bool
-	}{
-		"default no":       {start: SelectionNo, wantConfirmed: false},
-		"yes selection":    {start: SelectionYes, wantConfirmed: true},
-		"none defaults no": {start: SelectionNone, wantConfirmed: false},
-	}
-
-	for name, tc := range tests {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			m := New(WithTarget("retry"))
-			m.selection = tc.start
-			m.Init()
-
-			_, cmd := updateModel(t, m, keyCode(tea.KeyEnter))
-			msgs := collectMsgs(t, cmd)
-
-			var action *ActionMsg
-			gotClose := false
-			for _, msg := range msgs {
-				switch v := msg.(type) {
-				case ActionMsg:
-					action = &v
-				case dialogs.CloseDialogMsg:
-					gotClose = true
-				default:
-					t.Fatalf("unexpected message %T", msg)
-				}
-			}
-			if action == nil {
-				t.Fatal("expected ActionMsg")
-			}
-			if action.Confirmed != tc.wantConfirmed {
-				t.Fatalf("Confirmed = %v, want %v", action.Confirmed, tc.wantConfirmed)
-			}
-			if action.Target != "retry" {
-				t.Fatalf("Target = %q, want %q", action.Target, "retry")
-			}
-			if !gotClose {
-				t.Fatal("expected CloseDialogMsg")
-			}
-			if tc.start == SelectionNone && m.selection != SelectionNo {
-				t.Fatalf("selection = %v, want %v", m.selection, SelectionNo)
+			m.target = "replacement"
+			if again := cmd().(dialogs.CloseDialogMsg).Action.(ActionMsg); again != action {
+				t.Fatalf("command read mutable target: %#v", again)
 			}
 		})
 	}

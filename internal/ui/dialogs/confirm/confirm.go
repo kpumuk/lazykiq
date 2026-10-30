@@ -157,23 +157,10 @@ func (m *Model) Update(msg tea.Msg) (dialogs.DialogModel, tea.Cmd) {
 		return m, nil
 	case tea.KeyPressMsg:
 		switch msg.String() {
-		case "esc":
-			// Clear the owner's pending action before the dialog can reopen
-			// with the same target (for example, a sorted job's JID).
-			return m, tea.Sequence(
-				func() tea.Msg { return ActionMsg{Confirmed: false, Target: m.target} },
-				func() tea.Msg { return dialogs.CloseDialogMsg{} },
-			)
+		case "esc", "n":
+			return m, m.complete(false)
 		case "y":
-			return m, tea.Batch(
-				func() tea.Msg { return ActionMsg{Confirmed: true, Target: m.target} },
-				func() tea.Msg { return dialogs.CloseDialogMsg{} },
-			)
-		case "n":
-			return m, tea.Batch(
-				func() tea.Msg { return ActionMsg{Confirmed: false, Target: m.target} },
-				func() tea.Msg { return dialogs.CloseDialogMsg{} },
-			)
+			return m, m.complete(true)
 		case "left", "h", "shift+tab":
 			m.moveSelection(-1)
 			return m, nil
@@ -185,10 +172,7 @@ func (m *Model) Update(msg tea.Msg) (dialogs.DialogModel, tea.Cmd) {
 				m.selection = SelectionNo
 			}
 			confirmed := m.selection == SelectionYes
-			return m, tea.Batch(
-				func() tea.Msg { return ActionMsg{Confirmed: confirmed, Target: m.target} },
-				func() tea.Msg { return dialogs.CloseDialogMsg{} },
-			)
+			return m, m.complete(confirmed)
 		}
 	}
 
@@ -244,6 +228,13 @@ func (m *Model) Position() (int, int) {
 // ID returns the dialog ID.
 func (m *Model) ID() dialogs.DialogID {
 	return DialogID
+}
+
+func (m *Model) complete(confirmed bool) tea.Cmd {
+	target := m.target
+	return func() tea.Msg {
+		return dialogs.CloseDialogMsg{Action: ActionMsg{Confirmed: confirmed, Target: target}}
+	}
 }
 
 func (m *Model) moveSelection(direction int) {
