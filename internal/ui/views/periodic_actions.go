@@ -29,7 +29,6 @@ type periodicActions struct {
 type PeriodicActionResultMsg struct {
 	owner      *periodicActions
 	generation uint64
-	notice     string
 	Err        error
 }
 
@@ -71,18 +70,12 @@ func (a *periodicActions) confirm(parent context.Context, msg confirmdialog.Acti
 		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
 		var err error
-		notice := "Paused " + action.job.Class
 		if action.verb == "enqueue" {
-			var jid string
-			jid, err = client.EnqueuePeriodicJob(ctx, action.job)
-			notice = "Enqueued " + jid
+			_, err = client.EnqueuePeriodicJob(ctx, action.job)
 		} else {
 			err = client.SetPeriodicJobPaused(ctx, action.job, action.verb == "pause")
-			if action.verb == "resume" {
-				notice = "Resumed " + action.job.Class
-			}
 		}
-		return PeriodicActionResultMsg{owner: a, generation: generation, notice: notice, Err: err}
+		return PeriodicActionResultMsg{owner: a, generation: generation, Err: err}
 	}
 }
 

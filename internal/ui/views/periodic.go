@@ -50,7 +50,6 @@ type Periodic struct {
 	focusHistory            bool
 	infoOffset              int
 	now                     time.Time
-	notice                  string
 	dangerousActionsEnabled bool
 	request                 requestctx.Controller
 	actions                 periodicActions
@@ -113,14 +112,7 @@ func (p *Periodic) Update(msg tea.Msg) (View, tea.Cmd) {
 			return p, p.fetch()
 		}
 	case PeriodicActionResultMsg:
-		if p.actions.complete(msg) {
-			p.notice = ""
-			if msg.Err == nil {
-				p.notice = msg.notice
-			}
-			return p, p.fetch()
-		}
-		if !p.actions.busy {
+		if p.actions.complete(msg) || !p.actions.busy {
 			return p, p.fetch()
 		}
 	case filterdialog.ActionMsg:
@@ -219,9 +211,6 @@ func (p *Periodic) ContextItems() []ContextItem {
 			{Label: "Matching", Value: strconv.Itoa(len(p.rows))},
 		}
 	}
-	if p.notice != "" {
-		items = append(items, ContextItem{Label: "Last action", Value: p.notice})
-	}
 	return items
 }
 
@@ -301,7 +290,7 @@ func (p *Periodic) CancelRequests() {
 func (p *Periodic) Dispose() {
 	p.CancelRequests()
 	p.jobs, p.rows, p.history, p.job = nil, nil, nil, nil
-	p.ready, p.focusHistory, p.infoOffset, p.notice = false, false, 0, ""
+	p.ready, p.focusHistory, p.infoOffset = false, false, 0
 	p.table.SetRows(nil)
 }
 

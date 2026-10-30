@@ -170,6 +170,7 @@ func TestPeriodicConfirmedActions(t *testing.T) {
 			}
 			p.SetDangerousActionsEnabled(true)
 			p.Update(p.Init()())
+			headerItemCount := len(p.ContextItems())
 			_, open := p.Update(periodicKey("p"))
 			if open == nil {
 				t.Fatal("missing pause confirmation")
@@ -228,6 +229,9 @@ func TestPeriodicConfirmedActions(t *testing.T) {
 			if mr.HGet("loop-"+periodicFixture().job.LID, "paused") != "" || mr.Exists("loop-history-"+periodicFixture().job.LID) {
 				t.Fatal("enqueue changed history or pause state")
 			}
+			if len(p.ContextItems()) != headerItemCount {
+				t.Fatal("action added a view-specific header row")
+			}
 		})
 	}
 }
@@ -246,7 +250,7 @@ func TestPeriodicDisposeRejectsOldCompletions(t *testing.T) {
 	p.Update(p.Init()())
 	p.Update(stale)
 	p.Update(mutation())
-	if p.job == nil || p.job.LID != "paused" || p.actions.busy || p.notice != "" {
+	if p.job == nil || p.job.LID != "paused" || p.actions.busy {
 		t.Fatal("old completion changed new detail state")
 	}
 	if _, cmd := p.Update(confirmdialog.ActionMsg{Target: target, Confirmed: true}); cmd != nil {
@@ -282,8 +286,8 @@ func TestPeriodicHiddenActions(t *testing.T) {
 		t.Fatal("late mutation did not refresh a reopened view")
 	}
 	p.Update(refresh())
-	if !p.rows[0].Paused || p.notice != "" {
-		t.Fatal("late mutation left stale data or action notice")
+	if !p.rows[0].Paused {
+		t.Fatal("late mutation left stale data")
 	}
 }
 
