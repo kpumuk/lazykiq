@@ -1,10 +1,60 @@
 package dialogs
 
 import (
+	"context"
+	"io"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 )
+
+type schedulingModel struct{ command tea.Cmd }
+
+func (m schedulingModel) Init() tea.Cmd                       { return m.command }
+func (m schedulingModel) Update(tea.Msg) (tea.Model, tea.Cmd) { return m, nil }
+func (m schedulingModel) View() tea.View                      { return tea.NewView("") }
+
+func TestBoundCommandPreservesScheduler(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	session := &Session{Owner: "owner"}
+	var started, finished atomic.Int32
+	ready := make(chan struct{})
+	leaf := func() tea.Msg {
+		if started.Add(1) == 2 {
+			close(ready)
+		}
+		select {
+		case <-ready:
+		case <-ctx.Done():
+			return nil
+		}
+		finished.Add(1)
+		return CloseDialogMsg{}
+	}
+	var bound atomic.Int32
+	cmd := bindSession(tea.Sequence(
+		tea.Batch(leaf, tea.Sequence(leaf, func() tea.Msg { return nil })),
+		func() tea.Msg {
+			if finished.Load() != 2 {
+				return nil
+			}
+			return tea.Quit()
+		},
+	), session)
+	cmd = BindCommand(cmd, func(msg tea.Msg) tea.Msg {
+		if closeMsg, ok := msg.(CloseDialogMsg); ok && closeMsg.Session == session {
+			bound.Add(1)
+		}
+		return msg
+	})
+	_, err := tea.NewProgram(schedulingModel{cmd}, tea.WithContext(ctx), tea.WithInput(nil), tea.WithOutput(io.Discard), tea.WithoutRenderer()).Run()
+	if err != nil || bound.Load() != 2 {
+		t.Fatalf("scheduler failed: err=%v, bound closes=%d", err, bound.Load())
+	}
+}
 
 type testDialog struct {
 	id        DialogID
