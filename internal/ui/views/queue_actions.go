@@ -48,7 +48,7 @@ func (a *queueActions) reset() {
 	a.generation++
 }
 
-func (a *queueActions) pauseDialog(name string, paused bool, styles Styles) tea.Cmd {
+func (a *queueActions) pauseDialog(name string, paused bool, styles Styles, intents IntentScope) tea.Cmd {
 	verb, title, consequence := "pause", "Pause queue", "Workers will stop fetching new jobs from this queue.\nJobs already running may finish; new jobs can still be enqueued."
 	if paused {
 		verb, title, consequence = "resume", "Resume queue", "Workers will resume fetching jobs from this queue."
@@ -57,10 +57,8 @@ func (a *queueActions) pauseDialog(name string, paused bool, styles Styles) tea.
 	if !ok {
 		return nil
 	}
-	return func() tea.Msg {
-		return dialogs.OpenDialogMsg{Model: newConfirmDialog(styles, title,
-			fmt.Sprintf("%s %s?\n\n%s", title, styles.Text.Bold(true).Render(name), consequence), action.target, styles.NeutralAction)}
-	}
+	return intents.EmitIntent(dialogs.OpenDialogMsg{Model: newConfirmDialog(styles, title,
+		fmt.Sprintf("%s %s?\n\n%s", title, styles.Text.Bold(true).Render(name), consequence), action.target, styles.NeutralAction)})
 }
 
 func (a *queueActions) confirm(parent context.Context, msg confirmdialog.ActionMsg, client sidekiq.API) tea.Cmd {

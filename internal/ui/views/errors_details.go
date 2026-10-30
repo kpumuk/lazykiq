@@ -104,9 +104,7 @@ func (e *ErrorsDetails) Update(msg tea.Msg) (View, tea.Cmd) {
 		switch msg.String() {
 		case "enter":
 			if job, ok := e.selectedEntry(); ok && job.Entry != nil {
-				return e, func() tea.Msg {
-					return ShowJobDetailMsg{Job: job.Entry.JobRecord}
-				}
+				return e, e.EmitIntent(ShowJobDetailMsg{Job: job.Entry.JobRecord})
 			}
 			return e, nil
 		}

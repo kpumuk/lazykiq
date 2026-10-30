@@ -68,6 +68,13 @@ type dialogOwner struct {
 	generation uint64
 }
 
+// viewIntentOwner identifies the activation that created a local UI command.
+type viewIntentOwner struct {
+	owner            dialogOwner
+	lifetime         context.Context
+	dialogGeneration uint64
+}
+
 // App is the main application model.
 type App struct {
 	ctx                     context.Context
@@ -93,6 +100,7 @@ type App struct {
 	devTracker              *devtools.Tracker
 	statsRequest            *requestctx.Controller
 	viewGeneration          uint64
+	dialogGeneration        uint64
 }
 
 // New creates a new App instance.
@@ -197,7 +205,7 @@ func (a App) Init() tea.Cmd {
 	activeID := a.activeViewID()
 	return tea.Batch(
 		requestBackgroundCmd(),
-		a.viewRegistry[activeID].Init(),
+		a.prepareView(activeID).Init(),
 		a.metrics.Init(),
 		a.fetchStatsCmd(), // Fetch stats immediately
 		tickCmd(),         // Start the ticker for subsequent updates
@@ -223,13 +231,30 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	dialogUpdated := false
 
 	switch msg := msg.(type) {
+	case views.IntentMsg:
+		origin, ok := msg.Owner.(viewIntentOwner)
+		if !ok || origin.lifetime != a.ctx || a.ctx.Err() != nil ||
+			!a.currentOwner(origin.owner) || origin.dialogGeneration != a.dialogGeneration {
+			return a, nil
+		}
+		if open, ok := msg.Msg.(dialogs.OpenDialogMsg); ok {
+			open.Owner = origin.owner
+			return a.Update(open)
+		}
+		return a.Update(msg.Msg)
 	case devtoolsdialog.CommandResultMsg:
 		msg.Collect(a.devTracker)
 		return a, nil
 	case dialogs.OpenDialogMsg:
-		msg.Owner = dialogOwner{a.activeViewID(), a.viewRegistry[a.activeViewID()], a.viewGeneration}
+		if msg.Owner == nil {
+			msg.Owner = dialogOwner{a.activeViewID(), a.viewRegistry[a.activeViewID()], a.viewGeneration}
+		}
+		previous := a.dialogs.ActiveSession()
 		updated, cmd := a.dialogs.Update(msg)
 		a.dialogs = updated
+		if a.dialogs.ActiveSession() != previous {
+			a.dialogGeneration++
+		}
 		a.styleDialogs()
 		a.syncContextbar()
 		return a, cmd
@@ -237,12 +262,14 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Session != nil && msg.Session != a.dialogs.ActiveSession() {
 			return a, nil
 		}
+		previous := a.dialogs.ActiveSession()
 		updated, cmd := a.dialogs.Update(msg)
 		a.dialogs = updated
+		if a.dialogs.ActiveSession() != previous {
+			a.dialogGeneration++
+		}
 		if msg.Session != nil && msg.Action != nil {
-			if owner, ok := msg.Session.Owner.(dialogOwner); ok &&
-				owner.id == a.activeViewID() && owner.generation == a.viewGeneration &&
-				owner.view == a.viewRegistry[owner.id] {
+			if owner, ok := msg.Session.Owner.(dialogOwner); ok && a.currentOwner(owner) {
 				cmds = append(cmds, a.updateView(owner.id, msg.Action))
 			}
 		}
@@ -888,13 +915,30 @@ func (a App) stackNames() []string {
 }
 
 func (a *App) updateView(id viewID, msg tea.Msg) tea.Cmd {
-	view, ok := a.viewRegistry[id]
+	_, ok := a.viewRegistry[id]
 	if !ok {
 		return nil
 	}
-	updatedView, cmd := view.Update(msg)
+	updatedView, cmd := a.prepareView(id).Update(msg)
 	a.viewRegistry[id] = updatedView
 	return cmd
+}
+
+func (a App) currentOwner(owner dialogOwner) bool {
+	return owner.id == a.activeViewID() && owner.generation == a.viewGeneration &&
+		owner.view == a.viewRegistry[owner.id]
+}
+
+func (a App) prepareView(id viewID) views.View {
+	view := a.viewRegistry[id]
+	if setter, ok := view.(views.IntentOwnerSetter); ok {
+		setter.SetIntentOwner(viewIntentOwner{
+			owner:            dialogOwner{id, view, a.viewGeneration},
+			lifetime:         a.ctx,
+			dialogGeneration: a.dialogGeneration,
+		})
+	}
+	return view
 }
 
 func (a *App) cancelViewRequests(id viewID) {
@@ -922,8 +966,8 @@ func (a *App) setActiveView(id viewID) tea.Cmd {
 	}
 	a.viewStack = []viewID{id}
 	a.stackbar.SetStack(a.stackNames())
-	if view, ok := a.viewRegistry[id]; ok {
-		return view.Init()
+	if _, ok := a.viewRegistry[id]; ok {
+		return a.prepareView(id).Init()
 	}
 	return nil
 }
@@ -939,8 +983,8 @@ func (a *App) pushView(id viewID) tea.Cmd {
 	}
 	a.viewStack = append(a.viewStack, id)
 	a.stackbar.SetStack(a.stackNames())
-	if view, ok := a.viewRegistry[id]; ok {
-		return view.Init()
+	if _, ok := a.viewRegistry[id]; ok {
+		return a.prepareView(id).Init()
 	}
 	return nil
 }

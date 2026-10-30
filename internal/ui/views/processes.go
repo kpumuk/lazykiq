@@ -29,6 +29,7 @@ type processesListDataMsg struct {
 // ProcessesList shows all Sidekiq processes in a table.
 type ProcessesList struct {
 	requestctx.Scope
+	IntentScope
 	client                  sidekiq.API
 	width                   int
 	height                  int
@@ -121,9 +122,7 @@ func (p *ProcessesList) Update(msg tea.Msg) (View, tea.Cmd) {
 				filterdialog.WithStyles(p.filterStyle),
 				filterdialog.WithQuery(p.filter),
 			)
-			return p, func() tea.Msg {
-				return dialogs.OpenDialogMsg{Model: dialog}
-			}
+			return p, p.EmitIntent(dialogs.OpenDialogMsg{Model: dialog})
 		case "c":
 			if identity, ok := p.selectedProcessIdentity(); ok {
 				return p, copyTextCmd(identity)
@@ -132,9 +131,7 @@ func (p *ProcessesList) Update(msg tea.Msg) (View, tea.Cmd) {
 		case "enter":
 			if idx := p.table.Cursor(); idx >= 0 && idx < len(p.processes) {
 				identity := p.processes[idx].Identity
-				return p, func() tea.Msg {
-					return ShowProcessSelectMsg{Identity: identity}
-				}
+				return p, p.EmitIntent(ShowProcessSelectMsg{Identity: identity})
 			}
 			return p, nil
 		}
@@ -399,17 +396,15 @@ func (p *ProcessesList) openStopProcessConfirm(identity string) tea.Cmd {
 }
 
 func (p *ProcessesList) confirmProcessActionCmd(title, message, action, identity string) tea.Cmd {
-	return func() tea.Msg {
-		return dialogs.OpenDialogMsg{
-			Model: newConfirmDialog(
-				p.styles,
-				title,
-				message,
-				action+":"+identity,
-				p.styles.DangerAction,
-			),
-		}
-	}
+	return p.EmitIntent(dialogs.OpenDialogMsg{
+		Model: newConfirmDialog(
+			p.styles,
+			title,
+			message,
+			action+":"+identity,
+			p.styles.DangerAction,
+		),
+	})
 }
 
 func (p *ProcessesList) pauseProcessCmd(identity string) tea.Cmd {

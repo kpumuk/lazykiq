@@ -50,6 +50,7 @@ func DefaultStyles() Styles {
 
 // Model defines state for the confirmation dialog component.
 type Model struct {
+	dialogs.SessionScope
 	styles       Styles
 	title        string
 	message      string
@@ -231,10 +232,7 @@ func (m *Model) ID() dialogs.DialogID {
 }
 
 func (m *Model) complete(confirmed bool) tea.Cmd {
-	target := m.target
-	return func() tea.Msg {
-		return dialogs.CloseDialogMsg{Action: ActionMsg{Confirmed: confirmed, Target: target}}
-	}
+	return m.CloseCmd(ActionMsg{Confirmed: confirmed, Target: m.target})
 }
 
 func (m *Model) moveSelection(direction int) {

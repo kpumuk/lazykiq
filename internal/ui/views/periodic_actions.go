@@ -32,7 +32,7 @@ type PeriodicActionResultMsg struct {
 	Err        error
 }
 
-func (a *periodicActions) dialog(job sidekiq.PeriodicJob, enqueue bool, styles Styles) tea.Cmd {
+func (a *periodicActions) dialog(job sidekiq.PeriodicJob, enqueue bool, styles Styles, intents IntentScope) tea.Cmd {
 	if a.busy || a.pending != nil {
 		return nil
 	}
@@ -46,11 +46,9 @@ func (a *periodicActions) dialog(job sidekiq.PeriodicJob, enqueue bool, styles S
 	a.generation++
 	action := periodicAction{job: job, verb: verb, target: fmt.Sprintf("periodic:%p:%d:%s", a, a.generation, job.LID)}
 	a.pending = &action
-	return func() tea.Msg {
-		return dialogs.OpenDialogMsg{Model: newConfirmDialog(styles, title,
-			fmt.Sprintf("%s %s?\n\nSchedule: %s\nQueue: %s\n\n%s", title, styles.Text.Bold(true).Render(job.Class), job.Schedule, job.Queue(), consequence),
-			action.target, styles.DangerAction)}
-	}
+	return intents.EmitIntent(dialogs.OpenDialogMsg{Model: newConfirmDialog(styles, title,
+		fmt.Sprintf("%s %s?\n\nSchedule: %s\nQueue: %s\n\n%s", title, styles.Text.Bold(true).Render(job.Class), job.Schedule, job.Queue(), consequence),
+		action.target, styles.DangerAction)})
 }
 
 func (a *periodicActions) confirm(parent context.Context, msg confirmdialog.ActionMsg, client sidekiq.API) tea.Cmd {
