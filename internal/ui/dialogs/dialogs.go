@@ -2,6 +2,7 @@
 package dialogs
 
 import (
+	"reflect"
 	"slices"
 
 	tea "charm.land/bubbletea/v2"
@@ -152,23 +153,38 @@ func (d dialogCmp) ActiveSession() *Session {
 
 // bindSession captures identity before a command runs, including batched commands.
 func bindSession(cmd tea.Cmd, session *Session) tea.Cmd {
+	return BindCommand(cmd, func(msg tea.Msg) tea.Msg {
+		if closeMsg, ok := msg.(CloseDialogMsg); ok {
+			closeMsg.Session = session
+			return closeMsg
+		}
+		return msg
+	})
+}
+
+// Bubble Tea v2.1.1 keeps its sequence message private. Discover its exact type
+// through the public constructor so it can retain its scheduler semantics.
+var sequenceType = reflect.TypeOf(tea.Sequence(func() tea.Msg { return nil }, func() tea.Msg { return nil })())
+
+// BindCommand transforms leaf results without executing child commands or
+// hiding control messages from Bubble Tea. It preserves nested batch/sequence
+// structure, including the private sequence message type.
+func BindCommand(cmd tea.Cmd, bind func(tea.Msg) tea.Msg) tea.Cmd {
 	if cmd == nil {
 		return nil
 	}
 	return func() tea.Msg {
-		switch msg := cmd().(type) {
-		case CloseDialogMsg:
-			msg.Session = session
-			return msg
-		case tea.BatchMsg:
-			bound := make(tea.BatchMsg, len(msg))
-			for i, child := range msg {
-				bound[i] = bindSession(child, session)
+		msg := cmd()
+		if _, batch := msg.(tea.BatchMsg); batch || reflect.TypeOf(msg) == sequenceType {
+			commands := reflect.ValueOf(msg)
+			bound := reflect.MakeSlice(commands.Type(), commands.Len(), commands.Len())
+			for i := range commands.Len() {
+				child := commands.Index(i).Interface().(tea.Cmd)
+				bound.Index(i).Set(reflect.ValueOf(BindCommand(child, bind)))
 			}
-			return bound
-		default:
-			return msg
+			return bound.Interface()
 		}
+		return bind(msg)
 	}
 }
 

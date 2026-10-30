@@ -1,6 +1,9 @@
 package ui
 
 import (
+	"errors"
+	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -8,12 +11,164 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/kpumuk/lazykiq/internal/devtools"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 	confirmdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/confirm"
 	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
 	helpdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/help"
 	"github.com/kpumuk/lazykiq/internal/ui/views"
 )
+
+func TestAppGlobalDialogCommandsSurviveNavigation(t *testing.T) {
+	for _, key := range []tea.KeyPressMsg{{Code: '?', Text: "?"}, {Code: tea.KeyF12}} {
+		t.Run(key.String(), func(t *testing.T) {
+			app := New(&ownershipClient{}, "", false, devtools.NewTracker())
+			defer app.cancel()
+			cmd := dialogStep(&app, key)
+			dialogStep(&app, tea.KeyPressMsg{Code: '7', Text: "7"})
+			dialogStep(&app, cmd())
+			if !app.dialogs.HasDialogs() || app.activeViewID() != viewErrorsSummary {
+				t.Fatal("global dialog was lost after navigation")
+			}
+		})
+	}
+}
+
+func TestAppViewIntentOwnership(t *testing.T) {
+	for _, input := range []string{"/", "s"} {
+		for _, state := range []string{"current", "away", "away-back", "replaced", "covered", "covered-closed", "shutdown", "different app"} {
+			for _, executeLate := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/%s/executeLate=%t", input, state, executeLate), func(t *testing.T) {
+					app := New(&ownershipClient{}, "", false, nil)
+					defer app.cancel()
+					dialogStep(&app, tea.WindowSizeMsg{Width: 120, Height: 30})
+					app.setActiveView(viewBusy)
+					issuer := app.viewRegistry[viewBusy]
+					cmd := dialogStep(&app, tea.KeyPressMsg{Code: rune(input[0]), Text: input})
+					var result tea.Msg
+					if !executeLate {
+						result = firstReadReply(cmd)
+					}
+					switch state {
+					case "away", "away-back":
+						dialogStep(&app, tea.KeyPressMsg{Code: '7', Text: "7"})
+						if state == "away-back" {
+							dialogStep(&app, tea.KeyPressMsg{Code: '2', Text: "2"})
+						}
+					case "replaced":
+						app.viewRegistry[viewBusy] = views.NewBusy(&ownershipClient{})
+					case "covered", "covered-closed":
+						dialogStep(&app, dialogs.OpenDialogMsg{Model: helpdialog.New()})
+						if state == "covered-closed" {
+							dialogStep(&app, dialogs.CloseDialogMsg{})
+						}
+					case "shutdown":
+						app.cancel()
+					case "different app":
+						app = New(&ownershipClient{}, "", false, nil)
+						defer app.cancel()
+						app.setActiveView(viewBusy)
+					}
+					active, session := app.activeViewID(), app.dialogs.ActiveSession()
+					if executeLate {
+						result = firstReadReply(cmd)
+					}
+					dialogStep(&app, result)
+					if state != "current" {
+						if app.activeViewID() != active || app.dialogs.ActiveSession() != session {
+							t.Fatalf("stale %q changed screen or modal: active=%s", input, app.viewRegistry[app.activeViewID()].Name())
+						}
+						return
+					}
+					if input == "s" {
+						if app.activeViewID() != viewProcessesList {
+							t.Fatal("current navigation was rejected")
+						}
+						return
+					}
+					owner := app.dialogs.ActiveSession().Owner.(dialogOwner)
+					if owner.id != viewBusy || owner.view != issuer || owner.generation != app.viewGeneration {
+						t.Fatalf("filter owner = %#v", owner)
+					}
+					dialogStep(&app, tea.KeyPressMsg{Code: 'x', Text: "x"})
+					fetch := dialogStep(&app, firstReadReply(dialogStep(&app, tea.KeyPressMsg{Code: tea.KeyEnter})))
+					dialogStep(&app, firstReadReply(fetch))
+					if !strings.Contains(ansi.Strip(issuer.View()), "[x]") || app.dialogs.HasDialogs() {
+						t.Fatal("current filter did not apply to Busy and close")
+					}
+				})
+			}
+		}
+	}
+}
+
+type intentCommandView struct {
+	stubView
+	command tea.Cmd
+}
+
+func (v *intentCommandView) Update(tea.Msg) (views.View, tea.Cmd) { return v, v.command }
+
+// Run nested scheduler nodes as Bubble Tea does, preserving execution order.
+func deliverIntentCommands(app *App, cmd tea.Cmd) {
+	if cmd == nil {
+		return
+	}
+	msg := cmd()
+	switch commands := msg.(type) {
+	case tea.BatchMsg:
+		for _, child := range commands {
+			deliverIntentCommands(app, child)
+		}
+	default:
+		if reflect.TypeOf(msg) == reflect.TypeOf(tea.Sequence(tea.Quit, tea.Quit)()) {
+			commands := reflect.ValueOf(msg)
+			for i := range commands.Len() {
+				deliverIntentCommands(app, commands.Index(i).Interface().(tea.Cmd))
+			}
+			return
+		}
+		dialogStep(app, msg)
+	}
+}
+
+func TestAppNestedViewCommands(t *testing.T) {
+	for name, intent := range map[string]tea.Msg{
+		"filter":    dialogs.OpenDialogMsg{Model: filterdialog.New()},
+		"processes": views.ShowProcessesListMsg{},
+		"job":       views.ShowJobDetailMsg{},
+		"errors":    views.ShowErrorDetailsMsg{},
+		"metrics":   views.ShowJobMetricsMsg{},
+		"periodic":  views.ShowPeriodicDetailMsg{},
+		"queues":    views.ShowQueuesListMsg{},
+		"queue":     views.ShowQueueDetailsMsg{QueueName: "default"},
+		"process":   views.ShowProcessSelectMsg{Identity: "old"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			failure := errors.New("global operation failed")
+			app := New(&ownershipClient{}, "", false, nil)
+			defer app.cancel()
+			view := &intentCommandView{command: tea.Batch(
+				tea.Sequence(func() tea.Msg { return intent }, tea.Batch(
+					func() tea.Msg { return views.ConnectionErrorMsg{Err: failure} },
+					func() tea.Msg { return views.QueueActionResultMsg{Err: failure} },
+				)),
+				func() tea.Msg { return nil },
+			)}
+			app.viewRegistry[viewBusy] = view
+			app.setActiveView(viewBusy)
+			cmd := dialogStep(&app, tea.KeyPressMsg{Code: '/', Text: "/"})
+			app.setActiveView(viewErrorsSummary)
+			deliverIntentCommands(&app, cmd)
+			if app.activeViewID() != viewErrorsSummary || app.dialogs.HasDialogs() {
+				t.Fatal("nested stale intent changed screen")
+			}
+			if !errors.Is(app.connectionError, failure) {
+				t.Fatal("global operation error was suppressed")
+			}
+		})
+	}
+}
 
 func dialogStep(app *App, msg tea.Msg) tea.Cmd {
 	next, cmd := app.Update(msg)
