@@ -9,10 +9,12 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/alicebob/miniredis/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/exp/golden"
 
 	coredevtools "github.com/kpumuk/lazykiq/internal/devtools"
+	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 )
@@ -241,22 +243,38 @@ func TestDevToolsParseRedisArgs(t *testing.T) {
 	tests := map[string]struct {
 		input   string
 		want    []string
-		wantErr bool
+		wantErr string
 	}{
-		"simple":       {input: "GET foo", want: []string{"GET", "foo"}},
-		"quoted":       {input: "SET foo \"bar baz\"", want: []string{"SET", "foo", "bar baz"}},
-		"escaped":      {input: "ECHO \"hi \\\"there\\\"\"", want: []string{"ECHO", "hi \"there\""}},
-		"empty":        {input: "   ", wantErr: true},
-		"unterminated": {input: "\"oops", wantErr: true},
+		"simple":                     {input: "GET foo", want: []string{"GET", "foo"}},
+		"quoted":                     {input: "SET foo \"bar baz\"", want: []string{"SET", "foo", "bar baz"}},
+		"escaped":                    {input: "ECHO \"hi \\\"there\\\"\"", want: []string{"ECHO", "hi \"there\""}},
+		"empty double final":         {input: `SET key ""`, want: []string{"SET", "key", ""}},
+		"empty single final":         {input: `SET key ''`, want: []string{"SET", "key", ""}},
+		"empty double middle":        {input: `SET "" value`, want: []string{"SET", "", "value"}},
+		"empty single middle":        {input: `SET '' value`, want: []string{"SET", "", "value"}},
+		"separate empty arguments":   {input: "  MSET '' \"\"\tkey ''  \n", want: []string{"MSET", "", "", "key", ""}},
+		"only empty argument":        {input: `""`, want: []string{""}},
+		"adjacent empty quotes":      {input: `ECHO ''""`, want: []string{"ECHO", ""}},
+		"concatenated quotes":        {input: `SET pre""fix 'a'"b"c`, want: []string{"SET", "prefix", "abc"}},
+		"escaped space":              {input: `SET some\ key ''`, want: []string{"SET", "some key", ""}},
+		"escaped quotes":             {input: `ECHO \"\"`, want: []string{"ECHO", `""`}},
+		"escaped backslash":          {input: `ECHO \\`, want: []string{"ECHO", `\`}},
+		"empty":                      {input: "   ", wantErr: "empty command"},
+		"no input":                   {wantErr: "empty command"},
+		"unterminated":               {input: `"oops`, wantErr: "unterminated quoted string"},
+		"unterminated single":        {input: `ECHO 'oops`, wantErr: "unterminated quoted string"},
+		"trailing escape":            {input: `ECHO foo\`, wantErr: "unterminated quoted string"},
+		"empty then unterminated":    {input: `SET key ''"`, wantErr: "unterminated quoted string"},
+		"empty then trailing escape": {input: `SET key ""\`, wantErr: "unterminated quoted string"},
 	}
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			args, err := parseRedisArgs(tc.input)
-			if tc.wantErr {
-				if err == nil {
-					t.Fatal("expected error")
+			if tc.wantErr != "" {
+				if err == nil || err.Error() != tc.wantErr {
+					t.Fatalf("error = %v, want %q", err, tc.wantErr)
 				}
 				return
 			}
@@ -270,6 +288,43 @@ func TestDevToolsParseRedisArgs(t *testing.T) {
 				if args[i] != tc.want[i] {
 					t.Fatalf("args[%d] = %q, want %q", i, args[i], tc.want[i])
 				}
+			}
+		})
+	}
+}
+
+func TestDevToolsExecuteEmptyQuotedValue(t *testing.T) {
+	t.Parallel()
+
+	for name, input := range map[string]string{
+		"double quotes": `SET key ""`,
+		"single quotes": `SET key ''`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			server := miniredis.RunT(t)
+			if err := server.Set("key", "previous"); err != nil {
+				t.Fatal(err)
+			}
+			client, err := sidekiq.NewClient("redis://" + server.Addr())
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = client.Close() })
+			m := New(WithClient(client))
+			m.Init()
+			m.input.SetValue(input)
+			_, cmd := updateModel(t, m, keyCode(tea.KeyEnter))
+			if cmd == nil {
+				t.Fatal("Enter did not execute the command")
+			}
+			result, ok := cmd().(commandResultMsg)
+			if !ok || result.err != nil || result.output != "OK" {
+				t.Fatalf("console result = %+v, want OK", result)
+			}
+			value, err := server.Get("key")
+			if err != nil || value != "" {
+				t.Fatalf("stored value = %q, error = %v, want empty value", value, err)
 			}
 		})
 	}

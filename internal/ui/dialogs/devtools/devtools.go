@@ -437,17 +437,20 @@ func parseRedisArgs(input string) ([]string, error) {
 	var buf strings.Builder
 	var quote rune
 	escaped := false
+	tokenStarted := false
 
 	flush := func() {
-		if buf.Len() == 0 {
+		if !tokenStarted {
 			return
 		}
 		args = append(args, buf.String())
 		buf.Reset()
+		tokenStarted = false
 	}
 
 	for _, r := range input {
 		if escaped {
+			tokenStarted = true
 			buf.WriteRune(r)
 			escaped = false
 			continue
@@ -469,10 +472,12 @@ func parseRedisArgs(input string) ([]string, error) {
 
 		switch r {
 		case '"', '\'':
+			tokenStarted = true
 			quote = r
 		case ' ', '\t', '\n':
 			flush()
 		default:
+			tokenStarted = true
 			buf.WriteRune(r)
 		}
 	}
