@@ -1,6 +1,7 @@
 package views
 
 import (
+	"context"
 	"fmt"
 
 	"charm.land/bubbles/v2/key"
@@ -12,9 +13,11 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
 	"github.com/kpumuk/lazykiq/internal/ui/display"
+	"github.com/kpumuk/lazykiq/internal/ui/requestctx"
 )
 
 type detailListView struct {
+	requestctx.Scope
 	title       string
 	width       int
 	height      int
@@ -49,6 +52,12 @@ func newDetailListView(
 		title: title,
 		lazy:  lazy,
 	}
+}
+
+// SetContext binds paged reads and mutations to the application lifetime.
+func (s *detailListView) SetContext(ctx context.Context) {
+	s.Scope.SetContext(ctx)
+	s.lazy.SetContext(ctx)
 }
 
 // RequestID identifies the current lazy-table request, including pending errors.

@@ -1,7 +1,6 @@
 package views
 
 import (
-	"context"
 	"fmt"
 	"sort"
 	"strconv"
@@ -41,6 +40,7 @@ type queuesListDataMsg struct {
 
 // QueuesList shows all Sidekiq queues in a table.
 type QueuesList struct {
+	requestctx.Scope
 	client                  sidekiq.API
 	width                   int
 	height                  int
@@ -127,7 +127,7 @@ func (q *QueuesList) Update(msg tea.Msg) (View, tea.Cmd) {
 		if !q.dangerousActionsEnabled {
 			return q, nil
 		}
-		cmd := q.actions.confirm(msg, q.client)
+		cmd := q.actions.confirm(q.Context(), msg, q.client)
 		if cmd != nil {
 			q.fetchRequest.Cancel()
 			q.requestID++
@@ -339,7 +339,7 @@ func (q *QueuesList) CancelRequests() {
 func (q *QueuesList) fetchDataCmd() tea.Cmd {
 	q.requestID++
 	requestID, filter := q.requestID, strings.ToLower(q.filter)
-	ctx := q.fetchRequest.Start(devtools.WithTracker(context.Background(), "queues.fetchDataCmd"))
+	ctx := q.fetchRequest.Start(devtools.WithTracker(q.Context(), "queues.fetchDataCmd"))
 	return readCmd(ctx, q, func() tea.Msg {
 		capabilities, paused, err := fetchQueueCapabilities(ctx, q.client)
 		if err != nil {

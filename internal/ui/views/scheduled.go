@@ -408,8 +408,8 @@ func (s *Scheduled) openAddAllToQueueConfirm() tea.Cmd {
 }
 
 func (s *Scheduled) deleteJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
+	ctx := devtools.WithTracker(s.Context(), "scheduled.deleteJobCmd")
 	return func() tea.Msg {
-		ctx := devtools.WithTracker(context.Background(), "scheduled.deleteJobCmd")
 		if err := s.client.DeleteSortedEntry(ctx, sidekiq.SortedSetScheduled, entry); err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}
@@ -418,8 +418,8 @@ func (s *Scheduled) deleteJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
 }
 
 func (s *Scheduled) deleteAllCmd() tea.Cmd {
+	ctx := devtools.WithTracker(s.Context(), "scheduled.deleteAllCmd")
 	return func() tea.Msg {
-		ctx := devtools.WithTracker(context.Background(), "scheduled.deleteAllCmd")
 		if err := s.client.DeleteAllSortedEntries(ctx, sidekiq.SortedSetScheduled); err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}
@@ -428,8 +428,8 @@ func (s *Scheduled) deleteAllCmd() tea.Cmd {
 }
 
 func (s *Scheduled) addToQueueJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
+	ctx := devtools.WithTracker(s.Context(), "scheduled.addToQueueJobCmd")
 	return func() tea.Msg {
-		ctx := devtools.WithTracker(context.Background(), "scheduled.addToQueueJobCmd")
 		if err := s.client.EnqueueSortedEntry(ctx, sidekiq.SortedSetScheduled, entry); err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}
@@ -438,8 +438,8 @@ func (s *Scheduled) addToQueueJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
 }
 
 func (s *Scheduled) addAllToQueueCmd() tea.Cmd {
+	ctx := devtools.WithTracker(s.Context(), "scheduled.addAllToQueueCmd")
 	return func() tea.Msg {
-		ctx := devtools.WithTracker(context.Background(), "scheduled.addAllToQueueCmd")
 		if err := s.client.EnqueueAllSortedEntries(ctx, sidekiq.SortedSetScheduled); err != nil {
 			return ConnectionErrorMsg{Err: err}
 		}

@@ -1,7 +1,6 @@
 package views
 
 import (
-	"context"
 	"fmt"
 	"slices"
 	"sort"
@@ -36,6 +35,7 @@ type metricsRow struct {
 
 // Metrics shows job execution metrics.
 type Metrics struct {
+	requestctx.Scope
 	client sidekiq.API
 	width  int
 	height int
@@ -297,7 +297,7 @@ func (m *Metrics) fetchListCmd() tea.Cmd {
 	period := m.period
 	filter := m.filter
 	client := m.client
-	ctx := m.fetchRequest.Start(devtools.WithTracker(context.Background(), "metrics.fetchListCmd"))
+	ctx := m.fetchRequest.Start(devtools.WithTracker(m.Context(), "metrics.fetchListCmd"))
 	return readCmd(ctx, m, func() tea.Msg {
 		if ctx.Err() != nil {
 			return nil

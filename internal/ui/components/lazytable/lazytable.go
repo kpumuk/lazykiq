@@ -56,6 +56,7 @@ type ErrorHandler func(requestID int, err error) tea.Msg
 
 // Model is a lazily-loaded table component.
 type Model struct {
+	requestctx.Scope
 	table            table.Model
 	fetcher          Fetcher
 	fetcherFactory   FetcherFactory
@@ -202,7 +203,7 @@ func (m *Model) RequestWindow(windowStart int, intent CursorIntent) tea.Cmd {
 		return nil
 	}
 	windowStart = max(windowStart, 0)
-	ctx := m.request.Start(context.Background())
+	ctx := m.request.Start(m.Context())
 	m.pendingIntent = intent
 	if intent == CursorKeep {
 		m.captureAnchor()

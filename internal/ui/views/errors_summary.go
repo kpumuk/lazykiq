@@ -1,7 +1,6 @@
 package views
 
 import (
-	"context"
 	"time"
 
 	"charm.land/bubbles/v2/key"
@@ -30,6 +29,7 @@ var nowFuncErrorsSummary = time.Now
 
 // ErrorsSummary shows a summary of errors grouped by job and error class.
 type ErrorsSummary struct {
+	requestctx.Scope
 	client       sidekiq.API
 	width        int
 	height       int
@@ -236,7 +236,7 @@ func (e *ErrorsSummary) fetchDataCmd(force bool) tea.Cmd {
 	}
 
 	e.refreshing = true
-	ctx := e.fetchRequest.Start(devtools.WithTracker(context.Background(), "errors.fetchDataCmd"))
+	ctx := e.fetchRequest.Start(devtools.WithTracker(e.Context(), "errors.fetchDataCmd"))
 	client, filter := e.client, e.filter
 	return readCmd(ctx, e, func() tea.Msg {
 		rows, meta, err := client.GetErrorSummary(ctx, filter)

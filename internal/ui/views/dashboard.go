@@ -1,7 +1,6 @@
 package views
 
 import (
-	"context"
 	"fmt"
 	"slices"
 	"strings"
@@ -38,6 +37,7 @@ type DashboardRedisInfoMsg struct {
 
 // Dashboard is the main overview view.
 type Dashboard struct {
+	requestctx.Scope
 	client sidekiq.API
 	width  int
 	height int
@@ -301,7 +301,7 @@ func (d *Dashboard) adjustHistoryRange(delta int) (View, tea.Cmd) {
 }
 
 func (d *Dashboard) fetchRedisInfoCmd() tea.Cmd {
-	ctx := d.redisInfoRequest.Start(devtools.WithTracker(context.Background(), "dashboard.fetchRedisInfoCmd"))
+	ctx := d.redisInfoRequest.Start(devtools.WithTracker(d.Context(), "dashboard.fetchRedisInfoCmd"))
 	client := d.client
 	return readCmd(ctx, d, func() tea.Msg {
 		redisInfo, err := client.GetRedisInfo(ctx)
@@ -313,7 +313,7 @@ func (d *Dashboard) fetchRedisInfoCmd() tea.Cmd {
 }
 
 func (d *Dashboard) fetchHistoryCmd() tea.Cmd {
-	ctx := d.historyRequest.Start(devtools.WithTracker(context.Background(), "dashboard.fetchHistoryCmd"))
+	ctx := d.historyRequest.Start(devtools.WithTracker(d.Context(), "dashboard.fetchHistoryCmd"))
 	client, days := d.client, d.historyRanges[d.historyRangeIdx]
 	return readCmd(ctx, d, func() tea.Msg {
 		history, err := client.GetStatsHistory(ctx, days)

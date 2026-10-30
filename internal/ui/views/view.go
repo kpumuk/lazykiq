@@ -2,6 +2,8 @@
 package views
 
 import (
+	"context"
+
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -212,4 +214,9 @@ type RequestCanceler interface {
 // RequestIDProvider identifies the current request for rejecting stale errors.
 type RequestIDProvider interface {
 	RequestID() int
+}
+
+// ContextSetter binds a view's service work to the application lifetime.
+type ContextSetter interface {
+	SetContext(context.Context)
 }

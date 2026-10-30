@@ -68,6 +68,8 @@ type dialogOwner struct {
 
 // App is the main application model.
 type App struct {
+	ctx                     context.Context
+	cancel                  context.CancelFunc
 	keys                    KeyMap
 	width                   int
 	height                  int
@@ -93,7 +95,15 @@ type App struct {
 
 // New creates a new App instance.
 func New(client sidekiq.API, version string, dangerousActionsEnabled bool, devTracker *devtools.Tracker) App {
+	return NewWithContext(context.Background(), client, version, dangerousActionsEnabled, devTracker)
+}
+
+// NewWithContext creates an App whose service work follows the supplied lifetime.
+// Use Run to also cancel work on every program exit.
+func NewWithContext(parent context.Context, client sidekiq.API, version string, dangerousActionsEnabled bool, devTracker *devtools.Tracker) App {
+	ctx, cancel := context.WithCancel(parent)
 	styles := theme.NewStyles()
+
 	keys := DefaultKeyMap()
 	keys.DevTools.SetEnabled(devTracker != nil)
 	brand := "Lazykiq"
@@ -128,6 +138,9 @@ func New(client sidekiq.API, version string, dangerousActionsEnabled bool, devTr
 	}
 
 	for _, view := range viewRegistry {
+		if setter, ok := view.(views.ContextSetter); ok {
+			setter.SetContext(ctx)
+		}
 		if toggle, ok := view.(views.DangerousActionsToggle); ok {
 			toggle.SetDangerousActionsEnabled(dangerousActionsEnabled)
 		}
@@ -140,6 +153,8 @@ func New(client sidekiq.API, version string, dangerousActionsEnabled bool, devTr
 	}
 
 	app := App{
+		ctx:                     ctx,
+		cancel:                  cancel,
 		statsRequest:            &requestctx.Controller{},
 		keys:                    keys,
 		viewStack:               []viewID{viewDashboard},
@@ -158,6 +173,14 @@ func New(client sidekiq.API, version string, dangerousActionsEnabled bool, devTr
 	}
 	app.applyStyles(styles)
 	return app
+}
+
+// Run starts the terminal UI and cancels all owned service work on return.
+// Cancellation is cooperative and does not undo submitted Redis mutations.
+func (a App) Run(opts ...tea.ProgramOption) (tea.Model, error) {
+	defer a.cancel()
+	opts = append(opts, tea.WithContext(a.ctx))
+	return tea.NewProgram(a, opts...).Run()
 }
 
 // Init implements tea.Model.
@@ -671,9 +694,9 @@ func (a App) toggleDevToolsDialog() tea.Cmd {
 			opts = append(opts, devtoolsdialog.WithClient(commander))
 		}
 
-		return dialogs.OpenDialogMsg{
-			Model: devtoolsdialog.New(opts...),
-		}
+		model := devtoolsdialog.New(opts...)
+		model.SetContext(a.ctx)
+		return dialogs.OpenDialogMsg{Model: model}
 	}
 }
 
@@ -781,7 +804,7 @@ func filterMiniHelpBindings(bindings []key.Binding) []key.Binding {
 
 // fetchStatsCmd fetches Sidekiq stats with ownership checked at delivery.
 func (a *App) fetchStatsCmd() tea.Cmd {
-	ctx := a.statsRequest.Start(devtools.WithTracker(context.Background(), "app.fetchStatsCmd"))
+	ctx := a.statsRequest.Start(devtools.WithTracker(a.ctx, "app.fetchStatsCmd"))
 	client, owner := a.sidekiq, a.statsRequest
 	return func() tea.Msg {
 		sidekiqStats, err := client.GetStats(ctx)

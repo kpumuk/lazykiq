@@ -51,6 +51,35 @@ func searchViews() map[string]func() searchHarness {
 	}
 }
 
+func TestPagedViewLifetimes(t *testing.T) {
+	for name, build := range searchViews() {
+		t.Run(name, func(t *testing.T) {
+			h := build()
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			h.view.(ContextSetter).SetContext(ctx)
+			var request context.Context
+			h.list.lazy.SetFetcher(func(ctx context.Context, _, _ int, _ lazytable.CursorIntent) (lazytable.FetchResult, error) {
+				request = ctx
+				return lazytable.FetchResult{}, nil
+			})
+			queueFetchMessage(t, h.list.lazy.RequestWindow(0, lazytable.CursorStart))
+			if request == nil || request.Err() != nil {
+				t.Fatal("paged request did not start")
+			}
+			h.view.(Disposable).Dispose()
+			if request.Err() == nil || ctx.Err() != nil {
+				t.Fatal("disposal must cancel the read and preserve the parent")
+			}
+			queueFetchMessage(t, h.list.lazy.RequestWindow(0, lazytable.CursorStart))
+			cancel()
+			if request.Err() == nil {
+				t.Fatal("reopened paged view lost the application lifetime")
+			}
+		})
+	}
+}
+
 func TestSearchViewsRemainResponsive(t *testing.T) {
 	for name, build := range searchViews() {
 		t.Run(name, func(t *testing.T) {
