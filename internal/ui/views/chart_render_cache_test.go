@@ -104,7 +104,7 @@ func TestJobMetricsChartCacheUpdates(t *testing.T) {
 	for _, size := range [][2]int{{120, 30}, {12, 12}, {80, 4}, {80, 24}} {
 		j.SetSize(size[0], size[1])
 		got := j.View()
-		if lipgloss.Height(got) != max(size[1], 5) || lipgloss.Width(got) > size[0] {
+		if lipgloss.Height(got) != size[1] || lipgloss.Width(got) > size[0] {
 			t.Fatalf("invalid layout at %v", size)
 		}
 	}

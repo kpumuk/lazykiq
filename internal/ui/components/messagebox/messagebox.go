@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/kpumuk/lazykiq/internal/ui/components/frame"
 )
@@ -123,17 +124,22 @@ func (m Model) Message() string {
 
 // View renders the message box.
 func (m Model) View() string {
+	if m.width < 2 || m.height < 2 {
+		return ""
+	}
 	innerWidth := max(m.width-2, 0)
 	contentHeight := max(m.height-2, 0)
 
 	// Center the message vertically within contentHeight
 	lines := make([]string, contentHeight)
-	msgText := m.styles.Muted.Render(m.message)
-	msgWidth := lipgloss.Width(msgText)
-	centerRow := contentHeight / 2
+	messageLines := strings.Split(m.styles.Muted.Render(m.message), "\n")
+	messageLines = messageLines[:min(len(messageLines), contentHeight)]
+	firstRow := max(contentHeight/2-len(messageLines)/2, 0)
 
 	for i := range contentHeight {
-		if i == centerRow {
+		if i >= firstRow && i < firstRow+len(messageLines) {
+			msgText := ansi.Truncate(messageLines[i-firstRow], innerWidth, "")
+			msgWidth := lipgloss.Width(msgText)
 			leftPadding := max((innerWidth-msgWidth)/2, 0)
 			rightPadding := max(innerWidth-leftPadding-msgWidth, 0)
 			lines[i] = strings.Repeat(" ", leftPadding) + msgText + strings.Repeat(" ", rightPadding)
@@ -161,7 +167,6 @@ func (m Model) View() string {
 		frame.WithTitlePadding(1),
 		frame.WithContent(strings.Join(lines, "\n")),
 		frame.WithSize(m.width, m.height),
-		frame.WithMinHeight(5),
 	)
 
 	return box.View()

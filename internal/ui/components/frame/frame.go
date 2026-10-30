@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // StyleState holds styles for a focus state.
@@ -43,6 +44,7 @@ type Model struct {
 	content      string
 	width        int
 	height       int
+	sizeSet      bool
 	minHeight    int
 	padding      int
 	titlePadding int
@@ -118,10 +120,11 @@ func WithSize(width, height int) Option {
 	return func(m *Model) {
 		m.width = width
 		m.height = height
+		m.sizeSet = true
 	}
 }
 
-// WithMinHeight sets the minimum height.
+// WithMinHeight sets the preferred height when no size has been allocated.
 func WithMinHeight(height int) Option {
 	return func(m *Model) {
 		m.minHeight = height
@@ -198,9 +201,10 @@ func (m *Model) SetContent(content string) {
 func (m *Model) SetSize(width, height int) {
 	m.width = width
 	m.height = height
+	m.sizeSet = true
 }
 
-// SetMinHeight sets the minimum height.
+// SetMinHeight sets the preferred height when no size has been allocated.
 func (m *Model) SetMinHeight(height int) {
 	m.minHeight = height
 }
@@ -252,12 +256,12 @@ func (m Model) MinHeight() int {
 
 // View renders the frame with the current content.
 func (m Model) View() string {
-	if m.width <= 0 {
+	if m.width < 2 {
 		return ""
 	}
 
 	effectiveHeight := m.height
-	if m.minHeight > 0 {
+	if !m.sizeSet && m.minHeight > 0 {
 		effectiveHeight = max(effectiveHeight, m.minHeight)
 	}
 	if effectiveHeight <= 0 {
@@ -291,8 +295,8 @@ func (m Model) renderTopBorder(state StyleState, innerWidth int) string {
 	topRight := state.Border.Render(m.border.TopRight)
 	hBar := state.Border.Render(m.border.Top)
 
-	leftPad := 1
-	rightPad := 1
+	leftPad := min(1, innerWidth)
+	rightPad := min(1, innerWidth-leftPad)
 	available := max(innerWidth-leftPad-rightPad, 0)
 
 	meta := padLabel(m.meta, m.metaPadding)
@@ -365,6 +369,7 @@ func padLine(line string, width, padding int) string {
 		line = spaces + line + spaces
 	}
 
+	line = ansi.Truncate(line, width, "")
 	lineWidth := lipgloss.Width(line)
 	if lineWidth < width {
 		line += strings.Repeat(" ", width-lineWidth)

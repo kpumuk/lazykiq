@@ -22,7 +22,7 @@ import (
 
 func appWithInputDialog(t *testing.T, console bool) App {
 	t.Helper()
-	app := New(nil, "", false, devtools.NewTracker())
+	app := New(&ownershipClient{}, "", false, devtools.NewTracker())
 	updated, _ := app.Update(tea.WindowSizeMsg{Width: 300, Height: 40})
 	app = updated.(App)
 	var model dialogs.DialogModel = filterdialog.New()
