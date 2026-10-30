@@ -10,16 +10,29 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-type schedulingModel struct{ command tea.Cmd }
+type schedulingModel struct {
+	command tea.Cmd
+	session *Session
+	bound   int
+}
 
-func (m schedulingModel) Init() tea.Cmd                       { return m.command }
-func (m schedulingModel) Update(tea.Msg) (tea.Model, tea.Cmd) { return m, nil }
-func (m schedulingModel) View() tea.View                      { return tea.NewView("") }
+func (m schedulingModel) Init() tea.Cmd { return m.command }
+func (m schedulingModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if closeMsg, ok := msg.(CloseDialogMsg); ok && closeMsg.Session == m.session {
+		m.bound++
+	}
+	return m, nil
+}
+func (m schedulingModel) View() tea.View { return tea.NewView("") }
 
 func TestBoundCommandPreservesScheduler(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	session := &Session{Owner: "owner"}
+	var scope SessionScope
+	scope.SetSession(session)
+	closeCmd := scope.CloseCmd(nil)
+	scope.SetSession(&Session{Owner: "replacement"})
 	var started, finished atomic.Int32
 	ready := make(chan struct{})
 	leaf := func() tea.Msg {
@@ -32,10 +45,9 @@ func TestBoundCommandPreservesScheduler(t *testing.T) {
 			return nil
 		}
 		finished.Add(1)
-		return CloseDialogMsg{}
+		return closeCmd()
 	}
-	var bound atomic.Int32
-	cmd := bindSession(tea.Sequence(
+	cmd := tea.Sequence(
 		tea.Batch(leaf, tea.Sequence(leaf, func() tea.Msg { return nil })),
 		func() tea.Msg {
 			if finished.Load() != 2 {
@@ -43,20 +55,18 @@ func TestBoundCommandPreservesScheduler(t *testing.T) {
 			}
 			return tea.Quit()
 		},
-	), session)
-	cmd = BindCommand(cmd, func(msg tea.Msg) tea.Msg {
-		if closeMsg, ok := msg.(CloseDialogMsg); ok && closeMsg.Session == session {
-			bound.Add(1)
-		}
-		return msg
-	})
-	_, err := tea.NewProgram(schedulingModel{cmd}, tea.WithContext(ctx), tea.WithInput(nil), tea.WithOutput(io.Discard), tea.WithoutRenderer()).Run()
-	if err != nil || bound.Load() != 2 {
-		t.Fatalf("scheduler failed: err=%v, bound closes=%d", err, bound.Load())
+	)
+	result, err := tea.NewProgram(schedulingModel{command: cmd, session: session}, tea.WithContext(ctx), tea.WithInput(nil), tea.WithOutput(io.Discard), tea.WithoutRenderer()).Run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bound := result.(schedulingModel).bound; bound != 2 {
+		t.Fatalf("bound closes=%d, want 2", bound)
 	}
 }
 
 type testDialog struct {
+	SessionScope
 	id        DialogID
 	initCalls int
 	updates   []tea.Msg
@@ -218,8 +228,7 @@ type completingDialog struct {
 
 func (d *completingDialog) Update(msg tea.Msg) (DialogModel, tea.Cmd) {
 	if _, ok := msg.(tea.KeyPressMsg); ok {
-		action := d.action
-		return d, func() tea.Msg { return CloseDialogMsg{Action: action} }
+		return d, d.CloseCmd(d.action)
 	}
 	d.testDialog.Update(msg)
 	return d, nil
@@ -264,7 +273,10 @@ func TestDialogSessionRejectsLateClose(t *testing.T) {
 
 func TestDialogBatchedCloseIsBound(t *testing.T) {
 	session := &Session{Owner: "owner"}
-	cmd := bindSession(tea.Batch(func() tea.Msg { return CloseDialogMsg{} }, func() tea.Msg { return "other" }), session)
+	var scope SessionScope
+	scope.SetSession(session)
+	cmd := tea.Batch(scope.CloseCmd(nil), func() tea.Msg { return "other" })
+	scope.SetSession(&Session{Owner: "replacement"})
 	batch := cmd().(tea.BatchMsg)
 	if got := batch[0]().(CloseDialogMsg).Session; got != session {
 		t.Fatal("batched close lost session")

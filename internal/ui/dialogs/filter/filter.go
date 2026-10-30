@@ -50,6 +50,7 @@ func DefaultStyles() Styles {
 
 // Model defines state for the filter dialog component.
 type Model struct {
+	dialogs.SessionScope
 	styles       Styles
 	input        textinput.Model
 	inputBox     lipgloss.Style
@@ -140,17 +141,15 @@ func (m *Model) Update(msg tea.Msg) (dialogs.DialogModel, tea.Cmd) {
 		case "enter":
 			next := strings.TrimSpace(m.input.Value())
 			if next == m.query {
-				return m, func() tea.Msg { return dialogs.CloseDialogMsg{} }
+				return m, m.CloseCmd(nil)
 			}
 			action := ActionApply
 			if next == "" {
 				action = ActionClear
 			}
-			return m, func() tea.Msg {
-				return dialogs.CloseDialogMsg{Action: ActionMsg{Action: action, Query: next}}
-			}
+			return m, m.CloseCmd(ActionMsg{Action: action, Query: next})
 		case "esc":
-			return m, func() tea.Msg { return dialogs.CloseDialogMsg{} }
+			return m, m.CloseCmd(nil)
 		case "ctrl+u":
 			m.input.SetValue("")
 			m.input.CursorEnd()

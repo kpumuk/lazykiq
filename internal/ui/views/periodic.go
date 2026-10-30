@@ -32,6 +32,7 @@ type periodicDataMsg struct {
 
 // Periodic displays recurring definitions, or a stacked definition and history.
 type Periodic struct {
+	IntentScope
 	dialogs.Opener
 	requestctx.Scope
 	client                  sidekiq.API
@@ -341,7 +342,7 @@ func (p *Periodic) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "enter":
 		if !p.detail {
 			if job, ok := p.selectedJob(); ok {
-				return func() tea.Msg { return ShowPeriodicDetailMsg{LID: job.LID} }
+				return p.EmitIntent(ShowPeriodicDetailMsg{LID: job.LID})
 			}
 		}
 		return nil

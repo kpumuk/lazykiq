@@ -134,9 +134,7 @@ func (r *Retries) Update(msg tea.Msg) (View, tea.Cmd) {
 			// Show detail for selected job
 			if idx := r.lazy.Table().Cursor(); idx >= 0 && idx < len(r.jobs) {
 				job := r.jobs[idx].JobRecord
-				return r, func() tea.Msg {
-					return ShowJobDetailMsg{Job: job}
-				}
+				return r, r.EmitIntent(ShowJobDetailMsg{Job: job})
 			}
 			return r, nil
 		}

@@ -29,6 +29,7 @@ var nowFuncErrorsSummary = time.Now
 
 // ErrorsSummary shows a summary of errors grouped by job and error class.
 type ErrorsSummary struct {
+	IntentScope
 	dialogs.Opener
 	requestctx.Scope
 	client       sidekiq.API
@@ -126,9 +127,7 @@ func (e *ErrorsSummary) Update(msg tea.Msg) (View, tea.Cmd) {
 				Key:   errorGroupKeyForRow(row),
 				Query: e.filter,
 			}
-			return e, func() tea.Msg {
-				return intent
-			}
+			return e, e.EmitIntent(intent)
 		}
 
 		e.table, _ = e.table.Update(msg)
