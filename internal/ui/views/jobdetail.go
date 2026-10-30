@@ -648,6 +648,10 @@ func (j *JobDetail) renderLeftPanel() string {
 func (j *JobDetail) renderRightPanel() string {
 	innerWidth := j.rightWidth - 2 // minus left and right border
 	contentWidth := max(innerWidth-2*jobDetailPanelPadding, 0)
+	meta := ""
+	if !j.singlePane() {
+		meta = j.styles.Muted.Render("Esc to close")
+	}
 
 	// Content lines with horizontal scroll
 	endY := min(j.rightYOffset+j.panelHeight, j.jsonView.LineCount())
@@ -682,7 +686,7 @@ func (j *JobDetail) renderRightPanel() string {
 		}),
 		frame.WithTitle("Job Data (JSON)"),
 		frame.WithTitlePadding(0),
-		frame.WithMeta(j.styles.Muted.Render("Esc to close")),
+		frame.WithMeta(meta),
 		frame.WithMetaPadding(0),
 		frame.WithContent(strings.Join(contentLines, "\n")),
 		frame.WithPadding(jobDetailPanelPadding),
