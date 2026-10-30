@@ -59,6 +59,12 @@ const (
 
 const contextbarDefaultHeight = 5
 
+type dialogOwner struct {
+	id         viewID
+	view       views.View
+	generation uint64
+}
+
 // App is the main application model.
 type App struct {
 	keys                    KeyMap
@@ -81,6 +87,7 @@ type App struct {
 	dangerousActionsEnabled bool
 	devTracker              *devtools.Tracker
 	statsRequest            *requestctx.Controller
+	viewGeneration          uint64
 }
 
 // New creates a new App instance.
@@ -182,13 +189,32 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 	dialogUpdated := false
 
-	switch msg.(type) {
-	case dialogs.OpenDialogMsg, dialogs.CloseDialogMsg:
+	switch msg := msg.(type) {
+	case dialogs.OpenDialogMsg:
+		msg.Owner = dialogOwner{a.activeViewID(), a.viewRegistry[a.activeViewID()], a.viewGeneration}
 		updated, cmd := a.dialogs.Update(msg)
 		a.dialogs = updated
 		a.styleDialogs()
 		a.syncContextbar()
 		return a, cmd
+	case dialogs.CloseDialogMsg:
+		if msg.Session != nil && msg.Session != a.dialogs.ActiveSession() {
+			return a, nil
+		}
+		updated, cmd := a.dialogs.Update(msg)
+		a.dialogs = updated
+		if msg.Session != nil && msg.Action != nil {
+			if owner, ok := msg.Session.Owner.(dialogOwner); ok &&
+				owner.id == a.activeViewID() && owner.generation == a.viewGeneration &&
+				owner.view == a.viewRegistry[owner.id] {
+				cmds = append(cmds, a.updateView(owner.id, msg.Action))
+			}
+		}
+		a.syncContextbar()
+		return a, tea.Batch(append(cmds, cmd)...)
+	case filterdialog.ActionMsg, confirmdialog.ActionMsg:
+		// Dialog actions are accepted only inside an owned close transition.
+		return a, nil
 	}
 
 	switch msg := msg.(type) {
@@ -789,6 +815,7 @@ func (a *App) cancelViewRequests(id viewID) {
 }
 
 func (a *App) setActiveView(id viewID) tea.Cmd {
+	a.viewGeneration++
 	for _, existing := range a.viewStack {
 		if existing != id {
 			a.cancelViewRequests(existing)
@@ -813,6 +840,7 @@ func (a *App) pushView(id viewID) tea.Cmd {
 		a.stackbar.SetStack(a.stackNames())
 		return nil
 	}
+	a.viewGeneration++
 	if len(a.viewStack) > 0 {
 		a.cancelViewRequests(a.viewStack[len(a.viewStack)-1])
 	}
@@ -828,6 +856,7 @@ func (a *App) popTopView() {
 	if len(a.viewStack) <= 1 {
 		return
 	}
+	a.viewGeneration++
 
 	popped := a.viewStack[len(a.viewStack)-1]
 	a.cancelViewRequests(popped)

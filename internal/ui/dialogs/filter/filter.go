@@ -146,11 +146,9 @@ func (m *Model) Update(msg tea.Msg) (dialogs.DialogModel, tea.Cmd) {
 			if next == "" {
 				action = ActionClear
 			}
-			m.query = next
-			return m, tea.Batch(
-				func() tea.Msg { return ActionMsg{Action: action, Query: m.query} },
-				func() tea.Msg { return dialogs.CloseDialogMsg{} },
-			)
+			return m, func() tea.Msg {
+				return dialogs.CloseDialogMsg{Action: ActionMsg{Action: action, Query: next}}
+			}
 		case "esc":
 			return m, func() tea.Msg { return dialogs.CloseDialogMsg{} }
 		case "ctrl+u":

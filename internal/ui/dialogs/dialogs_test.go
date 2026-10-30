@@ -160,3 +160,66 @@ func TestDialogCmpForwardsUpdatesToActive(t *testing.T) {
 		t.Fatalf("dialogB last update = %T, want key msg", dialogB.updates[len(dialogB.updates)-1])
 	}
 }
+
+type completingDialog struct {
+	testDialog
+	action string
+}
+
+func (d *completingDialog) Update(msg tea.Msg) (DialogModel, tea.Cmd) {
+	if _, ok := msg.(tea.KeyPressMsg); ok {
+		action := d.action
+		return d, func() tea.Msg { return CloseDialogMsg{Action: action} }
+	}
+	d.testDialog.Update(msg)
+	return d, nil
+}
+
+func TestDialogSessionRejectsLateClose(t *testing.T) {
+	for name, steps := range map[string][]string{
+		"replacement same instance": {"close", "open", "late"},
+		"covered and revealed":      {"cover", "late", "close", "late"},
+		"duplicate completion":      {"late", "open", "late"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cmp := NewDialogCmp()
+			d := &completingDialog{action: "original"}
+			d.id = "a"
+			cmp, _ = cmp.Update(OpenDialogMsg{Model: d, Owner: "owner"})
+			cmp, cmd := cmp.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+			late := cmd().(CloseDialogMsg)
+			if late.Session != cmp.ActiveSession() || late.Session.Owner != "owner" || late.Action != "original" {
+				t.Fatalf("unbound completion: %#v", late)
+			}
+			for i, step := range steps {
+				switch step {
+				case "close":
+					cmp, _ = cmp.Update(CloseDialogMsg{})
+				case "open":
+					cmp, _ = cmp.Update(OpenDialogMsg{Model: d, Owner: "replacement"})
+				case "cover":
+					cmp, _ = cmp.Update(OpenDialogMsg{Model: &testDialog{id: "b"}})
+				case "late":
+					active := cmp.ActiveModel()
+					session := cmp.ActiveSession()
+					cmp, _ = cmp.Update(late)
+					if i > 0 && (cmp.ActiveModel() != active || cmp.ActiveSession() != session) {
+						t.Fatal("stale completion changed dialog stack")
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestDialogBatchedCloseIsBound(t *testing.T) {
+	session := &Session{Owner: "owner"}
+	cmd := bindSession(tea.Batch(func() tea.Msg { return CloseDialogMsg{} }, func() tea.Msg { return "other" }), session)
+	batch := cmd().(tea.BatchMsg)
+	if got := batch[0]().(CloseDialogMsg).Session; got != session {
+		t.Fatal("batched close lost session")
+	}
+	if got := batch[1](); got != "other" {
+		t.Fatalf("unrelated message changed: %#v", got)
+	}
+}

@@ -28,10 +28,20 @@ type CloseCallback interface {
 // OpenDialogMsg is sent to open a new dialog.
 type OpenDialogMsg struct {
 	Model DialogModel
+	Owner any
 }
 
-// CloseDialogMsg is sent to close the topmost dialog.
-type CloseDialogMsg struct{}
+// Session identifies one activation of a dialog and its owner.
+type Session struct {
+	Owner any
+}
+
+// CloseDialogMsg closes a dialog and delivers its optional action atomically.
+// The manager binds commands to their originating session before delivery.
+type CloseDialogMsg struct {
+	Session *Session
+	Action  tea.Msg
+}
 
 // DialogCmp manages a stack of dialogs.
 type DialogCmp interface {
@@ -44,19 +54,22 @@ type DialogCmp interface {
 	GetLayers() []*lipgloss.Layer
 	ActiveModel() DialogModel
 	ActiveDialogID() DialogID
+	ActiveSession() *Session
 }
 
 type dialogCmp struct {
 	width, height int
 	dialogs       []DialogModel
 	idMap         map[DialogID]int
+	sessions      map[DialogID]*Session
 }
 
 // NewDialogCmp creates a new dialog manager.
 func NewDialogCmp() DialogCmp {
 	return dialogCmp{
-		dialogs: []DialogModel{},
-		idMap:   make(map[DialogID]int),
+		dialogs:  []DialogModel{},
+		idMap:    make(map[DialogID]int),
+		sessions: make(map[DialogID]*Session),
 	}
 }
 
@@ -74,7 +87,7 @@ func (d dialogCmp) Update(msg tea.Msg) (DialogCmp, tea.Cmd) {
 		for i := range d.dialogs {
 			u, cmd := d.dialogs[i].Update(msg)
 			d.dialogs[i] = u
-			cmds = append(cmds, cmd)
+			cmds = append(cmds, bindSession(cmd, d.sessions[u.ID()]))
 		}
 		return d, tea.Batch(cmds...)
 	case OpenDialogMsg:
@@ -83,10 +96,18 @@ func (d dialogCmp) Update(msg tea.Msg) (DialogCmp, tea.Cmd) {
 		if len(d.dialogs) == 0 {
 			return d, nil
 		}
+		if msg.Session != nil && msg.Session != d.ActiveSession() {
+			return d, nil
+		}
 		inx := len(d.dialogs) - 1
 		dialog := d.dialogs[inx]
 		delete(d.idMap, dialog.ID())
+		delete(d.sessions, dialog.ID())
 		d.dialogs = d.dialogs[:len(d.dialogs)-1]
+		if active := d.ActiveSession(); active != nil {
+			// Revealing a covered dialog starts a new activation.
+			d.sessions[d.ActiveDialogID()] = &Session{Owner: active.Owner}
+		}
 		if closeable, ok := dialog.(CloseCallback); ok {
 			return d, closeable.Close()
 		}
@@ -97,7 +118,7 @@ func (d dialogCmp) Update(msg tea.Msg) (DialogCmp, tea.Cmd) {
 		lastIndex := len(d.dialogs) - 1
 		u, cmd := d.dialogs[lastIndex].Update(msg)
 		d.dialogs[lastIndex] = u
-		return d, cmd
+		return d, bindSession(cmd, d.ActiveSession())
 	}
 
 	return d, nil
@@ -123,6 +144,32 @@ func (d dialogCmp) ActiveDialogID() DialogID {
 		return ""
 	}
 	return d.dialogs[len(d.dialogs)-1].ID()
+}
+
+func (d dialogCmp) ActiveSession() *Session {
+	return d.sessions[d.ActiveDialogID()]
+}
+
+// bindSession captures identity before a command runs, including batched commands.
+func bindSession(cmd tea.Cmd, session *Session) tea.Cmd {
+	if cmd == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		switch msg := cmd().(type) {
+		case CloseDialogMsg:
+			msg.Session = session
+			return msg
+		case tea.BatchMsg:
+			bound := make(tea.BatchMsg, len(msg))
+			for i, child := range msg {
+				bound[i] = bindSession(child, session)
+			}
+			return bound
+		default:
+			return msg
+		}
+	}
 }
 
 func (d dialogCmp) GetLayers() []*lipgloss.Layer {
@@ -151,11 +198,15 @@ func (d dialogCmp) handleOpen(msg OpenDialogMsg) (DialogCmp, tea.Cmd) {
 	if idx, ok := d.idMap[msg.Model.ID()]; ok {
 		existing := d.dialogs[idx]
 		msg.Model = existing
+		msg.Owner = d.sessions[existing.ID()].Owner
 		d.dialogs = slices.Delete(d.dialogs, idx, idx+1)
 	}
 
-	d.idMap[msg.Model.ID()] = len(d.dialogs)
 	d.dialogs = append(d.dialogs, msg.Model)
+	for i, dialog := range d.dialogs {
+		d.idMap[dialog.ID()] = i
+	}
+	d.sessions[msg.Model.ID()] = &Session{Owner: msg.Owner}
 
 	cmds := make([]tea.Cmd, 0, 2)
 	cmds = append(cmds, msg.Model.Init())
@@ -165,5 +216,5 @@ func (d dialogCmp) handleOpen(msg OpenDialogMsg) (DialogCmp, tea.Cmd) {
 	})
 	cmds = append(cmds, cmd)
 
-	return d, tea.Batch(cmds...)
+	return d, bindSession(tea.Batch(cmds...), d.ActiveSession())
 }

@@ -12,7 +12,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
-	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
 	"github.com/kpumuk/lazykiq/internal/ui/views"
 )
 
@@ -83,7 +82,7 @@ func TestAppMetricsNavigationDisposesAndRefetches(t *testing.T) {
 		}
 		updateMetricsApp(&app, cmd())
 		if round == 0 {
-			cmd = updateMetricsApp(&app, filterdialog.ActionMsg{Action: filterdialog.ActionApply, Query: "tenant"})
+			cmd = submitFilter(&app, "tenant")
 			updateMetricsApp(&app, cmd())
 			cmd = updateMetricsApp(&app, metricsAppKey('}'))
 			updateMetricsApp(&app, cmd())

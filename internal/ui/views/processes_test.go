@@ -245,19 +245,10 @@ func TestProcessesListDangerousActionsRequireConfirmation(t *testing.T) {
 func collectConfirmAction(t *testing.T, cmd tea.Cmd) confirmdialog.ActionMsg {
 	t.Helper()
 
-	msg := cmd()
-	if batch, ok := msg.(tea.BatchMsg); ok {
-		for _, subcmd := range batch {
-			if confirmed, ok := subcmd().(confirmdialog.ActionMsg); ok {
-				return confirmed
-			}
-		}
-		t.Fatalf("batch did not contain confirm ActionMsg: %#v", msg)
-	}
-
+	msg := cmd().(dialogs.CloseDialogMsg).Action
 	confirmed, ok := msg.(confirmdialog.ActionMsg)
 	if !ok {
-		t.Fatalf("command returned %T, want confirm ActionMsg", msg)
+		t.Fatalf("completion action = %T, want confirm ActionMsg", msg)
 	}
 	return confirmed
 }
