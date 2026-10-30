@@ -30,6 +30,7 @@ type busyDataMsg struct {
 // Busy shows active workers/processes.
 type Busy struct {
 	requestctx.Scope
+	IntentScope
 	client          sidekiq.API
 	width           int
 	height          int
@@ -133,9 +134,7 @@ func (b *Busy) Update(msg tea.Msg) (View, tea.Cmd) {
 			}
 			return b, nil
 		case "s":
-			return b, func() tea.Msg {
-				return ShowProcessesListMsg{}
-			}
+			return b, b.EmitIntent(ShowProcessesListMsg{})
 		}
 		if b.handleProcessSelectKey(key) {
 			return b, nil
@@ -147,9 +146,7 @@ func (b *Busy) Update(msg tea.Msg) (View, tea.Cmd) {
 				jobIdx := b.rowJobIndex[idx]
 				if jobIdx >= 0 && jobIdx < len(b.filteredJobs) {
 					job := b.filteredJobs[jobIdx].JobRecord
-					return b, func() tea.Msg {
-						return ShowJobDetailMsg{Job: job}
-					}
+					return b, b.EmitIntent(ShowJobDetailMsg{Job: job})
 				}
 			}
 			return b, nil
@@ -506,9 +503,7 @@ func (b *Busy) openFilterDialog() tea.Cmd {
 		filterdialog.WithStyles(b.filterStyle),
 		filterdialog.WithQuery(b.filter),
 	)
-	return func() tea.Msg {
-		return dialogs.OpenDialogMsg{Model: dialog}
-	}
+	return b.EmitIntent(dialogs.OpenDialogMsg{Model: dialog})
 }
 
 // renderJobsBox renders the bordered box containing the jobs table.

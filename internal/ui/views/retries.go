@@ -135,9 +135,7 @@ func (r *Retries) Update(msg tea.Msg) (View, tea.Cmd) {
 			// Show detail for selected job
 			if idx := r.lazy.Table().Cursor(); idx >= 0 && idx < len(r.jobs) {
 				job := r.jobs[idx].JobRecord
-				return r, func() tea.Msg {
-					return ShowJobDetailMsg{Job: job}
-				}
+				return r, r.EmitIntent(ShowJobDetailMsg{Job: job})
 			}
 			return r, nil
 		}
@@ -382,98 +380,86 @@ func (r *Retries) buildRows(jobs []*sidekiq.SortedEntry) []table.Row {
 
 func (r *Retries) openDeleteConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
 	jobName := r.jobName(entry)
-	return func() tea.Msg {
-		return dialogs.OpenDialogMsg{
-			Model: newConfirmDialog(
-				r.styles,
-				"Delete job",
-				fmt.Sprintf(
-					"Are you sure you want to delete the %s job?\n\nThis action is not recoverable.",
-					r.styles.Text.Bold(true).Render(jobName),
-				),
-				entry.JID(),
-				r.styles.DangerAction,
+	return r.EmitIntent(dialogs.OpenDialogMsg{
+		Model: newConfirmDialog(
+			r.styles,
+			"Delete job",
+			fmt.Sprintf(
+				"Are you sure you want to delete the %s job?\n\nThis action is not recoverable.",
+				r.styles.Text.Bold(true).Render(jobName),
 			),
-		}
-	}
+			entry.JID(),
+			r.styles.DangerAction,
+		),
+	})
 }
 
 func (r *Retries) openKillConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
 	jobName := r.jobName(entry)
-	return func() tea.Msg {
-		return dialogs.OpenDialogMsg{
-			Model: newConfirmDialog(
-				r.styles,
-				"Kill job",
-				fmt.Sprintf(
-					"Are you sure you want to kill the %s job?\n\nThis will move the job to the dead queue.",
-					r.styles.Text.Bold(true).Render(jobName),
-				),
-				entry.JID(),
-				r.styles.DangerAction,
+	return r.EmitIntent(dialogs.OpenDialogMsg{
+		Model: newConfirmDialog(
+			r.styles,
+			"Kill job",
+			fmt.Sprintf(
+				"Are you sure you want to kill the %s job?\n\nThis will move the job to the dead queue.",
+				r.styles.Text.Bold(true).Render(jobName),
 			),
-		}
-	}
+			entry.JID(),
+			r.styles.DangerAction,
+		),
+	})
 }
 
 func (r *Retries) openRetryNowConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
 	jobName := r.jobName(entry)
-	return func() tea.Msg {
-		return dialogs.OpenDialogMsg{
-			Model: newConfirmDialog(
-				r.styles,
-				"Retry job",
-				fmt.Sprintf(
-					"Retry the %s job now?\n\nThis will enqueue it immediately.",
-					r.styles.Text.Bold(true).Render(jobName),
-				),
-				entry.JID(),
-				r.styles.DangerAction,
+	return r.EmitIntent(dialogs.OpenDialogMsg{
+		Model: newConfirmDialog(
+			r.styles,
+			"Retry job",
+			fmt.Sprintf(
+				"Retry the %s job now?\n\nThis will enqueue it immediately.",
+				r.styles.Text.Bold(true).Render(jobName),
 			),
-		}
-	}
+			entry.JID(),
+			r.styles.DangerAction,
+		),
+	})
 }
 
 func (r *Retries) openDeleteAllConfirm() tea.Cmd {
-	return func() tea.Msg {
-		return dialogs.OpenDialogMsg{
-			Model: newConfirmDialog(
-				r.styles,
-				"Delete all retries",
-				"Are you sure you want to delete all retry jobs?\n\nThis action is not recoverable.",
-				"retries.delete_all",
-				r.styles.DangerAction,
-			),
-		}
-	}
+	return r.EmitIntent(dialogs.OpenDialogMsg{
+		Model: newConfirmDialog(
+			r.styles,
+			"Delete all retries",
+			"Are you sure you want to delete all retry jobs?\n\nThis action is not recoverable.",
+			"retries.delete_all",
+			r.styles.DangerAction,
+		),
+	})
 }
 
 func (r *Retries) openKillAllConfirm() tea.Cmd {
-	return func() tea.Msg {
-		return dialogs.OpenDialogMsg{
-			Model: newConfirmDialog(
-				r.styles,
-				"Kill all retries",
-				"Are you sure you want to kill all retry jobs?\n\nThis will move them to the dead queue.",
-				"retries.kill_all",
-				r.styles.DangerAction,
-			),
-		}
-	}
+	return r.EmitIntent(dialogs.OpenDialogMsg{
+		Model: newConfirmDialog(
+			r.styles,
+			"Kill all retries",
+			"Are you sure you want to kill all retry jobs?\n\nThis will move them to the dead queue.",
+			"retries.kill_all",
+			r.styles.DangerAction,
+		),
+	})
 }
 
 func (r *Retries) openRetryAllConfirm() tea.Cmd {
-	return func() tea.Msg {
-		return dialogs.OpenDialogMsg{
-			Model: newConfirmDialog(
-				r.styles,
-				"Retry all retries",
-				"Retry all retry jobs now?\n\nThis will enqueue them immediately.",
-				"retries.retry_all",
-				r.styles.DangerAction,
-			),
-		}
-	}
+	return r.EmitIntent(dialogs.OpenDialogMsg{
+		Model: newConfirmDialog(
+			r.styles,
+			"Retry all retries",
+			"Retry all retry jobs now?\n\nThis will enqueue them immediately.",
+			"retries.retry_all",
+			r.styles.DangerAction,
+		),
+	})
 }
 
 func (r *Retries) deleteJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {

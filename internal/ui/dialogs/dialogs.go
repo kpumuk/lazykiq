@@ -2,7 +2,6 @@
 package dialogs
 
 import (
-	"reflect"
 	"slices"
 
 	tea "charm.land/bubbletea/v2"
@@ -37,8 +36,28 @@ type Session struct {
 	Owner any
 }
 
+// SessionScope binds a dialog's close commands at creation time, before they
+// can be composed into batches or sequences.
+type SessionScope struct {
+	session *Session
+}
+
+// SessionSetter receives the dialog activation before Init or Update.
+type SessionSetter interface {
+	SetSession(*Session)
+}
+
+// SetSession identifies the dialog's current activation.
+func (s *SessionScope) SetSession(session *Session) { s.session = session }
+
+// CloseCmd snapshots the current session and optional action.
+func (s SessionScope) CloseCmd(action tea.Msg) tea.Cmd {
+	msg := CloseDialogMsg{Session: s.session, Action: action}
+	return func() tea.Msg { return msg }
+}
+
 // CloseDialogMsg closes a dialog and delivers its optional action atomically.
-// The manager binds commands to their originating session before delivery.
+// The emitting dialog captures its session before command execution.
 type CloseDialogMsg struct {
 	Session *Session
 	Action  tea.Msg
@@ -86,9 +105,10 @@ func (d dialogCmp) Update(msg tea.Msg) (DialogCmp, tea.Cmd) {
 		d.width = msg.Width
 		d.height = msg.Height
 		for i := range d.dialogs {
+			d.prepareDialog(d.dialogs[i])
 			u, cmd := d.dialogs[i].Update(msg)
 			d.dialogs[i] = u
-			cmds = append(cmds, bindSession(cmd, d.sessions[u.ID()]))
+			cmds = append(cmds, cmd)
 		}
 		return d, tea.Batch(cmds...)
 	case OpenDialogMsg:
@@ -117,9 +137,10 @@ func (d dialogCmp) Update(msg tea.Msg) (DialogCmp, tea.Cmd) {
 
 	if d.HasDialogs() {
 		lastIndex := len(d.dialogs) - 1
+		d.prepareDialog(d.dialogs[lastIndex])
 		u, cmd := d.dialogs[lastIndex].Update(msg)
 		d.dialogs[lastIndex] = u
-		return d, bindSession(cmd, d.ActiveSession())
+		return d, cmd
 	}
 
 	return d, nil
@@ -151,43 +172,6 @@ func (d dialogCmp) ActiveSession() *Session {
 	return d.sessions[d.ActiveDialogID()]
 }
 
-// bindSession captures identity before a command runs, including batched commands.
-func bindSession(cmd tea.Cmd, session *Session) tea.Cmd {
-	return BindCommand(cmd, func(msg tea.Msg) tea.Msg {
-		if closeMsg, ok := msg.(CloseDialogMsg); ok {
-			closeMsg.Session = session
-			return closeMsg
-		}
-		return msg
-	})
-}
-
-// Bubble Tea v2.1.1 keeps its sequence message private. Discover its exact type
-// through the public constructor so it can retain its scheduler semantics.
-var sequenceType = reflect.TypeOf(tea.Sequence(func() tea.Msg { return nil }, func() tea.Msg { return nil })())
-
-// BindCommand transforms leaf results without executing child commands or
-// hiding control messages from Bubble Tea. It preserves nested batch/sequence
-// structure, including the private sequence message type.
-func BindCommand(cmd tea.Cmd, bind func(tea.Msg) tea.Msg) tea.Cmd {
-	if cmd == nil {
-		return nil
-	}
-	return func() tea.Msg {
-		msg := cmd()
-		if _, batch := msg.(tea.BatchMsg); batch || reflect.TypeOf(msg) == sequenceType {
-			commands := reflect.ValueOf(msg)
-			bound := reflect.MakeSlice(commands.Type(), commands.Len(), commands.Len())
-			for i := range commands.Len() {
-				child := commands.Index(i).Interface().(tea.Cmd)
-				bound.Index(i).Set(reflect.ValueOf(BindCommand(child, bind)))
-			}
-			return bound.Interface()
-		}
-		return bind(msg)
-	}
-}
-
 func (d dialogCmp) GetLayers() []*lipgloss.Layer {
 	layers := make([]*lipgloss.Layer, 0, len(d.dialogs))
 	for i, dialog := range d.Dialogs() {
@@ -200,6 +184,12 @@ func (d dialogCmp) GetLayers() []*lipgloss.Layer {
 
 func (d dialogCmp) HasDialogs() bool {
 	return len(d.dialogs) > 0
+}
+
+func (d dialogCmp) prepareDialog(model DialogModel) {
+	if setter, ok := model.(SessionSetter); ok {
+		setter.SetSession(d.sessions[model.ID()])
+	}
 }
 
 func (d dialogCmp) handleOpen(msg OpenDialogMsg) (DialogCmp, tea.Cmd) {
@@ -223,6 +213,7 @@ func (d dialogCmp) handleOpen(msg OpenDialogMsg) (DialogCmp, tea.Cmd) {
 		d.idMap[dialog.ID()] = i
 	}
 	d.sessions[msg.Model.ID()] = &Session{Owner: msg.Owner}
+	d.prepareDialog(msg.Model)
 
 	cmds := make([]tea.Cmd, 0, 2)
 	cmds = append(cmds, msg.Model.Init())
@@ -232,5 +223,5 @@ func (d dialogCmp) handleOpen(msg OpenDialogMsg) (DialogCmp, tea.Cmd) {
 	})
 	cmds = append(cmds, cmd)
 
-	return d, bindSession(tea.Batch(cmds...), d.ActiveSession())
+	return d, tea.Batch(cmds...)
 }

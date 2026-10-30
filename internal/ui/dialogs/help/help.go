@@ -57,6 +57,7 @@ func DefaultStyles() Styles {
 
 // Model defines state for the help dialog component.
 type Model struct {
+	dialogs.SessionScope
 	styles       Styles
 	sections     []Section
 	width        int
@@ -122,7 +123,7 @@ func (m *Model) Update(msg tea.Msg) (dialogs.DialogModel, tea.Cmd) {
 	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "?", "esc":
-			return m, func() tea.Msg { return dialogs.CloseDialogMsg{} }
+			return m, m.CloseCmd(nil)
 		case "up", "k":
 			m.scrollBy(-1)
 			return m, nil

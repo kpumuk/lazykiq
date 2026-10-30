@@ -1,11 +1,13 @@
 package ui
 
 import (
+	"context"
 	"errors"
 	"fmt"
-	"reflect"
+	"io"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 
@@ -102,34 +104,88 @@ func TestAppViewIntentOwnership(t *testing.T) {
 	}
 }
 
-type intentCommandView struct {
+type initIntentView struct {
 	stubView
-	command tea.Cmd
+	views.IntentScope
 }
 
-func (v *intentCommandView) Update(tea.Msg) (views.View, tea.Cmd) { return v, v.command }
+func (v *initIntentView) Init() tea.Cmd {
+	return v.EmitIntent(dialogs.OpenDialogMsg{Model: filterdialog.New()})
+}
 
-// Run nested scheduler nodes as Bubble Tea does, preserving execution order.
-func deliverIntentCommands(app *App, cmd tea.Cmd) {
-	if cmd == nil {
-		return
-	}
-	msg := cmd()
-	switch commands := msg.(type) {
-	case tea.BatchMsg:
-		for _, child := range commands {
-			deliverIntentCommands(app, child)
+func TestAppInitialIntentOwnership(t *testing.T) {
+	for _, route := range []string{"init", "switch", "push"} {
+		for _, stale := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/stale=%t", route, stale), func(t *testing.T) {
+				app := New(&ownershipClient{}, "", false, nil)
+				defer app.cancel()
+				view := &initIntentView{}
+				var cmd tea.Cmd
+				if route == "init" {
+					app.viewRegistry[viewDashboard] = view
+					// The second startup command belongs to the initial view.
+					cmd = app.Init()().(tea.BatchMsg)[1]
+				} else {
+					app.viewRegistry[viewBusy] = view
+					if route == "switch" {
+						cmd = app.setActiveView(viewBusy)
+					} else {
+						cmd = app.pushView(viewBusy)
+					}
+				}
+				if stale {
+					id := app.activeViewID()
+					app.setActiveView(viewErrorsSummary)
+					app.setActiveView(id)
+				}
+				dialogStep(&app, cmd())
+				if app.dialogs.HasDialogs() == stale {
+					t.Fatal("initial intent did not follow its emitting activation")
+				}
+				if !stale && app.dialogs.ActiveSession().Owner.(dialogOwner).view != view {
+					t.Fatal("initial intent acquired a different owner")
+				}
+			})
 		}
-	default:
-		if reflect.TypeOf(msg) == reflect.TypeOf(tea.Sequence(tea.Quit, tea.Quit)()) {
-			commands := reflect.ValueOf(msg)
-			for i := range commands.Len() {
-				deliverIntentCommands(app, commands.Index(i).Interface().(tea.Cmd))
-			}
-			return
-		}
-		dialogStep(app, msg)
 	}
+}
+
+type intentCommandView struct {
+	stubView
+	views.IntentScope
+	intent tea.Msg
+	err    error
+}
+
+func (v *intentCommandView) Update(tea.Msg) (views.View, tea.Cmd) {
+	intent := v.EmitIntent(v.intent)
+	failure := v.err
+	return v, tea.Sequence(
+		tea.Batch(tea.Sequence(intent, tea.Batch(
+			func() tea.Msg { return views.ConnectionErrorMsg{Err: failure} },
+			func() tea.Msg { return views.QueueActionResultMsg{Err: failure} },
+		)), func() tea.Msg { return nil }),
+		func() tea.Msg { return intentCommandsDone{} },
+	)
+}
+
+type intentCommandsDone struct{}
+
+// Let Bubble Tea execute the command tree and deliver every leaf to the root.
+type intentProgram struct {
+	app App
+	cmd tea.Cmd
+}
+
+func (m intentProgram) Init() tea.Cmd  { return m.cmd }
+func (m intentProgram) View() tea.View { return m.app.View() }
+func (m intentProgram) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if _, done := msg.(intentCommandsDone); done {
+		return m, tea.Quit
+	}
+	next, cmd := m.app.Update(msg)
+	m.app = next.(App)
+	return m, cmd
 }
 
 func TestAppNestedViewCommands(t *testing.T) {
@@ -148,18 +204,18 @@ func TestAppNestedViewCommands(t *testing.T) {
 			failure := errors.New("global operation failed")
 			app := New(&ownershipClient{}, "", false, nil)
 			defer app.cancel()
-			view := &intentCommandView{command: tea.Batch(
-				tea.Sequence(func() tea.Msg { return intent }, tea.Batch(
-					func() tea.Msg { return views.ConnectionErrorMsg{Err: failure} },
-					func() tea.Msg { return views.QueueActionResultMsg{Err: failure} },
-				)),
-				func() tea.Msg { return nil },
-			)}
+			view := &intentCommandView{intent: intent, err: failure}
 			app.viewRegistry[viewBusy] = view
 			app.setActiveView(viewBusy)
 			cmd := dialogStep(&app, tea.KeyPressMsg{Code: '/', Text: "/"})
 			app.setActiveView(viewErrorsSummary)
-			deliverIntentCommands(&app, cmd)
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			result, err := tea.NewProgram(intentProgram{app, cmd}, tea.WithContext(ctx), tea.WithInput(nil), tea.WithOutput(io.Discard), tea.WithoutRenderer()).Run()
+			if err != nil {
+				t.Fatal(err)
+			}
+			app = result.(intentProgram).app
 			if app.activeViewID() != viewErrorsSummary || app.dialogs.HasDialogs() {
 				t.Fatal("nested stale intent changed screen")
 			}

@@ -68,12 +68,11 @@ type dialogOwner struct {
 	generation uint64
 }
 
-// viewIntentMsg carries the issuer captured before asynchronous execution.
-type viewIntentMsg struct {
+// viewIntentOwner identifies the activation that created a local UI command.
+type viewIntentOwner struct {
 	owner            dialogOwner
 	lifetime         context.Context
 	dialogGeneration uint64
-	msg              tea.Msg
 }
 
 // App is the main application model.
@@ -206,7 +205,7 @@ func (a App) Init() tea.Cmd {
 	activeID := a.activeViewID()
 	return tea.Batch(
 		requestBackgroundCmd(),
-		a.bindViewCommand(activeID, a.viewRegistry[activeID].Init()),
+		a.prepareView(activeID).Init(),
 		a.metrics.Init(),
 		a.fetchStatsCmd(), // Fetch stats immediately
 		tickCmd(),         // Start the ticker for subsequent updates
@@ -232,16 +231,17 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	dialogUpdated := false
 
 	switch msg := msg.(type) {
-	case viewIntentMsg:
-		if msg.lifetime != a.ctx || a.ctx.Err() != nil ||
-			!a.currentOwner(msg.owner) || msg.dialogGeneration != a.dialogGeneration {
+	case views.IntentMsg:
+		origin, ok := msg.Owner.(viewIntentOwner)
+		if !ok || origin.lifetime != a.ctx || a.ctx.Err() != nil ||
+			!a.currentOwner(origin.owner) || origin.dialogGeneration != a.dialogGeneration {
 			return a, nil
 		}
-		if open, ok := msg.msg.(dialogs.OpenDialogMsg); ok {
-			open.Owner = msg.owner
+		if open, ok := msg.Msg.(dialogs.OpenDialogMsg); ok {
+			open.Owner = origin.owner
 			return a.Update(open)
 		}
-		return a.Update(msg.msg)
+		return a.Update(msg.Msg)
 	case devtoolsdialog.CommandResultMsg:
 		msg.Collect(a.devTracker)
 		return a, nil
@@ -915,13 +915,13 @@ func (a App) stackNames() []string {
 }
 
 func (a *App) updateView(id viewID, msg tea.Msg) tea.Cmd {
-	view, ok := a.viewRegistry[id]
+	_, ok := a.viewRegistry[id]
 	if !ok {
 		return nil
 	}
-	updatedView, cmd := view.Update(msg)
+	updatedView, cmd := a.prepareView(id).Update(msg)
 	a.viewRegistry[id] = updatedView
-	return a.bindViewCommand(id, cmd)
+	return cmd
 }
 
 func (a App) currentOwner(owner dialogOwner) bool {
@@ -929,19 +929,16 @@ func (a App) currentOwner(owner dialogOwner) bool {
 		owner.view == a.viewRegistry[owner.id]
 }
 
-func (a App) bindViewCommand(id viewID, cmd tea.Cmd) tea.Cmd {
-	owner := dialogOwner{id, a.viewRegistry[id], a.viewGeneration}
-	lifetime, generation := a.ctx, a.dialogGeneration
-	return dialogs.BindCommand(cmd, func(msg tea.Msg) tea.Msg {
-		switch msg.(type) {
-		case dialogs.OpenDialogMsg, views.ShowJobDetailMsg, views.ShowErrorDetailsMsg,
-			views.ShowJobMetricsMsg, views.ShowPeriodicDetailMsg, views.ShowQueuesListMsg,
-			views.ShowQueueDetailsMsg, views.ShowProcessesListMsg, views.ShowProcessSelectMsg:
-			return viewIntentMsg{owner, lifetime, generation, msg}
-		default:
-			return msg
-		}
-	})
+func (a App) prepareView(id viewID) views.View {
+	view := a.viewRegistry[id]
+	if setter, ok := view.(views.IntentOwnerSetter); ok {
+		setter.SetIntentOwner(viewIntentOwner{
+			owner:            dialogOwner{id, view, a.viewGeneration},
+			lifetime:         a.ctx,
+			dialogGeneration: a.dialogGeneration,
+		})
+	}
+	return view
 }
 
 func (a *App) cancelViewRequests(id viewID) {
@@ -969,8 +966,8 @@ func (a *App) setActiveView(id viewID) tea.Cmd {
 	}
 	a.viewStack = []viewID{id}
 	a.stackbar.SetStack(a.stackNames())
-	if view, ok := a.viewRegistry[id]; ok {
-		return a.bindViewCommand(id, view.Init())
+	if _, ok := a.viewRegistry[id]; ok {
+		return a.prepareView(id).Init()
 	}
 	return nil
 }
@@ -986,8 +983,8 @@ func (a *App) pushView(id viewID) tea.Cmd {
 	}
 	a.viewStack = append(a.viewStack, id)
 	a.stackbar.SetStack(a.stackNames())
-	if view, ok := a.viewRegistry[id]; ok {
-		return a.bindViewCommand(id, view.Init())
+	if _, ok := a.viewRegistry[id]; ok {
+		return a.prepareView(id).Init()
 	}
 	return nil
 }

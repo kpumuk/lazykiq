@@ -36,6 +36,7 @@ type metricsRow struct {
 // Metrics shows job execution metrics.
 type Metrics struct {
 	requestctx.Scope
+	IntentScope
 	client sidekiq.API
 	width  int
 	height int
@@ -131,9 +132,7 @@ func (m *Metrics) Update(msg tea.Msg) (View, tea.Cmd) {
 		case "enter":
 			if selected, ok := m.selectedRow(); ok {
 				intent := ShowJobMetricsMsg{Job: selected.class, Period: m.period}
-				return m, func() tea.Msg {
-					return intent
-				}
+				return m, m.EmitIntent(intent)
 			}
 			return m, nil
 		case "{":
@@ -449,9 +448,7 @@ func (m *Metrics) openFilterDialog() tea.Cmd {
 		filterdialog.WithStyles(m.filterStyle),
 		filterdialog.WithQuery(m.filter),
 	)
-	return func() tea.Msg {
-		return dialogs.OpenDialogMsg{Model: dialog}
-	}
+	return m.EmitIntent(dialogs.OpenDialogMsg{Model: dialog})
 }
 
 func (m *Metrics) setFilterAndReload(filter string) tea.Cmd {

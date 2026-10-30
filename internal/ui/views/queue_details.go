@@ -150,15 +150,13 @@ func (q *QueueDetails) Update(msg tea.Msg) (View, tea.Cmd) {
 		case "p":
 			if q.dangerousActionsEnabled && q.capabilities.SupportsQueuePause() {
 				if queue, ok := q.currentQueue(); ok {
-					return q, q.actions.pauseDialog(queue.Name, queue.Paused, q.styles)
+					return q, q.actions.pauseDialog(queue.Name, queue.Paused, q.styles, q.IntentScope)
 				}
 			}
 			return q, nil
 		case "s":
 			// Switch to queues list view
-			return q, func() tea.Msg {
-				return ShowQueuesListMsg{}
-			}
+			return q, q.EmitIntent(ShowQueuesListMsg{})
 		case "c":
 			if job, ok := q.selectedJob(); ok {
 				return q, copyTextCmd(job.JID())
@@ -176,9 +174,7 @@ func (q *QueueDetails) Update(msg tea.Msg) (View, tea.Cmd) {
 		case "enter":
 			// Show detail for selected job
 			if job, ok := q.selectedJob(); ok {
-				return q, func() tea.Msg {
-					return ShowJobDetailMsg{Job: job.JobRecord}
-				}
+				return q, q.EmitIntent(ShowJobDetailMsg{Job: job.JobRecord})
 			}
 			return q, nil
 		}
