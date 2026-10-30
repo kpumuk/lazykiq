@@ -15,7 +15,7 @@ func TestViewDimensions(t *testing.T) {
 		wantEmpty bool
 	}{
 		"zero width":   {width: 0, height: 5, wantEmpty: true},
-		"zero height":  {width: 20, height: 0, wantEmpty: false},
+		"zero height":  {width: 20, height: 0, wantEmpty: true},
 		"short height": {width: 20, height: 3, wantEmpty: false},
 		"normal":       {width: 30, height: 6, wantEmpty: false},
 	}
@@ -36,7 +36,7 @@ func TestViewDimensions(t *testing.T) {
 			}
 
 			lines := strings.Split(ansi.Strip(output), "\n")
-			expectedHeight := max(tc.height, 5)
+			expectedHeight := tc.height
 			if len(lines) != expectedHeight {
 				t.Fatalf("expected %d lines, got %d", expectedHeight, len(lines))
 			}
@@ -69,4 +69,25 @@ func TestGoldenMessageBox(t *testing.T) {
 	)
 	output := ansi.Strip(m.View())
 	golden.RequireEqual(t, []byte(output))
+}
+
+func TestGoldenMessageBoxSmall(t *testing.T) {
+	for name, size := range map[string][2]int{"zero": {}, "tiny": {1, 1}, "short": {20, 3}, "narrow": {8, 5}, "multiline": {20, 6}} {
+		t.Run(name, func(t *testing.T) {
+			m := New(WithSize(size[0], size[1]), WithTitle("Empty"), WithMessage("\x1b[31m界é👩🏽‍💻 very long message\x1b[m\nnext line"))
+			output := m.View()
+			if output != "" {
+				lines := strings.Split(output, "\n")
+				if len(lines) > size[1] {
+					t.Fatal("height exceeded")
+				}
+				for _, line := range lines {
+					if ansi.StringWidth(line) > size[0] {
+						t.Fatal("width exceeded")
+					}
+				}
+			}
+			golden.RequireEqual(t, []byte(ansi.Strip(output)))
+		})
+	}
 }

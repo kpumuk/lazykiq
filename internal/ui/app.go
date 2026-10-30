@@ -3,6 +3,7 @@ package ui
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/key"
@@ -379,8 +380,8 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.WindowSizeMsg:
-		a.width = msg.Width
-		a.height = msg.Height
+		a.width = max(msg.Width, 0)
+		a.height = max(msg.Height, 0)
 		a.ready = true
 
 		// Update component dimensions
@@ -432,22 +433,29 @@ func (a App) View() tea.View {
 		v.SetContent("Initializing...")
 		return v
 	}
+	if a.width == 0 || a.height == 0 {
+		return v
+	}
+	if a.width < 4 || a.height < 5 {
+		v.SetContent(fitRectangle(a.styles.ViewMuted.Render("Terminal too small"), a.width, a.height))
+		return v
+	}
 
-	content := a.viewRegistry[a.activeViewID()].View()
+	content := fitRectangle(a.viewRegistry[a.activeViewID()].View(), a.width, a.contentHeight())
 	items := a.contextHeaderItems()
 	if len(items) == 0 {
 		items = a.contextItems()
 	}
 	a.contextbar.SetItems(items)
 	a.contextbar.SetHints(a.contextHints())
-	base := lipgloss.JoinVertical(
-		lipgloss.Left,
-		a.metrics.View(),
-		a.contextbar.View(),
-		content,
-		a.stackbar.View(),
-		a.navbar.View(),
-	)
+	regions := []string{fitRectangle(a.metrics.View(), a.width, a.metrics.Height())}
+	if a.contextbar.Height() > 0 {
+		regions = append(regions, fitRectangle(a.contextbar.View(), a.width, a.contextbar.Height()))
+	}
+	regions = append(regions, content,
+		fitRectangle(a.stackbar.View(), a.width, a.stackbar.Height()),
+		fitRectangle(a.navbar.View(), a.width, a.navbar.Height()))
+	base := lipgloss.JoinVertical(lipgloss.Left, regions...)
 
 	// If there's a connection error, overlay the error popup
 	if a.connectionError != nil || a.dialogs.HasDialogs() {
@@ -461,7 +469,7 @@ func (a App) View() tea.View {
 			if errorPanel != "" {
 				panelWidth := lipgloss.Width(errorPanel)
 				panelHeight := lipgloss.Height(errorPanel)
-				contentHeight := a.height - a.metrics.Height() - a.contextbar.Height() - a.stackbar.Height() - a.navbar.Height()
+				contentHeight := a.contentHeight()
 				panelX := max((a.width-panelWidth)/2, 0)
 				panelY := a.metrics.Height() + a.contextbar.Height() + max((contentHeight-panelHeight)/2, 0)
 				layers = append(layers, lipgloss.NewLayer(errorPanel).X(panelX).Y(panelY).Z(1))
@@ -472,11 +480,11 @@ func (a App) View() tea.View {
 			layers = append(layers, a.dialogs.GetLayers()...)
 		}
 
-		v.SetContent(lipgloss.NewCompositor(layers...).Render())
+		v.SetContent(fitRectangle(lipgloss.NewCompositor(layers...).Render(), a.width, a.height))
 		return v
 	}
 	// Build the layout: metrics (top) + content (middle) + navbar (bottom)
-	v.SetContent(base)
+	v.SetContent(fitRectangle(base, a.width, a.height))
 
 	return v
 }
@@ -485,6 +493,14 @@ func (a *App) syncContextbar() {
 	if !a.ready || a.width == 0 || a.height == 0 {
 		return
 	}
+	desired := a.contextHeight()
+	if desired == a.contextbar.Height() {
+		return
+	}
+	a.resizeViews()
+}
+
+func (a App) contextHeight() int {
 	active := a.viewRegistry[a.activeViewID()]
 	desired := contextbarDefaultHeight
 	if provider, ok := active.(views.HeaderLinesProvider); ok {
@@ -495,20 +511,37 @@ func (a *App) syncContextbar() {
 	if desired <= 0 {
 		desired = contextbarDefaultHeight
 	}
-	if desired == a.contextbar.Height() {
-		return
-	}
-	a.contextbar.SetHeight(desired)
-	a.resizeViews()
+	// Give short terminals five content rows before spending space on hints.
+	available := a.height - a.metrics.Height() - a.stackbar.Height() - a.navbar.Height() - 5
+	return min(desired, max(available, 0))
+}
+
+func (a App) contentHeight() int {
+	return max(a.height-a.metrics.Height()-a.contextbar.Height()-a.stackbar.Height()-a.navbar.Height(), 0)
 }
 
 func (a *App) resizeViews() {
-	contentHeight := a.height - a.metrics.Height() - a.contextbar.Height() - a.stackbar.Height() - a.navbar.Height()
+	a.contextbar.SetHeight(a.contextHeight())
+	contentHeight := a.contentHeight()
 	contentWidth := a.width
 	for id, view := range a.viewRegistry {
 		a.viewRegistry[id] = view.SetSize(contentWidth, contentHeight)
 	}
 	a.errorPopup.SetSize(contentWidth, contentHeight)
+}
+
+// fitRectangle bounds each region before composition, including ANSI and wide
+// graphemes. Padding keeps the following chrome at its allocated row.
+func fitRectangle(content string, width, height int) string {
+	if width <= 0 || height <= 0 {
+		return ""
+	}
+	lines := strings.Split(content, "\n")
+	lines = lines[:min(len(lines), height)]
+	for i, line := range lines {
+		lines[i] = ansi.Truncate(line, width, "")
+	}
+	return strings.Join(lines, "\n") + strings.Repeat("\n", height-len(lines))
 }
 
 func (a App) contextItems() []contextbar.Item {

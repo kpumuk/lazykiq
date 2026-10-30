@@ -1,0 +1,10 @@
+ Processed: 0   Failed: 0   Busy: 0   Enqueued: 0   Retries: 0   Scheduled: 0   
+ JID:     fixture                                             esc  back         
+ Queue:   default                                             tab  switch panel 
+╭─Job Details──────────────────╮╭─Job Data (JSON)───────────────╖Esc to close╓─╮
+│ JID:                         ││ {                                            │
+│   fixture                    ││   "args": [                                  │
+│ Queue:                       ││     "é",                                     │
+╰──────────────────────────────╯╰──────────────────────────────────────────────╯
+  Busy   Job: fixture                                                           
+  1 Dashboard  2 Busy  3 Queues  4 Retries  5 Scheduled  6 Dead  7 Errors  8 Me 

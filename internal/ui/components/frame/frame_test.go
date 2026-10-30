@@ -29,7 +29,7 @@ func TestFrameLineCountAndWidth(t *testing.T) {
 	}
 }
 
-func TestFrameMinHeight(t *testing.T) {
+func TestFrameMinHeightRespectsAllocation(t *testing.T) {
 	box := New(
 		WithSize(10, 2),
 		WithMinHeight(5),
@@ -40,8 +40,8 @@ func TestFrameMinHeight(t *testing.T) {
 
 	view := box.View()
 	lines := strings.Split(view, "\n")
-	if len(lines) != 5 {
-		t.Fatalf("want 5 lines, got %d", len(lines))
+	if len(lines) != 2 {
+		t.Fatalf("want 2 lines, got %d", len(lines))
 	}
 	for i, line := range lines {
 		if lipgloss.Width(line) != 10 {
@@ -121,4 +121,29 @@ func TestGoldenFrameWithFilter(t *testing.T) {
 
 	output := ansi.Strip(box.View())
 	golden.RequireEqual(t, []byte(output))
+}
+
+func TestFrameAllocatedBounds(t *testing.T) {
+	for _, width := range []int{-1, 0, 1, 2, 3, 4, 8, 20, 80} {
+		for _, height := range []int{-1, 0, 1, 2, 3, 5, 12} {
+			box := New(WithSize(width, height), WithMinHeight(5), WithTitle("界é👩🏽‍💻"), WithMeta("999 jobs"), WithPadding(2), WithContent("\x1b[31m界é👩🏽‍💻"+strings.Repeat("long", 30)+"\x1b[m\nsecond\nthird"))
+			output := box.View()
+			if output == "" {
+				continue
+			}
+			w, h := lipgloss.Size(output)
+			if w > max(width, 0) || h > max(height, 0) {
+				t.Fatalf("allocated %dx%d rendered %dx%d", width, height, w, h)
+			}
+		}
+	}
+}
+
+func TestGoldenFrameSmall(t *testing.T) {
+	for name, size := range map[string][2]int{"zero": {}, "one column": {1, 5}, "two columns": {2, 3}, "short": {8, 2}, "unicode": {12, 4}} {
+		t.Run(name, func(t *testing.T) {
+			box := New(WithSize(size[0], size[1]), WithMinHeight(5), WithTitle("界"), WithMeta("10 items"), WithPadding(1), WithContent("\x1b[31m界é👩🏽‍💻abcdefgh\x1b[m\nnext"))
+			golden.RequireEqual(t, []byte(ansi.Strip(box.View())))
+		})
+	}
 }

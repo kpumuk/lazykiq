@@ -11,6 +11,7 @@ import (
 	"charm.land/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/exp/golden"
 
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/display"
@@ -277,5 +278,63 @@ func TestJobDetailUnicodeHorizontalScroll(t *testing.T) {
 			view.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 			assertEnd()
 		})
+	}
+}
+
+func TestJobDetailAllocatedBounds(t *testing.T) {
+	for _, populated := range []bool{false, true} {
+		j := NewJobDetail()
+		if populated {
+			j.SetJob(sidekiq.NewJobRecord(`{"jid":"j","class":"界Worker","args":["é👩🏽‍💻abcdefgh"],"error_class":"RuntimeError","error_message":"界 very long error message"}`, "default"))
+		}
+		for _, size := range [][2]int{{0, 0}, {0, 10}, {20, 0}, {-1, -1}, {1, 20}, {2, 2}, {3, 3}, {20, 10}, {59, 8}, {60, 8}, {120, 24}} {
+			j.SetSize(size[0], size[1])
+			for range 2 {
+				output := j.View()
+				if output != "" {
+					w, h := lipgloss.Size(output)
+					if w > max(size[0], 0) || h > max(size[1], 0) {
+						t.Fatalf("allocated %v rendered %dx%d", size, w, h)
+					}
+				}
+				j.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+			}
+		}
+	}
+}
+
+func TestJobDetailResizeKeepsFocusedPane(t *testing.T) {
+	j := NewJobDetail()
+	j.SetJob(sidekiq.NewJobRecord(`{"jid":"fixture","class":"Worker","args":["a very long argument to scroll horizontally","second"]}`, "default"))
+	j.SetSize(120, 10)
+	j.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	j.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	j.Update(tea.KeyPressMsg{Code: 'l', Text: "l"})
+	y, x := j.rightYOffset, j.rightXOffset
+	j.SetSize(20, 10)
+	if !j.focusRight || j.rightYOffset != y || j.rightXOffset != x || j.View() != j.renderRightPanel() {
+		t.Fatal("narrow layout lost active pane or scroll")
+	}
+	j.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	if j.View() != j.renderLeftPanel() {
+		t.Fatal("Tab did not show properties")
+	}
+	j.SetSize(120, 10)
+	if j.focusRight || j.rightYOffset != y || j.rightXOffset != x || !strings.Contains(ansi.Strip(j.View()), "JSON") {
+		t.Fatal("split layout did not restore panes")
+	}
+}
+
+func TestGoldenJobDetailLayout(t *testing.T) {
+	for name, size := range map[string][2]int{"zero": {}, "tiny": {1, 1}, "narrow": {20, 10}, "boundary": {60, 10}, "normal": {120, 16}} {
+		for _, right := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/right=%t", name, right), func(t *testing.T) {
+				j := NewJobDetail()
+				j.SetJob(sidekiq.NewJobRecord(`{"jid":"fixture","class":"界Worker","args":["é","👩🏽‍💻"]}`, "default"))
+				j.SetSize(size[0], size[1])
+				j.focusRight = right
+				golden.RequireEqual(t, []byte(ansi.Strip(j.View())))
+			})
+		}
 	}
 }

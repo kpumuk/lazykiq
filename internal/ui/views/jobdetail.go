@@ -235,6 +235,9 @@ func (j *JobDetail) Update(msg tea.Msg) (View, tea.Cmd) {
 
 // View implements View.
 func (j *JobDetail) View() string {
+	if j.width < 2 || j.height < 2 {
+		return ""
+	}
 	if j.job == nil {
 		return messagebox.New(
 			messagebox.WithStyles(messagebox.Styles{
@@ -246,6 +249,13 @@ func (j *JobDetail) View() string {
 			messagebox.WithMessage("No job selected"),
 			messagebox.WithSize(j.width, j.height),
 		).View()
+	}
+
+	if j.singlePane() {
+		if j.focusRight {
+			return j.renderRightPanel()
+		}
+		return j.renderLeftPanel()
 	}
 
 	leftPanel := j.renderLeftPanel()
@@ -331,8 +341,8 @@ func (j *JobDetail) HelpSections() []HelpSection {
 
 // SetSize implements View.
 func (j *JobDetail) SetSize(width, height int) View {
-	j.width = width
-	j.height = height
+	j.width = max(width, 0)
+	j.height = max(height, 0)
 	j.updateDimensions()
 	j.clampScroll()
 	j.jsonView.SetSize(width, height)
@@ -392,13 +402,22 @@ func (j *JobDetail) Dispose() {
 
 // updateDimensions recalculates panel dimensions.
 func (j *JobDetail) updateDimensions() {
-	// Split width: 40% left, 60% right (with 1 char gap)
-	j.leftWidth = max((j.width*40)/100, 30)
-	j.rightWidth = j.width - j.leftWidth
+	// Keep both panes usable, or let Tab select a full-width pane.
+	if j.singlePane() {
+		j.leftWidth = j.width
+		j.rightWidth = j.width
+	} else {
+		j.leftWidth = max((j.width*40)/100, 30)
+		j.rightWidth = j.width - j.leftWidth
+	}
 
 	// Height minus border (2 lines: top and bottom)
 	// Note: title is part of the top border, not a separate line
-	j.panelHeight = max(j.height-2, 1)
+	j.panelHeight = max(j.height-2, 0)
+}
+
+func (j *JobDetail) singlePane() bool {
+	return j.width < 60
 }
 
 func (j *JobDetail) maxLeftYOffset() int {
@@ -460,7 +479,7 @@ func (j *JobDetail) prepareLeftPanel() {
 
 	innerWidth := j.leftWidth - 2
 	contentWidth := max(innerWidth-2*jobDetailPanelPadding, 0)
-	valueWidth := max(contentWidth-jobDetailValueIndent, 10)
+	valueWidth := max(contentWidth-jobDetailValueIndent, 1)
 	if j.leftLines != nil && j.leftLinesWidth == valueWidth {
 		return
 	}
