@@ -160,6 +160,16 @@ type ShowJobMetricsMsg struct {
 	Period string
 }
 
+// ShowPeriodicDetailMsg requests a stacked Enterprise periodic-job view.
+type ShowPeriodicDetailMsg struct {
+	LID string
+}
+
+// PeriodicJobSetter selects a periodic definition by its stable identifier.
+type PeriodicJobSetter interface {
+	SetPeriodicJob(lid string)
+}
+
 // ShowQueuesListMsg requests the queues list view.
 type ShowQueuesListMsg struct{}
 

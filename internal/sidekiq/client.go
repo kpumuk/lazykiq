@@ -35,13 +35,14 @@ func DisableRedisLogging() {
 
 // Client is a Sidekiq API client.
 type Client struct {
-	redis           *redis.Client
-	displayRedisURL string
-	versionMu       sync.Mutex
-	version         Version
-	versionDetected bool
-	versionPending  chan struct{}
-	capabilities    Capabilities
+	redis            *redis.Client
+	displayRedisURL  string
+	versionMu        sync.Mutex
+	version          Version
+	versionDetected  bool
+	versionPending   chan struct{}
+	capabilities     Capabilities
+	periodicTimezone string
 }
 
 // ClientOption configures a client at construction.
@@ -77,11 +78,16 @@ func NewClient(redisURL string, options ...ClientOption) (*Client, error) {
 	rdb := redis.NewClient(opts)
 
 	client := &Client{
-		redis:           rdb,
-		displayRedisURL: sanitizeRedisURL(redisURL),
+		redis:            rdb,
+		displayRedisURL:  sanitizeRedisURL(redisURL),
+		periodicTimezone: "UTC",
 	}
 	for _, option := range options {
 		option(client)
+	}
+	if _, err := periodicLocation(client.periodicTimezone); err != nil {
+		_ = client.Close()
+		return nil, err
 	}
 	return client, nil
 }

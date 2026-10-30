@@ -1,6 +1,9 @@
 # frozen_string_literal: true
 
 require "sidekiq"
+require_relative "periodic_jobs"
+
+require "sidekiq-ent" if DemoPeriodicJobs.enabled?
 
 # Configure Sidekiq
 Sidekiq.configure_client do |config|
@@ -9,6 +12,8 @@ end
 
 Sidekiq.configure_server do |config|
   config.redis = {url: ENV.fetch("REDIS_URL", "redis://localhost:6379/0")}
+
+  config.periodic(&DemoPeriodicJobs.method(:register)) if DemoPeriodicJobs.enabled?
 
   if ENV["LAZYKIQ_UNSAFE_CAPSULE"] == "1"
     # define a new capsule which processes jobs from the `unsafe` queue one at a time

@@ -7,6 +7,14 @@ import "context"
 type API interface {
 	// GetCapabilities returns explicitly enabled optional functionality.
 	GetCapabilities() Capabilities
+	// GetPeriodicJobs returns Enterprise recurring definitions.
+	GetPeriodicJobs(ctx context.Context) ([]PeriodicJob, error)
+	// GetPeriodicJob returns one current definition and its enqueue history.
+	GetPeriodicJob(ctx context.Context, lid string) (*PeriodicJob, []PeriodicExecution, error)
+	// SetPeriodicJobPaused changes whether the recurring schedule enqueues work.
+	SetPeriodicJobPaused(ctx context.Context, job PeriodicJob, paused bool) error
+	// EnqueuePeriodicJob submits one job from a current recurring definition.
+	EnqueuePeriodicJob(ctx context.Context, job PeriodicJob) (string, error)
 	// GetPausedQueues reads the persistent commercial queue pause flags.
 	GetPausedQueues(ctx context.Context) (map[string]bool, error)
 	// Close closes the Redis connection.

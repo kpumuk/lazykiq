@@ -56,6 +56,8 @@ const (
 	viewJobDetail
 	viewMetrics
 	viewJobMetrics
+	viewPeriodic
+	viewPeriodicDetail
 )
 
 const contextbarDefaultHeight = 5
@@ -106,6 +108,8 @@ func NewWithContext(parent context.Context, client sidekiq.API, version string, 
 
 	keys := DefaultKeyMap()
 	keys.DevTools.SetEnabled(devTracker != nil)
+	periodicEnabled := client != nil && client.GetCapabilities().SupportsPeriodicJobs()
+	keys.View9.SetEnabled(periodicEnabled)
 	brand := "Lazykiq"
 	if version != "" {
 		brand = "Lazykiq v" + version
@@ -135,6 +139,11 @@ func NewWithContext(parent context.Context, client sidekiq.API, version string, 
 		viewJobDetail:     views.NewJobDetail(),
 		viewMetrics:       views.NewMetrics(client),
 		viewJobMetrics:    views.NewJobMetrics(client),
+	}
+	if periodicEnabled {
+		viewOrder = append(viewOrder, viewPeriodic)
+		viewRegistry[viewPeriodic] = views.NewPeriodic(client)
+		viewRegistry[viewPeriodicDetail] = views.NewPeriodicDetail(client)
 	}
 
 	for _, view := range viewRegistry {
@@ -287,6 +296,9 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		cmds = append(cmds, a.updateView(a.activeViewID(), msg))
+		if a.activeViewID() == viewPeriodicDetail {
+			a.stackbar.SetStack(a.stackNames())
+		}
 		if msg.Err != nil && !requestctx.IsCanceled(msg.Err) {
 			a.connectionError = msg.Err
 		}
@@ -301,6 +313,12 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Handle connection errors from views
 		a.connectionError = msg.Err
 	case views.QueueActionResultMsg:
+		if msg.Err != nil {
+			a.connectionError = msg.Err
+		}
+		cmds = append(cmds, a.updateView(a.activeViewID(), msg))
+
+	case views.PeriodicActionResultMsg:
 		if msg.Err != nil {
 			a.connectionError = msg.Err
 		}
@@ -329,6 +347,12 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			setter.SetJobMetrics(msg.Job, msg.Period)
 		}
 		cmds = append(cmds, a.pushView(viewJobMetrics))
+
+	case views.ShowPeriodicDetailMsg:
+		if setter, ok := a.viewRegistry[viewPeriodicDetail].(views.PeriodicJobSetter); ok {
+			setter.SetPeriodicJob(msg.LID)
+			cmds = append(cmds, a.pushView(viewPeriodicDetail))
+		}
 
 	case views.ShowQueuesListMsg:
 		cmds = append(cmds, a.pushView(viewQueuesList))
@@ -360,6 +384,10 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		activeID := a.activeViewID()
 
 		if msg.String() == "esc" && len(a.viewStack) > 1 {
+			if activeID == viewPeriodicDetail {
+				cmd := a.popAndRefresh(viewPeriodic)
+				return a, cmd
+			}
 			a.popView()
 			return a, tea.Batch(cmds...)
 		}
@@ -396,6 +424,9 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case key.Matches(msg, a.keys.View8):
 			cmds = append(cmds, a.setActiveView(viewMetrics))
+
+		case key.Matches(msg, a.keys.View9):
+			cmds = append(cmds, a.setActiveView(viewPeriodic))
 
 		default:
 			// Pass to active view
@@ -755,6 +786,9 @@ func (a App) globalHelpBindings() []key.Binding {
 		a.keys.View6,
 		a.keys.View7,
 		a.keys.View8,
+	}
+	if a.keys.View9.Enabled() {
+		bindings = append(bindings, a.keys.View9)
 	}
 	if a.devTracker != nil {
 		bindings = append(bindings, a.keys.DevTools)

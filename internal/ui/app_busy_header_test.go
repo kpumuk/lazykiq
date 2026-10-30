@@ -20,6 +20,8 @@ type busyHeaderClient struct {
 	data sidekiq.BusyData
 }
 
+func (busyHeaderClient) GetCapabilities() sidekiq.Capabilities { return sidekiq.Capabilities{} }
+
 func (c busyHeaderClient) GetBusyData(context.Context, string) (sidekiq.BusyData, error) {
 	return c.data, nil
 }

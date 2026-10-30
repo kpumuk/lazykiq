@@ -2,6 +2,7 @@
 
 require_relative "boot"
 require "sidekiq/web"
+require "sidekiq-ent/web" if DemoPeriodicJobs.enabled?
 require "securerandom"
 require "rack/session"
 

@@ -19,6 +19,8 @@ type retentionMetricsClient struct {
 	calls   int
 }
 
+func (*retentionMetricsClient) GetCapabilities() sidekiq.Capabilities { return sidekiq.Capabilities{} }
+
 func (*retentionMetricsClient) MetricsPeriodOrder(context.Context) []string {
 	return []string{"1h"}
 }

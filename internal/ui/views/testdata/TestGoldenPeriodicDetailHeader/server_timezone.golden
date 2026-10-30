@@ -1,0 +1,5 @@
+ Class:    CleanupJob                                                              tab switch panel 
+ Queue:    low                                                                     c   copy lid/jid 
+ Schedule: 30 2 * * * [Asia/Tokyo]                                                 r   refresh      
+ Next Run: 2026-10-31 02:30:00 JST (in 5h30m)                                                       
+                                                                                                    

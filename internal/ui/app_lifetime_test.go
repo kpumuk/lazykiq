@@ -29,6 +29,8 @@ type lifetimeClient struct {
 
 func (c *lifetimeClient) DisplayRedisURL() string { return "redis://localhost:6379/0" }
 
+func (c *lifetimeClient) GetCapabilities() sidekiq.Capabilities { return sidekiq.Capabilities{} }
+
 func (c *lifetimeClient) GetStats(ctx context.Context) (sidekiq.Stats, error) {
 	return sidekiq.Stats{}, c.block(ctx, "stats")
 }
