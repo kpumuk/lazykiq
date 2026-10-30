@@ -41,7 +41,7 @@ func TestDashboardHistoryFetchCapturesInputs(t *testing.T) {
 			cmd := d.fetchHistoryCmd()
 			mutate(d)
 
-			msg, ok := cmd().(DashboardHistoryMsg)
+			msg, ok := cmd().(ReadResultMsg).Data.(DashboardHistoryMsg)
 			if !ok {
 				t.Fatal("expected dashboard history")
 			}
@@ -58,7 +58,7 @@ func TestDashboardRedisInfoFetchCapturesClient(t *testing.T) {
 	cmd := d.fetchRedisInfoCmd()
 	d.client = &dashboardFetchClient{version: "replacement"}
 
-	msg, ok := cmd().(DashboardRedisInfoMsg)
+	msg, ok := cmd().(ReadResultMsg).Data.(DashboardRedisInfoMsg)
 	if !ok {
 		t.Fatal("expected Redis info")
 	}

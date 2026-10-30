@@ -31,9 +31,12 @@ import (
 // tickMsg is sent every 5 seconds to trigger a metrics update.
 type tickMsg time.Time
 
-// connectionErrorMsg indicates a Redis connection error occurred.
-type connectionErrorMsg struct {
-	err error
+// statsResultMsg binds stats to their originating app and request generation.
+type statsResultMsg struct {
+	owner   *requestctx.Controller
+	context context.Context
+	data    stats.UpdateMsg
+	err     error
 }
 
 type viewID int
@@ -77,7 +80,7 @@ type App struct {
 	connectionError         error
 	dangerousActionsEnabled bool
 	devTracker              *devtools.Tracker
-	statsRequest            requestctx.Controller
+	statsRequest            *requestctx.Controller
 }
 
 // New creates a new App instance.
@@ -129,6 +132,7 @@ func New(client sidekiq.API, version string, dangerousActionsEnabled bool, devTr
 	}
 
 	app := App{
+		statsRequest:            &requestctx.Controller{},
 		keys:                    keys,
 		viewStack:               []viewID{viewDashboard},
 		viewOrder:               viewOrder,
@@ -216,9 +220,26 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		cmds = append(cmds, tickCmd())
 
-	case connectionErrorMsg:
-		// Store the connection error
-		a.connectionError = msg.err
+	case statsResultMsg:
+		if msg.owner != a.statsRequest || msg.context == nil || msg.context.Err() != nil {
+			return a, nil
+		}
+		if msg.err != nil {
+			if !requestctx.IsCanceled(msg.err) {
+				a.connectionError = msg.err
+			}
+			return a, nil
+		}
+		return a.Update(msg.data)
+
+	case views.ReadResultMsg:
+		if msg.Owner != a.viewRegistry[a.activeViewID()] || !msg.Current() {
+			return a, nil
+		}
+		cmds = append(cmds, a.updateView(a.activeViewID(), msg))
+		if msg.Err != nil && !requestctx.IsCanceled(msg.Err) {
+			a.connectionError = msg.Err
+		}
 
 	case views.ConnectionErrorMsg:
 		if msg.RequestID != 0 {
@@ -699,19 +720,20 @@ func filterMiniHelpBindings(bindings []key.Binding) []key.Binding {
 	return result
 }
 
-// fetchStatsCmd fetches Sidekiq stats and returns a stats.UpdateMsg or connectionErrorMsg.
+// fetchStatsCmd fetches Sidekiq stats with ownership checked at delivery.
 func (a *App) fetchStatsCmd() tea.Cmd {
 	ctx := a.statsRequest.Start(devtools.WithTracker(context.Background(), "app.fetchStatsCmd"))
+	client, owner := a.sidekiq, a.statsRequest
 	return func() tea.Msg {
-		sidekiqStats, err := a.sidekiq.GetStats(ctx)
+		sidekiqStats, err := client.GetStats(ctx)
 		if err != nil {
 			if requestctx.IsCanceled(err) {
 				return nil
 			}
-			return connectionErrorMsg{err: err}
+			return statsResultMsg{owner: owner, context: ctx, err: err}
 		}
 
-		return stats.UpdateMsg{
+		return statsResultMsg{owner: owner, context: ctx, data: stats.UpdateMsg{
 			Data: stats.Data{
 				Processed: sidekiqStats.Processed,
 				Failed:    sidekiqStats.Failed,
@@ -722,7 +744,7 @@ func (a *App) fetchStatsCmd() tea.Cmd {
 				Dead:      sidekiqStats.Dead,
 				UpdatedAt: time.Now(),
 			},
-		}
+		}}
 	}
 }
 

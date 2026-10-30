@@ -65,6 +65,17 @@ func (e *ErrorsSummary) Init() tea.Cmd {
 
 // Update implements View.
 func (e *ErrorsSummary) Update(msg tea.Msg) (View, tea.Cmd) {
+	if result, ok := msg.(ReadResultMsg); ok {
+		if result.Owner != e || !result.Current() {
+			return e, nil
+		}
+		e.refreshing = false
+		if result.Err != nil {
+			return e, nil
+		}
+		msg = result.Data
+	}
+
 	switch msg := msg.(type) {
 	case errorsSummaryDataMsg:
 		e.rows = msg.rows
@@ -227,12 +238,9 @@ func (e *ErrorsSummary) fetchDataCmd(force bool) tea.Cmd {
 	e.refreshing = true
 	ctx := e.fetchRequest.Start(devtools.WithTracker(context.Background(), "errors.fetchDataCmd"))
 	client, filter := e.client, e.filter
-	return func() tea.Msg {
+	return readCmd(ctx, e, func() tea.Msg {
 		rows, meta, err := client.GetErrorSummary(ctx, filter)
 		if err != nil {
-			if requestctx.IsCanceled(err) {
-				return nil
-			}
 			return ConnectionErrorMsg{Err: err}
 		}
 
@@ -241,7 +249,7 @@ func (e *ErrorsSummary) fetchDataCmd(force bool) tea.Cmd {
 			meta:      meta,
 			fetchedAt: nowFuncErrorsSummary(),
 		}
-	}
+	})
 }
 
 func (e *ErrorsSummary) shouldSkipRefresh(force bool) bool {

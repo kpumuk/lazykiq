@@ -91,6 +91,16 @@ func (d *Dashboard) Init() tea.Cmd {
 
 // Update implements View.
 func (d *Dashboard) Update(msg tea.Msg) (View, tea.Cmd) {
+	if result, ok := msg.(ReadResultMsg); ok {
+		if result.Owner != d || !result.Current() {
+			return d, nil
+		}
+		if result.Err != nil {
+			return d, nil
+		}
+		msg = result.Data
+	}
+
 	switch msg := msg.(type) {
 	case stats.UpdateMsg:
 		// Use stats from the shared metrics update (already fetched by app)
@@ -293,31 +303,25 @@ func (d *Dashboard) adjustHistoryRange(delta int) (View, tea.Cmd) {
 func (d *Dashboard) fetchRedisInfoCmd() tea.Cmd {
 	ctx := d.redisInfoRequest.Start(devtools.WithTracker(context.Background(), "dashboard.fetchRedisInfoCmd"))
 	client := d.client
-	return func() tea.Msg {
+	return readCmd(ctx, d, func() tea.Msg {
 		redisInfo, err := client.GetRedisInfo(ctx)
 		if err != nil {
-			if requestctx.IsCanceled(err) {
-				return nil
-			}
 			return ConnectionErrorMsg{Err: err}
 		}
 		return DashboardRedisInfoMsg{RedisInfo: redisInfo}
-	}
+	})
 }
 
 func (d *Dashboard) fetchHistoryCmd() tea.Cmd {
 	ctx := d.historyRequest.Start(devtools.WithTracker(context.Background(), "dashboard.fetchHistoryCmd"))
 	client, days := d.client, d.historyRanges[d.historyRangeIdx]
-	return func() tea.Msg {
+	return readCmd(ctx, d, func() tea.Msg {
 		history, err := client.GetStatsHistory(ctx, days)
 		if err != nil {
-			if requestctx.IsCanceled(err) {
-				return nil
-			}
 			return ConnectionErrorMsg{Err: err}
 		}
 		return DashboardHistoryMsg{history: history}
-	}
+	})
 }
 
 func (d *Dashboard) renderRealtimeBox(height int) string {

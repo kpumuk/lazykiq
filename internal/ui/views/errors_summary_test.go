@@ -28,7 +28,7 @@ func TestErrorsSummaryFetchCapturesInputs(t *testing.T) {
 			cmd := e.fetchDataCmd(true)
 			mutate(e)
 
-			msg, ok := cmd().(errorsSummaryDataMsg)
+			msg, ok := cmd().(ReadResultMsg).Data.(errorsSummaryDataMsg)
 			if !ok {
 				t.Fatal("expected error summary data")
 			}
@@ -54,7 +54,7 @@ func TestErrorsSummaryFetchConcurrentFilterChanges(t *testing.T) {
 	}()
 	defer func() { <-done }()
 	for range 20000 {
-		msg, ok := cmd().(errorsSummaryDataMsg)
+		msg, ok := cmd().(ReadResultMsg).Data.(errorsSummaryDataMsg)
 		if !ok {
 			t.Fatal("expected error summary data")
 		}

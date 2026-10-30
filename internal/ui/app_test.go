@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -186,5 +187,170 @@ func TestAppShowsUnscopedConnectionErrors(t *testing.T) {
 	updated, _ := app.Update(views.ConnectionErrorMsg{Err: wantErr})
 	if got := updated.(App).connectionError; !errors.Is(got, wantErr) {
 		t.Fatalf("connection error = %v, want %v", got, wantErr)
+	}
+}
+
+type ownershipClient struct {
+	sidekiq.API
+	value int64
+	err   error
+}
+
+func (c *ownershipClient) DisplayRedisURL() string { return "redis://fixture/0" }
+func (c *ownershipClient) GetStats(context.Context) (sidekiq.Stats, error) {
+	return sidekiq.Stats{Processed: c.value}, c.err
+}
+
+func (c *ownershipClient) GetProcessesData(context.Context) ([]sidekiq.Process, error) {
+	return nil, c.err
+}
+
+func (c *ownershipClient) GetBusyData(context.Context, string) (sidekiq.BusyData, error) {
+	return sidekiq.BusyData{}, c.err
+}
+
+func (c *ownershipClient) GetErrorSummary(context.Context, string) ([]sidekiq.ErrorSummaryRow, sidekiq.ErrorSummaryMeta, error) {
+	return nil, sidekiq.ErrorSummaryMeta{}, c.err
+}
+
+func (c *ownershipClient) GetRedisInfo(context.Context) (sidekiq.RedisInfo, error) {
+	return sidekiq.RedisInfo{}, c.err
+}
+
+func (c *ownershipClient) GetStatsHistory(context.Context, int) (sidekiq.StatsHistory, error) {
+	return sidekiq.StatsHistory{}, c.err
+}
+
+func (c *ownershipClient) GetMetricsJobDetail(context.Context, string, sidekiq.MetricsPeriod) (sidekiq.MetricsJobDetailResult, error) {
+	return sidekiq.MetricsJobDetailResult{}, c.err
+}
+func (c *ownershipClient) MetricsPeriodOrder(context.Context) []string { return []string{"1h"} }
+func (c *ownershipClient) GetMetricsTopJobs(context.Context, sidekiq.MetricsPeriod, string) (sidekiq.MetricsTopJobsResult, error) {
+	return sidekiq.MetricsTopJobsResult{}, c.err
+}
+
+func (c *ownershipClient) GetCapabilities() sidekiq.Capabilities               { return sidekiq.Capabilities{} }
+func (c *ownershipClient) GetQueues(context.Context) ([]*sidekiq.Queue, error) { return nil, c.err }
+
+func firstReadReply(cmd tea.Cmd) tea.Msg {
+	msg := cmd()
+	if batch, ok := msg.(tea.BatchMsg); ok {
+		return firstReadReply(batch[0])
+	}
+	return msg
+}
+
+func TestAppReadErrorOwnership(t *testing.T) {
+	for _, id := range []viewID{viewBusy, viewDashboard, viewErrorsSummary, viewJobMetrics, viewProcessesList, viewMetrics, viewQueuesList} {
+		for scenario := range map[string]bool{"refresh": true, "hidden": true, "reopen": true, "different app": true} {
+			t.Run(fmt.Sprintf("%d/%s", id, scenario), func(t *testing.T) {
+				staleError, currentError := errors.New("old read"), errors.New("current error")
+				client := &ownershipClient{err: staleError}
+				app := New(client, "", false, nil)
+				app.viewStack = []viewID{id}
+				if id == viewJobMetrics {
+					app.viewRegistry[id].(views.JobMetricsSetter).SetJobMetrics("OldJob", "1h")
+				}
+				stale := firstReadReply(app.viewRegistry[id].Init())
+				t.Cleanup(func() {
+					for id := range app.viewRegistry {
+						app.cancelViewRequests(id)
+					}
+				})
+				switch scenario {
+				case "refresh":
+					client.err = currentError
+					current := firstReadReply(app.viewRegistry[id].Init())
+					updated, _ := app.Update(current)
+					app = updated.(App)
+					if !errors.Is(app.connectionError, currentError) {
+						t.Fatal("current failure was lost")
+					}
+				case "hidden":
+					app.setActiveView(viewScheduled)
+				case "reopen":
+					app.setActiveView(viewScheduled)
+					app.setActiveView(id)
+				case "different app":
+					app = New(client, "", false, nil)
+					app.viewStack = []viewID{id}
+				}
+				app.connectionError = currentError
+				updated, _ := app.Update(stale)
+				app = updated.(App)
+				if !errors.Is(app.connectionError, currentError) {
+					t.Fatalf("stale read changed error to %v", app.connectionError)
+				}
+			})
+		}
+	}
+}
+
+func TestAppStatsRequestOwnership(t *testing.T) {
+	failure := errors.New("stats unavailable")
+	for name, errs := range map[string][2]error{"success then success": {}, "failure then success": {failure, nil}, "success then failure": {nil, failure}, "failure then failure": {failure, failure}} {
+		for scenario := range map[string]bool{"refresh": true, "init copy": true, "different app": true} {
+			t.Run(name+"/"+scenario, func(t *testing.T) {
+				client := &ownershipClient{value: 1, err: errs[0]}
+				app := New(client, "", false, nil)
+				t.Cleanup(func() { app.statsRequest.Cancel() })
+				var old tea.Msg
+				if scenario == "init copy" {
+					// App.Init has a value receiver; its controller must still be shared.
+					for _, cmd := range app.Init()().(tea.BatchMsg) {
+						msg := cmd()
+						if _, ok := msg.(statsResultMsg); ok {
+							old = msg
+							break
+						}
+					}
+				} else {
+					old = app.fetchStatsCmd()()
+				}
+				if old == nil {
+					t.Fatal("missing old stats reply")
+				}
+				if scenario == "different app" {
+					oldOwner := app.statsRequest
+					t.Cleanup(oldOwner.Cancel)
+					app = New(client, "", false, nil)
+				}
+				client.value, client.err = 2, errs[1]
+				fresh := app.fetchStatsCmd()()
+				before := app.metrics.Data()
+				updated, _ := app.Update(old)
+				app = updated.(App)
+				if app.metrics.Data() != before || app.connectionError != nil {
+					t.Fatal("old stats changed state before current completion")
+				}
+				updated, _ = app.Update(fresh)
+				app = updated.(App)
+				if errs[1] == nil && app.metrics.Data().Processed != 2 {
+					t.Fatal("current stats were lost")
+				}
+				if errs[1] != nil && !errors.Is(app.connectionError, failure) {
+					t.Fatal("current failure was lost")
+				}
+				after, afterError := app.metrics.Data(), app.connectionError
+				updated, _ = app.Update(old)
+				app = updated.(App)
+				if app.metrics.Data() != after || !errors.Is(app.connectionError, afterError) {
+					t.Fatal("old stats changed current data or error")
+				}
+			})
+		}
+	}
+}
+
+func TestAppJobMetricsClassReplacementRejectsReadError(t *testing.T) {
+	app := New(&ownershipClient{err: errors.New("old class read")}, "", false, nil)
+	app.viewStack = []viewID{viewJobMetrics}
+	job := app.viewRegistry[viewJobMetrics].(views.JobMetricsSetter)
+	job.SetJobMetrics("OldJob", "1h")
+	stale := app.viewRegistry[viewJobMetrics].Init()()
+	job.SetJobMetrics("NewJob", "1h")
+	updated, _ := app.Update(stale)
+	if updated.(App).connectionError != nil {
+		t.Fatal("old class error covered replacement before it fetched")
 	}
 }

@@ -107,7 +107,7 @@ func BenchmarkQueueMetadata(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for b.Loop() {
-			data, ok := cmd().(queuesListDataMsg)
+			data, ok := cmd().(ReadResultMsg).Data.(queuesListDataMsg)
 			if !ok || len(data.queues) != len(names) {
 				b.Fatal("queue list fetch failed")
 			}

@@ -79,6 +79,16 @@ func (m *Metrics) Init() tea.Cmd {
 
 // Update implements View.
 func (m *Metrics) Update(msg tea.Msg) (View, tea.Cmd) {
+	if result, ok := msg.(ReadResultMsg); ok {
+		if result.Owner != m || !result.Current() {
+			return m, nil
+		}
+		if result.Err != nil {
+			return m, nil
+		}
+		msg = result.Data
+	}
+
 	switch msg := msg.(type) {
 	case metricsListMsg:
 		if msg.requestID != m.requestID {
@@ -288,7 +298,7 @@ func (m *Metrics) fetchListCmd() tea.Cmd {
 	filter := m.filter
 	client := m.client
 	ctx := m.fetchRequest.Start(devtools.WithTracker(context.Background(), "metrics.fetchListCmd"))
-	return func() tea.Msg {
+	return readCmd(ctx, m, func() tea.Msg {
 		if ctx.Err() != nil {
 			return nil
 		}
@@ -307,9 +317,6 @@ func (m *Metrics) fetchListCmd() tea.Cmd {
 			return nil
 		}
 		if err != nil {
-			if requestctx.IsCanceled(err) {
-				return nil
-			}
 			return ConnectionErrorMsg{Err: err}
 		}
 		return metricsListMsg{
@@ -318,7 +325,7 @@ func (m *Metrics) fetchListCmd() tea.Cmd {
 			periods:   periods,
 			period:    queryPeriod,
 		}
-	}
+	})
 }
 
 func (m *Metrics) applyPeriodState(periods []string, selected string) {

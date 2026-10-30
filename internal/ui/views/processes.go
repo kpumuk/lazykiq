@@ -63,6 +63,16 @@ func (p *ProcessesList) Init() tea.Cmd {
 
 // Update implements View.
 func (p *ProcessesList) Update(msg tea.Msg) (View, tea.Cmd) {
+	if result, ok := msg.(ReadResultMsg); ok {
+		if result.Owner != p || !result.Current() {
+			return p, nil
+		}
+		if result.Err != nil {
+			return p, nil
+		}
+		msg = result.Data
+	}
+
 	switch msg := msg.(type) {
 	case processesListDataMsg:
 		if msg.requestID != p.requestID {
@@ -296,15 +306,12 @@ func (p *ProcessesList) fetchDataCmd() tea.Cmd {
 	p.requestID++
 	requestID, filter := p.requestID, p.filter
 	ctx := p.fetchRequest.Start(devtools.WithTracker(context.Background(), "processes.fetchDataCmd"))
-	return func() tea.Msg {
+	return readCmd(ctx, p, func() tea.Msg {
 		data, err := p.client.GetProcessesData(ctx)
 		if ctx.Err() != nil {
 			return nil
 		}
 		if err != nil {
-			if requestctx.IsCanceled(err) {
-				return nil
-			}
 			return ConnectionErrorMsg{Err: err}
 		}
 
@@ -317,7 +324,7 @@ func (p *ProcessesList) fetchDataCmd() tea.Cmd {
 		}
 
 		return processesListDataMsg{processes: processes, requestID: requestID}
-	}
+	})
 }
 
 func matchesProcessFilter(proc sidekiq.Process, filter string) bool {
