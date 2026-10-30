@@ -18,6 +18,10 @@ Lazykiq talks directly to Redis. It does **not** run any Ruby code on the server
 
 - **No client middleware:** "Retry now" and other enqueue-like actions do not execute
   Sidekiq client middleware or normalization logic.
+- **Periodic enqueue defaults:** Enterprise periodic actions require `--enable=ent`.
+  Enqueue now uses the registered options, with empty arguments, queue `default`,
+  and retry enabled when omitted. It cannot resolve Ruby class defaults or invoke
+  ActiveJob adapters. Pause/resume only changes future recurring enqueues.
 - **No death handlers:** Killing a retry job only moves the payload into the dead set.
   It does **not** invoke `DeadSet#kill`, so `death_handlers` and any related server-side
   hooks are not called (see [Death Notification](https://github.com/sidekiq/sidekiq/wiki/Error-Handling#death-notification) for details).

@@ -19,12 +19,14 @@ clear summaries.
 - Inspect job arguments and error backtraces.
 - Review retries, scheduled, and dead jobs.
 - Analyze errors across retry and dead queues.
+- Inspect recurring Enterprise schedules and their enqueue history.
 
 ## Global shortcuts
 
 | Key            | Description                                                                        |
 |----------------|------------------------------------------------------------------------------------|
 | `1`–`8`        | Switch views (Dashboard, Busy, Queues, Retries, Scheduled, Dead, Errors, Metrics). |
+| `9`            | Open Periodic (requires `--enable=ent`). |
 | `?`            | Toggle the help dialog.                                                            |
 | `q` / `Ctrl+C` | Quit.                                                                              |
 | `Esc`          | Go back from stacked views (job details, queue list, job metrics).                 |

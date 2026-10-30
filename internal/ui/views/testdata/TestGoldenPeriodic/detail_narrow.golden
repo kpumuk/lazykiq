@@ -1,0 +1,24 @@
+╭─Periodic Job─────────────────────────────────────────────╮
+│ Class:                                                   │
+│   CleanupJob                                             │
+│ Schedule:                                                │
+│   */5 * * * *                                            │
+│ State:                                                   │
+│   Active                                                 │
+│ Queue:                                                   │
+│   low                                                    │
+│ Timezone:                                                │
+│   UTC                                                    │
+│ Next Run:                                                │
+│   2026-10-30 12:05:00 UTC (in 5m0s)                      │
+│ LID:                                                     │
+│   abc12345abc12345abc12345abc12345abc12345abc12345abc123 │
+│   45abc12345                                             │
+│ Options:                                                 │
+│   {                                                      │
+│     "queue": "low",                                      │
+│     "args": [                                            │
+│       "sessions",                                        │
+│       7                                                  │
+│     ],                                                   │
+╰──────────────────────────────────────────────────────────╯

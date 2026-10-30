@@ -9,11 +9,15 @@ import (
 
 // Capabilities is an immutable selection of optional functionality.
 type Capabilities struct {
-	queuePause bool
+	queuePause   bool
+	periodicJobs bool
 }
 
 // SupportsQueuePause reports whether queue pause support was explicitly enabled.
 func (c Capabilities) SupportsQueuePause() bool { return c.queuePause }
+
+// SupportsPeriodicJobs reports whether Enterprise periodic jobs were explicitly enabled.
+func (c Capabilities) SupportsPeriodicJobs() bool { return c.periodicJobs }
 
 type feature struct {
 	requires     []string
@@ -23,7 +27,7 @@ type feature struct {
 // Each feature contributes capabilities and may compose other registered features.
 var featureRegistry = map[string]feature{
 	"pro": {capabilities: Capabilities{queuePause: true}},
-	"ent": {requires: []string{"pro"}},
+	"ent": {requires: []string{"pro"}, capabilities: Capabilities{periodicJobs: true}},
 }
 
 // FeatureNames returns the available optional features in alphabetical order.
@@ -51,6 +55,7 @@ func ResolveFeatures(names []string) (Capabilities, error) {
 			}
 		}
 		result.queuePause = result.queuePause || definition.capabilities.queuePause
+		result.periodicJobs = result.periodicJobs || definition.capabilities.periodicJobs
 		return nil
 	}
 	for _, name := range names {

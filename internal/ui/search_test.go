@@ -115,6 +115,8 @@ type blockedSearchClient struct {
 	jobs    []*sidekiq.SortedEntry
 }
 
+func (blockedSearchClient) GetCapabilities() sidekiq.Capabilities { return sidekiq.Capabilities{} }
+
 func (c blockedSearchClient) GetSortedEntries(_ context.Context, kind sidekiq.SortedSetKind, _, _ int) ([]*sidekiq.SortedEntry, int64, error) {
 	if kind == sidekiq.SortedSetRetry {
 		return c.jobs, int64(len(c.jobs)), nil

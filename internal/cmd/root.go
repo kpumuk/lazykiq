@@ -59,6 +59,7 @@ func newRootCommand(version, commit, date, builtBy string) *cobra.Command {
 	rootCmd.SetVersionTemplate(`lazykiq {{printf "version %s\n" .Version}}`)
 
 	rootCmd.Flags().StringSliceVar(&enabledFeatures, "enable", nil, "enable optional features (pro, ent)")
+	rootCmd.Flags().String("periodic-timezone", "UTC", "server timezone for periodic jobs without an explicit zone")
 
 	rootCmd.Flags().String(
 		"cpuprofile",
@@ -98,8 +99,9 @@ func newRootCommand(version, commit, date, builtBy string) *cobra.Command {
 		return pflag.NormalizedName(name)
 	})
 	for flag, complete := range map[string]cobra.CompletionFunc{
-		"enable": completeFeatures,
-		"redis":  cobra.NoFileCompletions,
+		"enable":            completeFeatures,
+		"redis":             cobra.NoFileCompletions,
+		"periodic-timezone": cobra.NoFileCompletions,
 	} {
 		if err := rootCmd.RegisterFlagCompletionFunc(flag, complete); err != nil {
 			panic(err)
@@ -123,7 +125,11 @@ func newRootCommand(version, commit, date, builtBy string) *cobra.Command {
 			return fmt.Errorf("parse redis flag: %w", err)
 		}
 
-		client, err := sidekiq.NewClient(redisURL, sidekiq.WithFeatures(features))
+		periodicTimezone, err := cmd.Flags().GetString("periodic-timezone")
+		if err != nil {
+			return err
+		}
+		client, err := sidekiq.NewClient(redisURL, sidekiq.WithFeatures(features), sidekiq.WithPeriodicTimezone(periodicTimezone))
 		if err != nil {
 			return fmt.Errorf("create redis client: %w", err)
 		}

@@ -24,6 +24,8 @@ type navigationMetricsClient struct {
 	err    error
 }
 
+func (*navigationMetricsClient) GetCapabilities() sidekiq.Capabilities { return sidekiq.Capabilities{} }
+
 func (*navigationMetricsClient) MetricsPeriodOrder(context.Context) []string {
 	return []string{"1h", "2h", "4h", "8h"}
 }

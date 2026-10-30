@@ -22,6 +22,7 @@ FLAGS
   --danger       enable dangerous operations
   --development  enable development diagnostics
   --enable       enable optional features (pro, ent)
+  --periodic-timezone  server timezone for periodic jobs without an explicit zone (UTC)
   -h --help      help for lazykiq
   --redis        redis URL (redis://localhost:6379/0)
   -v --version   version for lazykiq
@@ -72,6 +73,15 @@ Multiple features can be comma-separated or supplied with repeated `--enable` fl
 ```bash
 lazykiq --enable=pro
 lazykiq --enable=ent --danger
+```
+
+Enterprise adds [Periodic]({{< relref "../screens/periodic.md" >}}) at `9`.
+Enqueue and pause/resume require `--danger`. Set `--periodic-timezone` to your
+Sidekiq server's timezone for definitions without an explicit timezone; it
+defaults to UTC because Enterprise does not store the server timezone in Redis.
+
+```bash
+lazykiq --enable=ent --periodic-timezone=America/Toronto
 ```
 
 ## Dangerous actions
