@@ -223,6 +223,9 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	dialogUpdated := false
 
 	switch msg := msg.(type) {
+	case devtoolsdialog.CommandResultMsg:
+		msg.Collect(a.devTracker)
+		return a, nil
 	case dialogs.OpenDialogMsg:
 		msg.Owner = dialogOwner{a.activeViewID(), a.viewRegistry[a.activeViewID()], a.viewGeneration}
 		updated, cmd := a.dialogs.Update(msg)

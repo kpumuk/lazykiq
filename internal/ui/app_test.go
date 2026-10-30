@@ -491,3 +491,139 @@ func TestAppJobMetricsClassReplacementRejectsReadError(t *testing.T) {
 		t.Fatal("old class error covered replacement before it fetched")
 	}
 }
+
+type consoleCompletionClient struct {
+	ownershipClient
+	do func(context.Context, ...any) (any, error)
+}
+
+func (c *consoleCompletionClient) Do(ctx context.Context, args ...any) (any, error) {
+	return c.do(ctx, args...)
+}
+
+func openConsole(app *App) {
+	dialogStep(app, dialogStep(app, tea.KeyPressMsg{Code: tea.KeyF12})())
+}
+
+func submitConsole(app *App, input string) tea.Cmd {
+	for _, r := range input {
+		dialogStep(app, tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
+	return dialogStep(app, tea.KeyPressMsg{Code: tea.KeyEnter})
+}
+
+func TestAppConsoleCompletionRouting(t *testing.T) {
+	for name, tc := range map[string]struct {
+		input string
+		err   error
+		want  string
+	}{
+		"success":     {input: "PING", want: "PONG"},
+		"error":       {input: "PING", err: errors.New("command failed"), want: "error: command failed"},
+		"parse error": {input: `ECHO "`, want: "error: unterminated quoted string"},
+	} {
+		for _, state := range []string{"visible", "closed", "covered", "reopened"} {
+			t.Run(name+"/"+state, func(t *testing.T) {
+				tracker := devtools.NewTracker()
+				calls := 0
+				client := &consoleCompletionClient{do: func(ctx context.Context, args ...any) (any, error) {
+					calls++
+					if devtools.OriginFromContext(ctx) != "console" || len(args) != 1 || args[0] != "PING" {
+						t.Fatalf("unexpected console call: %v", args)
+					}
+					return "PONG", tc.err
+				}}
+				app := New(client, "", false, tracker)
+				defer app.cancel()
+				dialogStep(&app, tea.WindowSizeMsg{Width: 120, Height: 30})
+				openConsole(&app)
+				result := submitConsole(&app, tc.input)()
+				if len(tracker.LogEntries()) != 0 {
+					t.Fatal("command changed log outside the event loop")
+				}
+				switch state {
+				case "closed", "reopened":
+					dialogStep(&app, dialogStep(&app, tea.KeyPressMsg{Code: tea.KeyEsc})())
+					if state == "reopened" {
+						openConsole(&app)
+					}
+				case "covered":
+					dialogStep(&app, dialogs.OpenDialogMsg{Model: filterdialog.New()})
+				}
+				active := app.dialogs.ActiveModel()
+				dialogStep(&app, result)
+				dialogStep(&app, result)
+				entries := tracker.LogEntries()
+				if len(entries) != 1 || entries[0].Entry.Kind != devtools.EntryResult || entries[0].Entry.Command != tc.want {
+					t.Fatalf("result log = %+v, want one %q", entries, tc.want)
+				}
+				if app.dialogs.ActiveModel() != active || app.connectionError != nil {
+					t.Fatal("completion changed active modal or global error")
+				}
+				if state == "covered" {
+					dialogStep(&app, dialogs.CloseDialogMsg{})
+				}
+				if state == "closed" {
+					openConsole(&app)
+				}
+				dialogStep(&app, result)
+				if !strings.Contains(ansi.Strip(app.dialogs.ActiveModel().View()), tc.want) || len(tracker.LogEntries()) != 1 {
+					t.Fatal("reopened console lost or duplicated the result")
+				}
+				wantCalls := 1
+				if name == "parse error" {
+					wantCalls = 0
+				}
+				if calls != wantCalls {
+					t.Fatalf("Do calls = %d, want %d", calls, wantCalls)
+				}
+			})
+		}
+	}
+}
+
+func TestAppConsoleCommandLifetime(t *testing.T) {
+	for _, shutdown := range []bool{false, true} {
+		t.Run(fmt.Sprintf("shutdown=%t", shutdown), func(t *testing.T) {
+			started := make(chan context.Context, 1)
+			release := make(chan struct{})
+			tracker := devtools.NewTracker()
+			client := &consoleCompletionClient{do: func(ctx context.Context, _ ...any) (any, error) {
+				started <- ctx
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-release:
+					return "PONG", nil
+				}
+			}}
+			app := New(client, "", false, tracker)
+			defer app.cancel()
+			openConsole(&app)
+			cmd := submitConsole(&app, "PING")
+			done := make(chan tea.Msg, 1)
+			go func() { done <- cmd() }()
+			ctx := <-started
+			dialogStep(&app, dialogStep(&app, tea.KeyPressMsg{Code: tea.KeyEsc})())
+			if ctx.Err() != nil {
+				t.Fatal("closing canceled console command")
+			}
+			openConsole(&app)
+			if shutdown {
+				app.cancel()
+				if ctx.Err() != context.Canceled {
+					t.Fatal("shutdown did not cancel console command")
+				}
+			}
+			close(release)
+			dialogStep(&app, <-done)
+			want := 1
+			if shutdown {
+				want = 0
+			}
+			if got := len(tracker.LogEntries()); got != want {
+				t.Fatalf("log entries = %d, want %d", got, want)
+			}
+		})
+	}
+}
