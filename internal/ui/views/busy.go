@@ -502,13 +502,12 @@ func (b *Busy) updateTableRowsFlat() {
 }
 
 func (b *Busy) openFilterDialog() tea.Cmd {
+	dialog := filterdialog.New(
+		filterdialog.WithStyles(b.filterStyle),
+		filterdialog.WithQuery(b.filter),
+	)
 	return func() tea.Msg {
-		return dialogs.OpenDialogMsg{
-			Model: filterdialog.New(
-				filterdialog.WithStyles(b.filterStyle),
-				filterdialog.WithQuery(b.filter),
-			),
-		}
+		return dialogs.OpenDialogMsg{Model: dialog}
 	}
 }
 

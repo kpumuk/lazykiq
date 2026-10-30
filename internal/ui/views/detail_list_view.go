@@ -224,12 +224,11 @@ func (s detailListView) renderBox(title string, rowCount int) string {
 }
 
 func (s detailListView) openFilterDialog() tea.Cmd {
+	dialog := filterdialog.New(
+		filterdialog.WithStyles(s.filterStyle),
+		filterdialog.WithQuery(s.filter),
+	)
 	return func() tea.Msg {
-		return dialogs.OpenDialogMsg{
-			Model: filterdialog.New(
-				filterdialog.WithStyles(s.filterStyle),
-				filterdialog.WithQuery(s.filter),
-			),
-		}
+		return dialogs.OpenDialogMsg{Model: dialog}
 	}
 }

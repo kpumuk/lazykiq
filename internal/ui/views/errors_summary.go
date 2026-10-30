@@ -121,11 +121,12 @@ func (e *ErrorsSummary) Update(msg tea.Msg) (View, tea.Cmd) {
 			if !ok {
 				return e, nil
 			}
+			intent := ShowErrorDetailsMsg{
+				Key:   errorGroupKeyForRow(row),
+				Query: e.filter,
+			}
 			return e, func() tea.Msg {
-				return ShowErrorDetailsMsg{
-					Key:   errorGroupKeyForRow(row),
-					Query: e.filter,
-				}
+				return intent
 			}
 		}
 
@@ -340,13 +341,12 @@ func (e *ErrorsSummary) updatedLabel() string {
 }
 
 func (e *ErrorsSummary) openFilterDialog() tea.Cmd {
+	dialog := filterdialog.New(
+		filterdialog.WithStyles(e.filterStyle),
+		filterdialog.WithQuery(e.filter),
+	)
 	return func() tea.Msg {
-		return dialogs.OpenDialogMsg{
-			Model: filterdialog.New(
-				filterdialog.WithStyles(e.filterStyle),
-				filterdialog.WithQuery(e.filter),
-			),
-		}
+		return dialogs.OpenDialogMsg{Model: dialog}
 	}
 }
 

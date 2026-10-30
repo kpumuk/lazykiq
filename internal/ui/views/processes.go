@@ -117,13 +117,12 @@ func (p *ProcessesList) Update(msg tea.Msg) (View, tea.Cmd) {
 	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "/":
+			dialog := filterdialog.New(
+				filterdialog.WithStyles(p.filterStyle),
+				filterdialog.WithQuery(p.filter),
+			)
 			return p, func() tea.Msg {
-				return dialogs.OpenDialogMsg{
-					Model: filterdialog.New(
-						filterdialog.WithStyles(p.filterStyle),
-						filterdialog.WithQuery(p.filter),
-					),
-				}
+				return dialogs.OpenDialogMsg{Model: dialog}
 			}
 		case "c":
 			if identity, ok := p.selectedProcessIdentity(); ok {

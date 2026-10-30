@@ -140,13 +140,12 @@ func (q *QueuesList) Update(msg tea.Msg) (View, tea.Cmd) {
 		}
 		switch msg.String() {
 		case "/":
+			dialog := filterdialog.New(
+				filterdialog.WithStyles(q.filterStyle),
+				filterdialog.WithQuery(q.filter),
+			)
 			return q, func() tea.Msg {
-				return dialogs.OpenDialogMsg{
-					Model: filterdialog.New(
-						filterdialog.WithStyles(q.filterStyle),
-						filterdialog.WithQuery(q.filter),
-					),
-				}
+				return dialogs.OpenDialogMsg{Model: dialog}
 			}
 		case "enter":
 			// Show queue details for selected queue

@@ -130,8 +130,9 @@ func (m *Metrics) Update(msg tea.Msg) (View, tea.Cmd) {
 			return m, nil
 		case "enter":
 			if selected, ok := m.selectedRow(); ok {
+				intent := ShowJobMetricsMsg{Job: selected.class, Period: m.period}
 				return m, func() tea.Msg {
-					return ShowJobMetricsMsg{Job: selected.class, Period: m.period}
+					return intent
 				}
 			}
 			return m, nil
@@ -444,13 +445,12 @@ func (m *Metrics) movePage(delta int) {
 }
 
 func (m *Metrics) openFilterDialog() tea.Cmd {
+	dialog := filterdialog.New(
+		filterdialog.WithStyles(m.filterStyle),
+		filterdialog.WithQuery(m.filter),
+	)
 	return func() tea.Msg {
-		return dialogs.OpenDialogMsg{
-			Model: filterdialog.New(
-				filterdialog.WithStyles(m.filterStyle),
-				filterdialog.WithQuery(m.filter),
-			),
-		}
+		return dialogs.OpenDialogMsg{Model: dialog}
 	}
 }
 
