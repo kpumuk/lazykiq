@@ -1,6 +1,7 @@
 package views
 
 import (
+	"context"
 	"fmt"
 	"maps"
 	"slices"
@@ -45,12 +46,16 @@ type Busy struct {
 	filter                 string
 	filterStyle            filterdialog.Styles
 	fetchRequest           requestctx.Controller
+	fetching               bool
 	processHeader          *busyProcessHeader
 }
 
 const processGlyph = "⚙"
 
 const busyHeaderHeight = 5
+
+// Allow reads to span polling intervals without letting a stuck read block polls indefinitely.
+const busyFetchTimeout = 30 * time.Second
 
 type busyProcessHeader struct {
 	maxNameLen    int
@@ -86,6 +91,7 @@ func (b *Busy) Update(msg tea.Msg) (View, tea.Cmd) {
 		if result.Owner != b || !result.Current() {
 			return b, nil
 		}
+		b.CancelRequests()
 		if result.Err != nil {
 			return b, nil
 		}
@@ -112,6 +118,9 @@ func (b *Busy) Update(msg tea.Msg) (View, tea.Cmd) {
 		return b, nil
 
 	case RefreshMsg:
+		if b.fetching {
+			return b, nil
+		}
 		return b, b.fetchDataCmd()
 
 	case filterdialog.ActionMsg:
@@ -259,6 +268,7 @@ func (b *Busy) Dispose() {
 // CancelRequests stops in-flight fetches when the view is hidden.
 func (b *Busy) CancelRequests() {
 	b.fetchRequest.Cancel()
+	b.fetching = false
 }
 
 // SetStyles implements View.
@@ -304,8 +314,12 @@ func (b *Busy) SetTreeMode(tree bool) {
 // fetchDataCmd fetches busy data from Redis.
 func (b *Busy) fetchDataCmd() tea.Cmd {
 	ctx := b.fetchRequest.Start(devtools.WithTracker(b.Context(), "busy.fetchDataCmd"))
+	b.fetching = true
 	client, filter := b.client, b.filter
 	return readCmd(ctx, b, func() tea.Msg {
+		// Keep the delivery context live so owned timeout errors reach the app.
+		ctx, cancel := context.WithTimeout(ctx, busyFetchTimeout)
+		defer cancel()
 		data, err := client.GetBusyData(ctx, filter)
 		if err != nil {
 			return ConnectionErrorMsg{Err: err}
@@ -315,7 +329,7 @@ func (b *Busy) fetchDataCmd() tea.Cmd {
 }
 
 func (b *Busy) reset() {
-	b.fetchRequest.Cancel()
+	b.CancelRequests()
 	b.ready = false
 	b.data = sidekiq.BusyData{}
 	b.processHeader = nil
