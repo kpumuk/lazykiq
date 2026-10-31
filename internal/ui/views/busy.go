@@ -30,21 +30,22 @@ type busyDataMsg struct {
 // Busy shows active workers/processes.
 type Busy struct {
 	requestctx.Scope
-	client          sidekiq.API
-	width           int
-	height          int
-	styles          Styles
-	data            sidekiq.BusyData
-	filteredJobs    []sidekiq.Job // jobs filtered by selectedProcess
-	rowJobIndex     []int         // table row -> filtered job index (-1 for process rows)
-	table           table.Model
-	ready           bool
-	selectedProcess int // -1 = all, 0-8 = specific process index
-	treeMode        bool
-	filter          string
-	filterStyle     filterdialog.Styles
-	fetchRequest    requestctx.Controller
-	processHeader   *busyProcessHeader
+	client                 sidekiq.API
+	width                  int
+	height                 int
+	styles                 Styles
+	data                   sidekiq.BusyData
+	filteredJobs           []sidekiq.Job // jobs filtered by selectedProcess
+	rowJobIndex            []int         // table row -> filtered job index (-1 for process rows)
+	table                  table.Model
+	ready                  bool
+	selectedProcess        int // -1 = all, 0-8 = specific process index
+	pendingProcessIdentity string
+	treeMode               bool
+	filter                 string
+	filterStyle            filterdialog.Styles
+	fetchRequest           requestctx.Controller
+	processHeader          *busyProcessHeader
 }
 
 const processGlyph = "⚙"
@@ -94,6 +95,10 @@ func (b *Busy) Update(msg tea.Msg) (View, tea.Cmd) {
 	switch msg := msg.(type) {
 	case busyDataMsg:
 		identity := b.selectedIdentity()
+		if b.pendingProcessIdentity != "" {
+			identity = b.pendingProcessIdentity
+			b.pendingProcessIdentity = ""
+		}
 		b.data = msg.data
 		b.selectedProcess = -1
 		if identity != "" {
@@ -267,6 +272,7 @@ func (b *Busy) SetStyles(styles Styles) View {
 
 // SetProcessIdentity updates the selected process by identity.
 func (b *Busy) SetProcessIdentity(identity string) {
+	b.pendingProcessIdentity = ""
 	if identity == "" {
 		if b.selectedProcess != -1 {
 			b.selectedProcess = -1
@@ -285,6 +291,14 @@ func (b *Busy) SetProcessIdentity(identity string) {
 		}
 		return
 	}
+	// A process list may select before Busy has loaded its process data.
+	b.pendingProcessIdentity = identity
+}
+
+// SetTreeMode selects the job layout without toggling its current state.
+func (b *Busy) SetTreeMode(tree bool) {
+	b.treeMode = tree
+	b.updateTableRows()
 }
 
 // fetchDataCmd fetches busy data from Redis.
@@ -308,6 +322,7 @@ func (b *Busy) reset() {
 	b.filteredJobs = nil
 	b.rowJobIndex = nil
 	b.selectedProcess = -1
+	b.pendingProcessIdentity = ""
 	b.filter = ""
 	b.table.SetRows(nil)
 	b.table.SetCursor(0)
@@ -333,6 +348,7 @@ func (b *Busy) handleProcessSelectKey(key string) bool {
 
 	digit := strings.TrimPrefix(key, "ctrl+")
 	if digit == "0" {
+		b.pendingProcessIdentity = ""
 		if b.selectedProcess != -1 {
 			b.selectedProcess = -1
 			b.updateTableRows()
@@ -352,6 +368,7 @@ func (b *Busy) handleProcessSelectKey(key string) bool {
 	if idx < 0 || idx >= len(b.data.Processes) {
 		return true
 	}
+	b.pendingProcessIdentity = ""
 	if b.selectedProcess != idx {
 		b.selectedProcess = idx
 		b.updateTableRows()

@@ -223,3 +223,31 @@ func TestDialogBatchedCloseIsBound(t *testing.T) {
 		t.Fatalf("unrelated message changed: %#v", got)
 	}
 }
+
+type targetedTestMsg struct{ id DialogID }
+
+func (m targetedTestMsg) DialogID() DialogID { return m.id }
+
+func TestDialogBackgroundResultReachesCoveredOwner(t *testing.T) {
+	cmp := NewDialogCmp()
+	owner := &testDialog{id: "owner"}
+	cover := &testDialog{id: "cover"}
+	cmp, _ = cmp.Update(OpenDialogMsg{Model: owner})
+	cmp, _ = cmp.Update(OpenDialogMsg{Model: cover})
+	ownerUpdates, coverUpdates := len(owner.updates), len(cover.updates)
+	session := cmp.ActiveSession()
+	msg := targetedTestMsg{id: "owner"}
+	cmp, _ = cmp.Update(msg)
+	if len(owner.updates) != ownerUpdates+1 || owner.updates[len(owner.updates)-1] != msg || len(cover.updates) != coverUpdates {
+		t.Fatal("background result did not reach covered owner exclusively")
+	}
+	if cmp.ActiveModel() != cover || cmp.ActiveSession() != session {
+		t.Fatal("background delivery changed focus or session")
+	}
+	cmp, _ = cmp.Update(CloseDialogMsg{})
+	cmp, _ = cmp.Update(CloseDialogMsg{})
+	cmp, _ = cmp.Update(msg)
+	if cmp.HasDialogs() || len(owner.updates) != ownerUpdates+1 {
+		t.Fatal("result for removed owner was delivered")
+	}
+}

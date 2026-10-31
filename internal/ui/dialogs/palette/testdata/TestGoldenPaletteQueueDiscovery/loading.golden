@@ -1,0 +1,11 @@
+╭─Go to───────────────────────────────╖loading queues╓─╮
+│type to navigate                                      │
+│> Busy                                               █│
+│  Busy: processes                                    █│
+│  Dashboard                                          █│
+│  Dead                                               █│
+│  Errors                                             █│
+│  Metrics                                            █│
+│  Queue jobs                                         █│
+│  Retries                                            ░│
+╰──────────────────────────────────────────────────────╯

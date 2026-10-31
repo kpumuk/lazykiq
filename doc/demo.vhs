@@ -12,8 +12,8 @@ Set Height 1600
 Set Padding 40
 
 Hide
-Type@1ms "go run ./cmd/lazykiq --redis redis://localhost:6379/1" Enter
-Sleep 1s
+Type@1ms "go build -o /tmp/lazykiq-demo ./cmd/lazykiq && env -u NO_COLOR COLORTERM=truecolor /tmp/lazykiq-demo --redis redis://localhost:6379/1" Enter
+Wait+Screen /Processed/
 Show
 
 # Dashboard: stay 10s, but only record a few frames
@@ -31,6 +31,14 @@ Sleep 10s
 Show
 Sleep 2s
 Screenshot "doc/assets/dashboard.png" Sleep 1s
+
+# Navigation palette: browse destinations, then open a queue directly
+Ctrl+t Sleep 1s
+Screenshot "doc/assets/navigation_palette.png" Sleep 1s
+Down@180ms 10 Sleep 1s
+Type@120ms "batch" Sleep 1s
+Screenshot "doc/assets/navigation_palette_queue.png" Sleep 1s
+Enter Sleep 2s
 
 # Busy
 Type "2" Sleep 1.5s
