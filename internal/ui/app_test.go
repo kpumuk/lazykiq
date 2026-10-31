@@ -627,3 +627,81 @@ func TestAppConsoleCommandLifetime(t *testing.T) {
 		})
 	}
 }
+
+type busyPollClient struct {
+	ownershipClient
+	fetch func(context.Context, string) (sidekiq.BusyData, error)
+}
+
+func (c *busyPollClient) GetBusyData(ctx context.Context, query string) (sidekiq.BusyData, error) {
+	return c.fetch(ctx, query)
+}
+
+func TestAppBusyPollingLifetime(t *testing.T) {
+	for _, ending := range []string{"complete", "navigate", "shutdown"} {
+		t.Run(ending, func(t *testing.T) {
+			started := make(chan context.Context, 1)
+			release := make(chan struct{})
+			failure := errors.New("busy unavailable")
+			client := &busyPollClient{fetch: func(ctx context.Context, _ string) (sidekiq.BusyData, error) {
+				started <- ctx
+				select {
+				case <-release:
+					return sidekiq.BusyData{}, failure
+				case <-ctx.Done():
+					return sidekiq.BusyData{}, ctx.Err()
+				}
+			}}
+			app := New(client, "", false, nil)
+			defer app.cancel()
+			cmd := app.setActiveView(viewBusy)
+			done := make(chan tea.Msg, 1)
+			go func() { done <- cmd() }()
+			ctx := <-started
+			for range 2 {
+				updated, _ := app.Update(tickMsg{})
+				app = updated.(App)
+				if ctx.Err() != nil {
+					t.Fatal("root tick canceled Busy")
+				}
+			}
+			switch ending {
+			case "navigate":
+				app.setActiveView(viewQueuesList)
+				if ctx.Err() != context.Canceled {
+					t.Fatal("navigation did not cancel Busy")
+				}
+			case "shutdown":
+				app.cancel()
+				if ctx.Err() != context.Canceled {
+					t.Fatal("shutdown did not cancel Busy")
+				}
+			}
+			close(release)
+			updated, _ := app.Update(<-done)
+			app = updated.(App)
+			if ending == "complete" && !errors.Is(app.connectionError, failure) {
+				t.Fatal("owned failure was lost")
+			}
+			if ending != "complete" && app.connectionError != nil {
+				t.Fatal("canceled failure reached error overlay")
+			}
+			if ending == "shutdown" {
+				return
+			}
+			if ending == "navigate" {
+				cmd = app.setActiveView(viewBusy)
+			} else {
+				cmd = app.updateView(viewBusy, views.RefreshMsg{})
+			}
+			if cmd == nil {
+				t.Fatal("Busy did not resume polling")
+			}
+			updated, _ = app.Update(cmd())
+			app = updated.(App)
+			if !errors.Is(app.connectionError, failure) {
+				t.Fatal("resumed read failure was lost")
+			}
+		})
+	}
+}
