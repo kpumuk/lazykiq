@@ -128,3 +128,45 @@ func TestBusyFetchCapturesInputs(t *testing.T) {
 		})
 	}
 }
+
+func TestBusySelectProcessBeforeDataArrives(t *testing.T) {
+	for name, tc := range map[string]struct {
+		next           []string
+		clear, dispose bool
+		want           string
+	}{
+		"arrives":    {next: []string{"A", "B"}, want: "B"},
+		"disappears": {next: []string{"A"}},
+		"cleared":    {next: []string{"A", "B"}, clear: true},
+		"disposed":   {next: []string{"A", "B"}, dispose: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			b := NewBusy(nil)
+			b.SetProcessIdentity("B")
+			if tc.clear {
+				b.SetProcessIdentity("")
+			}
+			if tc.dispose {
+				b.Dispose()
+			}
+			b.Update(busyDataMsg{data: busySelectionData(tc.next)})
+			if got := b.selectedIdentity(); got != tc.want {
+				t.Fatalf("selection=%q, want %q", got, tc.want)
+			}
+			b.Update(busyDataMsg{data: busySelectionData([]string{"A", "B"})})
+			if got := b.selectedIdentity(); got != tc.want {
+				t.Fatalf("later refresh restored obsolete selection: %q", got)
+			}
+		})
+	}
+}
+
+func TestBusyAllProcessesShortcutCancelsPendingSelection(t *testing.T) {
+	b := NewBusy(nil)
+	b.SetProcessIdentity("B")
+	b.Update(tea.KeyPressMsg{Code: '0', Mod: tea.ModCtrl})
+	b.Update(busyDataMsg{data: busySelectionData([]string{"A", "B"})})
+	if b.selectedIdentity() != "" {
+		t.Fatal("pending process selection overrode all-processes shortcut")
+	}
+}

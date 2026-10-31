@@ -1,0 +1,11 @@
+╭─Go to───────────────────────────╖queues unavailable╓─╮
+│type to navigate                                      │
+│> Busy                                               █│
+│  Busy: processes                                    █│
+│  Dashboard                                          █│
+│  Dead                                               █│
+│  Errors                                             █│
+│  Metrics                                            █│
+│  Queue jobs                                         █│
+│  Retries                                            ░│
+╰──────────────────────────────────────────────────────╯

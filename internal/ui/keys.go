@@ -19,11 +19,13 @@ type KeyMap struct {
 	ShiftTab  key.Binding
 	Help      key.Binding
 	DevTools  key.Binding
+	Palette   key.Binding
 }
 
 // DefaultKeyMap returns the default keybindings.
 func DefaultKeyMap() KeyMap {
 	return KeyMap{
+		Palette: key.NewBinding(key.WithKeys("ctrl+t"), key.WithHelp("ctrl+t", "go to")),
 		Quit: key.NewBinding(
 			key.WithKeys("q", "ctrl+c"),
 			key.WithHelp("q", "quit"),
@@ -96,6 +98,6 @@ func (k KeyMap) ShortHelp() []key.Binding {
 func (k KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.View1, k.View2, k.View3, k.View4, k.View5, k.View6, k.View7, k.View8, k.View9},
-		{k.Tab, k.ShiftTab, k.Help, k.Quit, k.DevTools},
+		{k.Tab, k.ShiftTab, k.Palette, k.Help, k.Quit, k.DevTools},
 	}
 }

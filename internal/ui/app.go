@@ -17,6 +17,7 @@ import (
 	"github.com/kpumuk/lazykiq/internal/ui/components/contextbar"
 	"github.com/kpumuk/lazykiq/internal/ui/components/errorpopup"
 	"github.com/kpumuk/lazykiq/internal/ui/components/navbar"
+	"github.com/kpumuk/lazykiq/internal/ui/components/scrollbar"
 	"github.com/kpumuk/lazykiq/internal/ui/components/stackbar"
 	"github.com/kpumuk/lazykiq/internal/ui/components/stats"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
@@ -24,6 +25,7 @@ import (
 	devtoolsdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/devtools"
 	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
 	helpdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/help"
+	palettedialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/palette"
 	"github.com/kpumuk/lazykiq/internal/ui/requestctx"
 	"github.com/kpumuk/lazykiq/internal/ui/theme"
 	"github.com/kpumuk/lazykiq/internal/ui/views"
@@ -243,12 +245,16 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if owner, ok := msg.Session.Owner.(dialogOwner); ok &&
 				owner.id == a.activeViewID() && owner.generation == a.viewGeneration &&
 				owner.view == a.viewRegistry[owner.id] {
-				cmds = append(cmds, a.updateView(owner.id, msg.Action))
+				if action, ok := msg.Action.(palettedialog.ActionMsg); ok {
+					cmds = append(cmds, a.navigatePaletteAction(action))
+				} else {
+					cmds = append(cmds, a.updateView(owner.id, msg.Action))
+				}
 			}
 		}
 		a.syncContextbar()
 		return a, tea.Batch(append(cmds, cmd)...)
-	case filterdialog.ActionMsg, confirmdialog.ActionMsg:
+	case filterdialog.ActionMsg, confirmdialog.ActionMsg, palettedialog.ActionMsg:
 		// Dialog actions are accepted only inside an owned close transition.
 		return a, nil
 	}
@@ -386,7 +392,18 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		activeID := a.activeViewID()
 
+		// Respect any view-owned input before global navigation.
+		if focused, ok := a.viewRegistry[activeID].(interface{ FilterFocused() bool }); ok && focused.FilterFocused() {
+			return a, a.updateView(activeID, msg)
+		}
+
 		if msg.String() == "esc" && len(a.viewStack) > 1 {
+			if activeID == viewProcessesList {
+				return a, a.popAndRefresh(viewBusy)
+			}
+			if activeID == viewQueuesList {
+				return a, a.popAndRefresh(viewQueueDetails)
+			}
 			if activeID == viewPeriodicDetail {
 				cmd := a.popAndRefresh(viewPeriodic)
 				return a, cmd
@@ -399,6 +416,8 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch {
 		case key.Matches(msg, a.keys.Quit):
 			return a, tea.Quit
+		case key.Matches(msg, a.keys.Palette):
+			return a.Update(a.openPalette())
 		case key.Matches(msg, a.keys.Help):
 			return a, a.toggleHelpDialog()
 		case a.devTracker != nil && key.Matches(msg, a.keys.DevTools):
@@ -796,7 +815,7 @@ func (a App) globalHelpBindings() []key.Binding {
 	if a.devTracker != nil {
 		bindings = append(bindings, a.keys.DevTools)
 	}
-	bindings = append(bindings, a.keys.Help, a.keys.Quit)
+	bindings = append(bindings, a.keys.Palette, a.keys.Help, a.keys.Quit)
 	if len(a.viewStack) > 1 {
 		bindings = append(bindings, key.NewBinding(
 			key.WithKeys("esc"),
@@ -1057,6 +1076,8 @@ func (a *App) styleDialogs() {
 				ScrollbarTrack: a.styles.ScrollbarTrack,
 				ScrollbarThumb: a.styles.ScrollbarThumb,
 			})
+		case *palettedialog.Model:
+			m.SetStyles(palettedialog.Styles{Title: a.styles.ViewTitle, Border: a.styles.FocusBorder, Text: a.styles.ViewText, Muted: a.styles.ViewMuted, Selected: a.styles.TableSelected, Scrollbar: scrollbar.Styles{Track: a.styles.ScrollbarTrack, Thumb: a.styles.ScrollbarThumb}})
 		case *filterdialog.Model:
 			m.SetStyles(filterdialog.Styles{Title: a.styles.ViewTitle, Border: a.styles.FocusBorder, Prompt: a.styles.MetricLabel, Text: a.styles.ViewText, Placeholder: a.styles.ViewMuted, Cursor: a.styles.ViewText})
 		case *confirmdialog.Model:

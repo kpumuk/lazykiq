@@ -25,6 +25,12 @@ type CloseCallback interface {
 	Close() tea.Cmd
 }
 
+// TargetedMsg routes a background result to its dialog even while covered.
+// The receiving dialog must reject results from obsolete instances or requests.
+type TargetedMsg interface {
+	DialogID() DialogID
+}
+
 // OpenDialogMsg is sent to open a new dialog.
 type OpenDialogMsg struct {
 	Model DialogModel
@@ -79,6 +85,14 @@ func (d dialogCmp) Init() tea.Cmd {
 
 // Update handles dialog lifecycle and forwards messages to the active dialog.
 func (d dialogCmp) Update(msg tea.Msg) (DialogCmp, tea.Cmd) {
+	if targeted, ok := msg.(TargetedMsg); ok {
+		if idx, exists := d.idMap[targeted.DialogID()]; exists {
+			u, cmd := d.dialogs[idx].Update(msg)
+			d.dialogs[idx] = u
+			return d, bindSession(cmd, d.sessions[u.ID()])
+		}
+		return d, nil
+	}
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		cmds := make([]tea.Cmd, 0, len(d.dialogs))
