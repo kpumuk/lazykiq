@@ -17,6 +17,7 @@ import (
 )
 
 type detailListView struct {
+	dialogs.Opener
 	requestctx.Scope
 	title       string
 	width       int
@@ -228,7 +229,5 @@ func (s detailListView) openFilterDialog() tea.Cmd {
 		filterdialog.WithStyles(s.filterStyle),
 		filterdialog.WithQuery(s.filter),
 	)
-	return func() tea.Msg {
-		return dialogs.OpenDialogMsg{Model: dialog}
-	}
+	return s.OpenDialog(dialog)
 }

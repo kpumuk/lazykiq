@@ -915,9 +915,10 @@ func (a *App) updateView(id viewID, msg tea.Msg) tea.Cmd {
 	if !ok {
 		return nil
 	}
+	a.setViewDialogOwner(id)
 	updatedView, cmd := view.Update(msg)
 	a.viewRegistry[id] = updatedView
-	return bindViewDialog(cmd, a.viewDialogOwner(id))
+	return cmd
 }
 
 func (a App) viewDialogOwner(id viewID) dialogOwner {
@@ -931,9 +932,16 @@ func (a App) dialogOwnerCurrent(owner dialogOwner) bool {
 
 func (a App) initView(id viewID) tea.Cmd {
 	if view, ok := a.viewRegistry[id]; ok {
-		return bindViewDialog(view.Init(), a.viewDialogOwner(id))
+		a.setViewDialogOwner(id)
+		return view.Init()
 	}
 	return nil
+}
+
+func (a App) setViewDialogOwner(id viewID) {
+	if setter, ok := a.viewRegistry[id].(dialogs.OwnerSetter); ok {
+		setter.SetDialogOwner(a.viewDialogOwner(id))
+	}
 }
 
 func (a *App) cancelViewRequests(id viewID) {

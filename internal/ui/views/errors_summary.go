@@ -29,6 +29,7 @@ var nowFuncErrorsSummary = time.Now
 
 // ErrorsSummary shows a summary of errors grouped by job and error class.
 type ErrorsSummary struct {
+	dialogs.Opener
 	requestctx.Scope
 	client       sidekiq.API
 	width        int
@@ -345,9 +346,7 @@ func (e *ErrorsSummary) openFilterDialog() tea.Cmd {
 		filterdialog.WithStyles(e.filterStyle),
 		filterdialog.WithQuery(e.filter),
 	)
-	return func() tea.Msg {
-		return dialogs.OpenDialogMsg{Model: dialog}
-	}
+	return e.OpenDialog(dialog)
 }
 
 // renderSummaryBox renders the bordered box containing the summary table.

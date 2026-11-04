@@ -110,23 +110,60 @@ func TestAppDelayedBusyDialogOpen(t *testing.T) {
 	}
 }
 
-type dialogCommandView struct {
-	dialogRecordingView
-	cmd tea.Cmd
+func TestAppViewFilterDialogOwners(t *testing.T) {
+	for name, id := range map[string]viewID{
+		"busy": viewBusy, "queue details": viewQueueDetails, "queues": viewQueuesList,
+		"processes": viewProcessesList, "retries": viewRetries, "scheduled": viewScheduled,
+		"dead": viewDead, "errors": viewErrorsSummary, "metrics": viewMetrics, "periodic": viewPeriodic,
+	} {
+		t.Run(name, func(t *testing.T) {
+			client := &ownershipClient{}
+			app := New(client, "", false, nil)
+			t.Cleanup(app.cancel)
+			app.viewRegistry[viewPeriodic] = views.NewPeriodic(client)
+			app.setActiveView(id)
+			open := dialogStep(&app, tea.KeyPressMsg{Code: '/', Text: "/"})
+			if open == nil {
+				t.Fatal("filter shortcut did not return a command")
+			}
+			dialogStep(&app, tea.KeyPressMsg{Code: '1', Text: "1"})
+			msg := open().(dialogs.OpenDialogMsg)
+			owner, ok := msg.Owner.(dialogOwner)
+			if !ok || owner.id != id || owner.view != app.viewRegistry[id] {
+				t.Fatalf("dialog owner = %#v, want originating view %v", msg.Owner, id)
+			}
+			dialogStep(&app, msg)
+			if app.dialogs.HasDialogs() {
+				t.Fatal("stale filter opened after navigation")
+			}
+		})
+	}
 }
 
-func (v *dialogCommandView) Init() tea.Cmd { return v.cmd }
+type dialogCommandView struct {
+	dialogRecordingView
+	dialogs.Opener
+	compose func(tea.Cmd, tea.Cmd, tea.Cmd) tea.Cmd
+}
+
+func (v *dialogCommandView) Init() tea.Cmd {
+	return v.compose(
+		func() tea.Msg { return "first" },
+		func() tea.Msg { return "second" },
+		v.OpenDialog(filterdialog.New()),
+	)
+}
 
 func (v *dialogCommandView) Update(msg tea.Msg) (views.View, tea.Cmd) {
 	if key, ok := msg.(tea.KeyPressMsg); ok && key.Text == "/" {
-		return v, v.cmd
+		return v, v.Init()
 	}
 	v.dialogRecordingView.Update(msg)
 	return v, nil
 }
 
-// Run command trees through Bubble Tea itself, including its private sequence
-// message, and hold their results for delivery after a navigation transition.
+// Run command trees through Bubble Tea itself and hold their results for
+// delivery after a navigation transition.
 type dialogCommandCollector struct {
 	initial  tea.Cmd
 	messages []tea.Msg
@@ -162,11 +199,7 @@ func TestAppDialogCommandTrees(t *testing.T) {
 				t.Run(name, func(t *testing.T) {
 					app := New(nil, "", false, nil)
 					t.Cleanup(app.cancel)
-					owner := &dialogCommandView{cmd: compose(
-						func() tea.Msg { return "first" },
-						func() tea.Msg { return "second" },
-						func() tea.Msg { return dialogs.OpenDialogMsg{Model: filterdialog.New()} },
-					)}
+					owner := &dialogCommandView{compose: compose}
 					app.viewRegistry[viewDashboard] = owner
 					var cmd tea.Cmd
 					switch source {

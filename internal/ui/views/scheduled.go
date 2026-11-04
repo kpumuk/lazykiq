@@ -13,7 +13,6 @@ import (
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/lazytable"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
-	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 	confirmdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/confirm"
 	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
 	"github.com/kpumuk/lazykiq/internal/ui/display"
@@ -345,66 +344,50 @@ func (s *Scheduled) buildRows(jobs []*sidekiq.SortedEntry) []table.Row {
 
 func (s *Scheduled) openDeleteConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
 	jobName := s.jobName(entry)
-	return func() tea.Msg {
-		return dialogs.OpenDialogMsg{
-			Model: newConfirmDialog(
-				s.styles,
-				"Delete job",
-				fmt.Sprintf(
-					"Are you sure you want to delete the %s job?\n\nThis action is not recoverable.",
-					s.styles.Text.Bold(true).Render(jobName),
-				),
-				entry.JID(),
-				s.styles.DangerAction,
-			),
-		}
-	}
+	return s.OpenDialog(newConfirmDialog(
+		s.styles,
+		"Delete job",
+		fmt.Sprintf(
+			"Are you sure you want to delete the %s job?\n\nThis action is not recoverable.",
+			s.styles.Text.Bold(true).Render(jobName),
+		),
+		entry.JID(),
+		s.styles.DangerAction,
+	))
 }
 
 func (s *Scheduled) openAddToQueueConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
 	jobName := s.jobName(entry)
-	return func() tea.Msg {
-		return dialogs.OpenDialogMsg{
-			Model: newConfirmDialog(
-				s.styles,
-				"Add to queue",
-				fmt.Sprintf(
-					"Add the %s job to the queue now?\n\nThis will enqueue it immediately.",
-					s.styles.Text.Bold(true).Render(jobName),
-				),
-				entry.JID(),
-				s.styles.DangerAction,
-			),
-		}
-	}
+	return s.OpenDialog(newConfirmDialog(
+		s.styles,
+		"Add to queue",
+		fmt.Sprintf(
+			"Add the %s job to the queue now?\n\nThis will enqueue it immediately.",
+			s.styles.Text.Bold(true).Render(jobName),
+		),
+		entry.JID(),
+		s.styles.DangerAction,
+	))
 }
 
 func (s *Scheduled) openDeleteAllConfirm() tea.Cmd {
-	return func() tea.Msg {
-		return dialogs.OpenDialogMsg{
-			Model: newConfirmDialog(
-				s.styles,
-				"Delete all scheduled",
-				"Are you sure you want to delete all scheduled jobs?\n\nThis action is not recoverable.",
-				"scheduled.delete_all",
-				s.styles.DangerAction,
-			),
-		}
-	}
+	return s.OpenDialog(newConfirmDialog(
+		s.styles,
+		"Delete all scheduled",
+		"Are you sure you want to delete all scheduled jobs?\n\nThis action is not recoverable.",
+		"scheduled.delete_all",
+		s.styles.DangerAction,
+	))
 }
 
 func (s *Scheduled) openAddAllToQueueConfirm() tea.Cmd {
-	return func() tea.Msg {
-		return dialogs.OpenDialogMsg{
-			Model: newConfirmDialog(
-				s.styles,
-				"Add all to queue",
-				"Add all scheduled jobs to the queue now?\n\nThis will enqueue them immediately.",
-				"scheduled.add_all",
-				s.styles.DangerAction,
-			),
-		}
-	}
+	return s.OpenDialog(newConfirmDialog(
+		s.styles,
+		"Add all to queue",
+		"Add all scheduled jobs to the queue now?\n\nThis will enqueue them immediately.",
+		"scheduled.add_all",
+		s.styles.DangerAction,
+	))
 }
 
 func (s *Scheduled) deleteJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {

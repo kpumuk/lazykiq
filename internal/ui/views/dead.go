@@ -13,7 +13,6 @@ import (
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/components/lazytable"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
-	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 	confirmdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/confirm"
 	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
 	"github.com/kpumuk/lazykiq/internal/ui/display"
@@ -348,66 +347,50 @@ func (d *Dead) buildRows(jobs []*sidekiq.SortedEntry) []table.Row {
 
 func (d *Dead) openDeleteConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
 	jobName := d.jobName(entry)
-	return func() tea.Msg {
-		return dialogs.OpenDialogMsg{
-			Model: newConfirmDialog(
-				d.styles,
-				"Delete job",
-				fmt.Sprintf(
-					"Are you sure you want to delete the %s job?\n\nThis action is not recoverable.",
-					d.styles.Text.Bold(true).Render(jobName),
-				),
-				entry.JID(),
-				d.styles.DangerAction,
-			),
-		}
-	}
+	return d.OpenDialog(newConfirmDialog(
+		d.styles,
+		"Delete job",
+		fmt.Sprintf(
+			"Are you sure you want to delete the %s job?\n\nThis action is not recoverable.",
+			d.styles.Text.Bold(true).Render(jobName),
+		),
+		entry.JID(),
+		d.styles.DangerAction,
+	))
 }
 
 func (d *Dead) openRetryNowConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
 	jobName := d.jobName(entry)
-	return func() tea.Msg {
-		return dialogs.OpenDialogMsg{
-			Model: newConfirmDialog(
-				d.styles,
-				"Retry job",
-				fmt.Sprintf(
-					"Retry the %s job now?\n\nThis will enqueue it immediately.",
-					d.styles.Text.Bold(true).Render(jobName),
-				),
-				entry.JID(),
-				d.styles.DangerAction,
-			),
-		}
-	}
+	return d.OpenDialog(newConfirmDialog(
+		d.styles,
+		"Retry job",
+		fmt.Sprintf(
+			"Retry the %s job now?\n\nThis will enqueue it immediately.",
+			d.styles.Text.Bold(true).Render(jobName),
+		),
+		entry.JID(),
+		d.styles.DangerAction,
+	))
 }
 
 func (d *Dead) openDeleteAllConfirm() tea.Cmd {
-	return func() tea.Msg {
-		return dialogs.OpenDialogMsg{
-			Model: newConfirmDialog(
-				d.styles,
-				"Delete all dead",
-				"Are you sure you want to delete all dead jobs?\n\nThis action is not recoverable.",
-				"dead.delete_all",
-				d.styles.DangerAction,
-			),
-		}
-	}
+	return d.OpenDialog(newConfirmDialog(
+		d.styles,
+		"Delete all dead",
+		"Are you sure you want to delete all dead jobs?\n\nThis action is not recoverable.",
+		"dead.delete_all",
+		d.styles.DangerAction,
+	))
 }
 
 func (d *Dead) openRetryAllConfirm() tea.Cmd {
-	return func() tea.Msg {
-		return dialogs.OpenDialogMsg{
-			Model: newConfirmDialog(
-				d.styles,
-				"Retry all dead",
-				"Retry all dead jobs now?\n\nThis will enqueue them immediately.",
-				"dead.retry_all",
-				d.styles.DangerAction,
-			),
-		}
-	}
+	return d.OpenDialog(newConfirmDialog(
+		d.styles,
+		"Retry all dead",
+		"Retry all dead jobs now?\n\nThis will enqueue them immediately.",
+		"dead.retry_all",
+		d.styles.DangerAction,
+	))
 }
 
 func (d *Dead) deleteJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
