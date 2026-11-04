@@ -147,8 +147,8 @@ func assertLimiterFixture(t *testing.T, client *Client, fixture limiterFixture) 
 			if test.history > 0 {
 				assertRuntimeBucketSamples(t, l.History)
 			}
-			if name == "concurrent" && l.Values["waited"].Valid {
-				t.Fatal("absent runtime metric became zero")
+			if name == "concurrent" && (!l.Values["waited"].Valid || l.Values["waited"].Raw != "0") {
+				t.Fatal("unused runtime counter did not default to zero")
 			}
 			if name == "concurrent_metrics" {
 				for _, field := range []string{"held", "held_ms", "immediate", "waited", "wait_ms", "overtime", "reclaimed"} {
@@ -534,5 +534,42 @@ func TestLimiterSeparateConnectionAndOptions(t *testing.T) {
 		if err == nil || strings.Contains(err.Error(), "synthetic-secret") {
 			t.Fatalf("invalid config accepted or disclosed: %v", err)
 		}
+	}
+}
+
+func TestLimiterMissingMetricsUseZero(t *testing.T) {
+	for name, test := range map[string]struct {
+		key    string
+		fields []string
+	}{
+		"concurrent": {key: "lmtr-c-unused", fields: []string{"held", "held_ms", "immediate", "waited", "wait_ms", "overtime", "reclaimed"}},
+		"leaky":      {key: "lmtr-k-unused", fields: []string{"hit", "miss", "waited"}},
+		"points":     {key: "lmtr-p-unused", fields: []string{"hit", "miss", "waited"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			client, mr := limiterTestClient(t)
+			mr.HSet(test.key, "size", "10", "interval", "60")
+			limiter, err := client.GetLimiter(t.Context(), test.key)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, field := range test.fields {
+				if value := limiter.Values[field]; !value.Valid || value.Raw != "0" || value.Number != 0 {
+					t.Errorf("unused %s = %+v, want zero", field, value)
+				}
+			}
+
+			mr.HSet(test.key, test.fields[0], "7", test.fields[1], "invalid")
+			limiter, err = client.GetLimiter(t.Context(), test.key)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if value := limiter.Values[test.fields[0]]; !value.Valid || value.Number != 7 {
+				t.Errorf("recorded counter changed: %+v", value)
+			}
+			if value := limiter.Values[test.fields[1]]; value.Valid || value.Raw != "invalid" {
+				t.Errorf("malformed counter became zero: %+v", value)
+			}
+		})
 	}
 }

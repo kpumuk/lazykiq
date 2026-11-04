@@ -1,12 +1,12 @@
 ╭─Help─────────────────────────────────────────────────────────╮
 │ Global                         Rate Limits                 █ │
-│  1       dashboard             Unavailable is not zero.    █ │
-│  2       busy                                              █ │
-│  3       queues                 /       filter name        █ │
-│  4       retries                ctrl+u  reset filter       ░ │
-│  5       scheduled              [/]     previous/next page ░ │
-│  6       dead                   ctrl+r  find new limiters  ░ │
-│  7       errors                 enter   open details       ░ │
-│  8       metrics                c       copy name          ░ │
-│  9       periodic               C       copy key           ░ │
+│  1       dashboard              /       filter name        █ │
+│  2       busy                   ctrl+u  reset filter       █ │
+│  3       queues                 [/]     previous/next page █ │
+│  4       retries                ctrl+r  find new limiters  ░ │
+│  5       scheduled              enter   open details       ░ │
+│  6       dead                   c       copy name          ░ │
+│  7       errors                 C       copy key           ░ │
+│  8       metrics                r       refresh            ░ │
+│  9       periodic                                          ░ │
 ╰──────────────────────────────────────────────────────────────╯

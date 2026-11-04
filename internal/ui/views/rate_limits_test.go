@@ -68,7 +68,7 @@ func limiterViewFixture() []sidekiq.Limiter {
 			{At: now, Value: sidekiq.LimiterValue{Raw: "0", Number: 0, Valid: true}}, {At: now.Add(-time.Minute), Value: sidekiq.LimiterValue{Raw: "123", Number: 123, Valid: true}}, {At: now.Add(-2 * time.Minute)},
 		}},
 		{Key: "lmtr-k-shopify", Name: "shopify", Type: "Leaky bucket", Interval: "20", Values: values(map[string]string{"size": "40", "drops": "17", "last": "1793741400", "hit": "250", "miss": "5", "waited": "1.25"})},
-		{Key: "lmtr-p-graphql", Name: "graphql", Type: "Points", Interval: "20", Values: values(map[string]string{"size": "1000", "points": "850", "last": "1793741400", "hit": "30", "miss": "0"})},
+		{Key: "lmtr-p-graphql", Name: "graphql", Type: "Points", Interval: "20", Values: values(map[string]string{"size": "1000", "points": "850", "last": "1793741400", "hit": "30", "miss": "0", "waited": "0"})},
 	}
 	for i := range items {
 		items[i].ObservedAt = now
@@ -234,7 +234,7 @@ func TestRateLimitDetailReplacementHistoryAndUnits(t *testing.T) {
 				}
 			}
 		case "Points":
-			for _, label := range []string{"1000 points", "50 points/s", "Last points balance", "850 points", "Full refill interval", "Unavailable"} {
+			for _, label := range []string{"1000 points", "50 points/s", "Last points balance", "850 points", "Full refill interval", "0 s"} {
 				if !strings.Contains(all, label) {
 					t.Fatalf("wrong points units/state: %q", label)
 				}

@@ -275,6 +275,18 @@ func (c *Client) readLimiter(ctx context.Context, key string, history bool, now 
 			}
 		}
 	}
+	var counters []string
+	switch kind {
+	case "Concurrent":
+		counters = []string{"held", "held_ms", "immediate", "waited", "wait_ms", "overtime", "reclaimed"}
+	case "Leaky bucket", "Points":
+		counters = []string{"hit", "miss", "waited"}
+	}
+	for _, field := range counters {
+		if _, exists := record.Values[field]; !exists {
+			record.Values[field] = LimiterValue{Raw: "0", Valid: true}
+		}
+	}
 	if kind == "Concurrent" {
 		if err := readLimiterCapacity(record, free, used); err != nil {
 			return nil, err

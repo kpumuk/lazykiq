@@ -162,7 +162,7 @@ func (m *RateLimits) View() string {
 		return m.renderFrame("Rate Limits", m.table.View(), pageMeta, m.filter, m.width, m.height, true)
 	}
 	if m.hasHistory() {
-		historyMeta := m.limiter.Interval + " · " + m.limiter.HistoryZone + " · absent ≠ zero"
+		historyMeta := m.limiter.Interval + " · " + m.limiter.HistoryZone
 		if m.width < 100 {
 			if m.focusHistory {
 				return m.renderFrame("Bucket Counters", m.history.View(), historyMeta, "", m.width, m.height, true)
@@ -224,9 +224,7 @@ func (m *RateLimits) HintBindings() []key.Binding {
 
 // HelpSections implements HelpProvider.
 func (m *RateLimits) HelpSections() []HelpSection {
-	return []HelpSection{{Title: "Rate Limits", Bindings: m.HintBindings(), Lines: []string{
-		"Unavailable is not zero.",
-	}}}
+	return []HelpSection{{Title: "Rate Limits", Bindings: m.HintBindings()}}
 }
 
 // TableHelp implements TableHelpProvider.

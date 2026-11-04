@@ -94,9 +94,8 @@ between calls, so these values may differ from what is available now.
 
 ## Missing data
 
-**Unavailable** means Sidekiq has no value to show, or the value has expired.
-It does not mean zero. Some statistics are only available for certain limiter
-types, and older bucket counts may no longer be available.
+Counters show **0** before any activity is recorded. **Unavailable** means a
+value cannot be determined, such as expired bucket history.
 
 **Disappeared** means the limiter is no longer available. Press `Esc` to return
 to the list, then `Ctrl+r` to update the results.

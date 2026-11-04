@@ -11,7 +11,7 @@
 │ Last points balance      850 points                                                                        │
 │ Hit count                30                                                                                │
 │ Miss count               0                                                                                 │
-│ Wait duration            Unavailable                                                                       │
+│ Wait duration            0 s                                                                               │
 │ Last limiter update      2026-11-03T21:30:00Z                                                              │
 │ Usage note               Points refill between calls; this is the balance at the last update.              │
 │ Limiter expires in       10m0s                                                                             │
