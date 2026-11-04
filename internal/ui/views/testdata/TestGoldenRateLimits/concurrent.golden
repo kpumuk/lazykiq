@@ -1,0 +1,24 @@
+╭─Concurrent───────────────────────────────────────────────────────────────────────────────────────╮
+│ Property / metric        Recorded value                                                          │
+│ ───────────────────────────────────────────────────────────────────────────────────────────────  │
+│ Name                     payments                                                                │
+│ Redis key                lmtr-c-payments                                                         │
+│ Type                     Concurrent                                                              │
+│ Capacity / rate          8 slots                                                                 │
+│ Observed capacity        8 slots                                                                 │
+│ Used capacity            6 slots                                                                 │
+│ Free capacity            2 slots                                                                 │
+│ Held count               417                                                                     │
+│ Held duration            12.345 s                                                                │
+│ Immediate acquisitions   400                                                                     │
+│ Waited count             17                                                                      │
+│ Wait duration            1.25 s                                                                  │
+│ Overtime count           0                                                                       │
+│ Reclaimed locks          0                                                                       │
+│ Capacity semantics       Observed free list + used set; expired locks are not reclaimed by insp  │
+│ Record TTL               10m0s                                                                   │
+│ Observed at              2026-11-03T21:30:00Z                                                    │
+│ Inspection scope         Configuration is limited to persisted fields. Wait/lock timeout and po  │
+│                                                                                                  │
+│                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯

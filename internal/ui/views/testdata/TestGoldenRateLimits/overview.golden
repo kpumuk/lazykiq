@@ -1,0 +1,20 @@
+╭─Rate Limits────────────────────────────────────────────────────────────────────────────╖Page 1 · 5 records · ] more╓─╮
+│ Name                         Type           Capacity / rate             State                                        │
+│ ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────  │
+│ payments                     Concurrent     8 slots                     6 used / 2 free                              │
+│ search                       Window         10 / 30 s                   Recorded                                     │
+│ stripe                       Bucket         100 / minute                Recorded                                     │
+│ shopify                      Leaky bucket   40 operations / 20 s        Recorded                                     │
+│ graphql                      Points         1000 points / 20 s          Recorded                                     │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯

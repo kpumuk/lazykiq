@@ -1,0 +1,12 @@
+╭─Concurrent─────────────────────────────╮
+│ Property / metric        Recorded val  │
+│ ─────────────────────────────────────  │
+│ Name                     payments    █ │
+│ Redis key                lmtr-c-payme█ │
+│ Type                     Concurrent  █ │
+│ Capacity / rate          8 slots     █ │
+│ Observed capacity        8 slots     ░ │
+│ Used capacity            6 slots     ░ │
+│ Free capacity            2 slots     ░ │
+│ Held count               417         ░ │
+╰────────────────────────────────────────╯

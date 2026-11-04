@@ -1,0 +1,24 @@
+╭─Points─────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Property / metric        Recorded value                                                                    │
+│ ─────────────────────────────────────────────────────────────────────────────────────────────────────────  │
+│ Name                     graphql                                                                           │
+│ Redis key                lmtr-p-graphql                                                                    │
+│ Type                     Points                                                                            │
+│ Capacity / rate          1000 points / 20 s                                                                │
+│ Burst capacity           1000 points                                                                       │
+│ Full refill interval     20 s                                                                              │
+│ Configured rate          50 points/s                                                                       │
+│ Recorded points          850                                                                               │
+│ Hit count                30                                                                                │
+│ Miss count               0                                                                                 │
+│ Wait duration            Unavailable                                                                       │
+│ Last accounting time     2026-11-03T21:30:00Z                                                              │
+│ State semantics          Last persisted state; elapsed-time drain/refill is not simulated.                 │
+│ Record TTL               10m0s                                                                             │
+│ Observed at              2026-11-03T21:30:00Z                                                              │
+│ Inspection scope         Configuration is limited to persisted fields. Wait/lock timeout and policy are n  │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+╰────────────────────────────────────────────────────────────────────────────────────────────────────────────╯

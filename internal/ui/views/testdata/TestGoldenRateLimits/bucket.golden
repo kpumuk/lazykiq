@@ -1,0 +1,20 @@
+╭─Bucket────────────────────────────────────────────────────────────────────╮╭─Bucket Counters──────────────╖minute · UTC · absent ≠ zero╓─╮
+│ Property / metric        Recorded value                                   ││ Bucket start               Recorded counter                 │
+│ ────────────────────────────────────────────────────────────────────────  ││ ──────────────────────────────────────────────────────────  │
+│ Name                     stripe                                           ││ 2026-11-03 21:30:00 +0000  0                                │
+│ Redis key                lmtr-b-stripe                                    ││ 2026-11-03 21:29:00 +0000  123                              │
+│ Type                     Bucket                                           ││ 2026-11-03 21:28:00 +0000  Unavailable                      │
+│ Capacity / rate          100 / minute                                     ││                                                             │
+│ Configured size          100 operations                                   ││                                                             │
+│ Configured interval      minute                                           ││                                                             │
+│ Acquisition statistics   Not recorded for this type                       ││                                                             │
+│ Counter semantics        Recorded attempts, including over-limit attempt  ││                                                             │
+│ Record TTL               10m0s                                            ││                                                             │
+│ Observed at              2026-11-03T21:30:00Z                             ││                                                             │
+│ Inspection scope         Configuration is limited to persisted fields. W  ││                                                             │
+│                                                                           ││                                                             │
+│                                                                           ││                                                             │
+│                                                                           ││                                                             │
+│                                                                           ││                                                             │
+│                                                                           ││                                                             │
+╰───────────────────────────────────────────────────────────────────────────╯╰─────────────────────────────────────────────────────────────╯

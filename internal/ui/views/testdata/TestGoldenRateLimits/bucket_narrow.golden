@@ -1,0 +1,16 @@
+╭─Bucket─────────────────────────────────────╖ · tab: counters╓─╮
+│ Property / metric        Recorded value                       │
+│ ────────────────────────────────────────────────────────────  │
+│ Name                     stripe                               │
+│ Redis key                lmtr-b-stripe                        │
+│ Type                     Bucket                               │
+│ Capacity / rate          100 / minute                         │
+│ Configured size          100 operations                       │
+│ Configured interval      minute                               │
+│ Acquisition statistics   Not recorded for this type           │
+│ Counter semantics        Recorded attempts, including over-l  │
+│ Record TTL               10m0s                                │
+│ Observed at              2026-11-03T21:30:00Z                 │
+│ Inspection scope         Configuration is limited to persist  │
+│                                                               │
+╰───────────────────────────────────────────────────────────────╯

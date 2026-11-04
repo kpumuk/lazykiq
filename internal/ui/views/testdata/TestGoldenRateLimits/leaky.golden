@@ -1,0 +1,24 @@
+╭─Leaky bucket───────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Property / metric        Recorded value                                                                    │
+│ ─────────────────────────────────────────────────────────────────────────────────────────────────────────  │
+│ Name                     shopify                                                                           │
+│ Redis key                lmtr-k-shopify                                                                    │
+│ Type                     Leaky bucket                                                                      │
+│ Capacity / rate          40 operations / 20 s                                                              │
+│ Burst capacity           40 operations                                                                     │
+│ Full drain interval      20 s                                                                              │
+│ Configured rate          2 operations/s                                                                    │
+│ Recorded drops           17                                                                                │
+│ Hit count                250                                                                               │
+│ Miss count               5                                                                                 │
+│ Wait duration            1.25 s                                                                            │
+│ Last accounting time     2026-11-03T21:30:00Z                                                              │
+│ State semantics          Last persisted state; elapsed-time drain/refill is not simulated.                 │
+│ Record TTL               10m0s                                                                             │
+│ Observed at              2026-11-03T21:30:00Z                                                              │
+│ Inspection scope         Configuration is limited to persisted fields. Wait/lock timeout and policy are n  │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+╰────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
