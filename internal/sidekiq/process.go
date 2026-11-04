@@ -371,18 +371,18 @@ func (p *Process) parseJobsFromWork(work map[string]string, filter string) []Job
 		if err := json.Unmarshal([]byte(workJSON), &wd); err != nil {
 			continue
 		}
+		if wd.Payload == "" {
+			continue
+		}
 
 		job := Job{
+			JobRecord:       NewJobRecord(wd.Payload, wd.Queue),
 			ProcessIdentity: p.Identity,
 			ThreadID:        tid,
 		}
 
 		if wd.RunAt > 0 {
 			job.RunAt = parseTimestamp(wd.RunAt)
-		}
-
-		if wd.Payload != "" {
-			job.JobRecord = NewJobRecord(wd.Payload, wd.Queue)
 		}
 
 		jobs = append(jobs, job)

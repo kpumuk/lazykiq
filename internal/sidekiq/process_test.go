@@ -665,6 +665,41 @@ func TestProcessGetJobs_Empty(t *testing.T) {
 	}
 }
 
+func TestParseJobsFromWorkSkipsMissingPayload(t *testing.T) {
+	for name, tc := range map[string]struct{ work string }{
+		"absent":       {`{"queue":"default","run_at":1700000000}`},
+		"empty":        {`{"queue":"default","payload":"","run_at":1700000000}`},
+		"null":         {`{"queue":"default","payload":null,"run_at":1700000000}`},
+		"empty object": {`{}`},
+		"null record":  {`null`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			process := &Process{Identity: "host:1:abc"}
+			jobs := process.parseJobsFromWork(map[string]string{"incomplete": tc.work}, "")
+			if len(jobs) != 0 {
+				t.Fatalf("incomplete work returned %d jobs, want 0", len(jobs))
+			}
+			work := map[string]string{
+				"incomplete": tc.work,
+				"valid":      `{"queue":"default","payload":"{\"jid\":\"good\",\"class\":\"ExampleJob\",\"args\":[42]}","run_at":1700000000}`,
+			}
+			for _, filter := range []string{"", "default"} {
+				jobs = process.parseJobsFromWork(work, filter)
+				if len(jobs) != 1 {
+					t.Fatalf("filter %q returned %d jobs, want 1", filter, len(jobs))
+				}
+				job := jobs[0]
+				if job.JID() != "good" || job.Queue() != "default" || job.DisplayClass() != "ExampleJob" || !reflect.DeepEqual(job.DisplayArgs(), []any{float64(42)}) {
+					t.Fatalf("valid neighboring job changed: %+v", job)
+				}
+				if job.ProcessIdentity != process.Identity || job.ThreadID != "valid" || job.RunAt.Unix() != 1700000000 {
+					t.Fatalf("valid neighboring job lost work metadata: %+v", job)
+				}
+			}
+		})
+	}
+}
+
 func TestProcessGetJobs_InvalidJSON(t *testing.T) {
 	mr, client := setupTestRedis(t)
 
