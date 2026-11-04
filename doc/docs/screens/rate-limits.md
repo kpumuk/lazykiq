@@ -40,16 +40,9 @@ An empty page can still have more results; follow the `] more` hint to continue.
 
 ## Concurrent usage
 
-The utilization bar shows how many slots are in use. For example, **75%** with
-**6 used · 2 free · 8 total** means six of eight slots are occupied. Solid blocks
-show used slots; shaded blocks show free slots. The bar turns red when all slots
-are occupied and stays visible while you scroll through the metrics.
-
 {{< lightbox src="assets/rate_limits.png" alt="Concurrent limiter with six of eight slots in use" >}}
 
-A full bar shows that no slots are free. Use the waiting metrics to see how
-often callers have had to wait. A timed-out lock can remain in the used count
-until another call reclaims it.
+A timed-out lock can remain in the used count until another call reclaims it.
 
 | Metric | Meaning |
 | --- | --- |
