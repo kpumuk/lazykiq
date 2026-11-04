@@ -233,13 +233,13 @@ func TestRateLimitDetailReplacementHistoryAndUnits(t *testing.T) {
 				}
 			}
 		case "Points":
-			for _, label := range []string{"1000 points", "50 points/s", "Recorded points", "Full refill interval", "Unavailable"} {
+			for _, label := range []string{"1000 points", "50 points/s", "Last points balance", "850 points", "Full refill interval", "Unavailable"} {
 				if !strings.Contains(all, label) {
 					t.Fatalf("wrong points units/state: %q", label)
 				}
 			}
 		case "Leaky bucket":
-			for _, label := range []string{"40 operations", "2 operations/s", "Recorded drops", "Full drain interval", "1.25 s"} {
+			for _, label := range []string{"40 operations", "2 operations/s", "Last bucket fill", "17 operations", "Full drain interval", "1.25 s"} {
 				if !strings.Contains(all, label) {
 					t.Fatalf("wrong leaky units/state: %q", label)
 				}

@@ -63,11 +63,11 @@ func limiterPropertyRows(l *sidekiq.Limiter) []table.Row {
 	add("Type", l.Type)
 	add("Capacity / rate", l.Rate())
 	if len(l.Problems) > 0 {
-		add("Record warning", strings.Join(l.Problems, "; "))
+		add("Warning", strings.Join(l.Problems, "; "))
 	}
 	switch l.Type {
 	case "Concurrent":
-		metric("Observed capacity", "size", 1, " slots")
+		metric("Total capacity", "size", 1, " slots")
 		metric("Used capacity", "used", 1, " slots")
 		metric("Free capacity", "free", 1, " slots")
 		metric("Held count", "held", 1, "")
@@ -77,7 +77,7 @@ func limiterPropertyRows(l *sidekiq.Limiter) []table.Row {
 		metric("Wait duration", "wait_ms", 1000, " s")
 		metric("Overtime count", "overtime", 1, "")
 		metric("Reclaimed locks", "reclaimed", 1, "")
-		add("Capacity semantics", "Observed free list + used set; expired locks are not reclaimed by inspection.")
+		add("Usage note", "Free + used slots; expired locks may still count as used.")
 	case "Window", "Bucket":
 		metric("Configured size", "size", 1, " operations")
 		interval := l.Interval
@@ -88,19 +88,21 @@ func limiterPropertyRows(l *sidekiq.Limiter) []table.Row {
 			interval = "Unavailable"
 		}
 		add("Configured interval", interval)
-		add("Acquisition statistics", "Not recorded for this type")
+		add("Hit / miss totals", "Not tracked for this type")
 		if l.Type == "Window" {
-			metric("Current window counter", "window_counter", 1, "")
+			metric("Attempts this window", "window_counter", 1, "")
 			metric("Window expires in", "window_ttl_ms", 1000, " s")
-			add("Counter semantics", "Recorded attempted units in the active window, including over-limit attempts.")
+			add("Counter includes", "All attempts, including over-limit attempts.")
 		}
 		if l.Type == "Bucket" {
-			add("Counter semantics", "Recorded attempts, including over-limit attempts. Absent counters are unavailable.")
+			add("Counter includes", "All attempts, including over-limit attempts.")
 		}
 	case "Leaky bucket", "Points":
-		unit, state := "operations", "drops"
+		unit, field, label := "operations", "drops", "Last bucket fill"
+		note := "The bucket drains between calls; this is its fill at the last update."
 		if l.Type == "Points" {
-			unit, state = "points", "points"
+			unit, field, label = "points", "points", "Last points balance"
+			note = "Points refill between calls; this is the balance at the last update."
 		}
 		metric("Burst capacity", "size", 1, " "+unit)
 		add("Full "+map[bool]string{true: "refill", false: "drain"}[l.Type == "Points"]+" interval", l.Interval+" s")
@@ -108,7 +110,7 @@ func limiterPropertyRows(l *sidekiq.Limiter) []table.Row {
 		if size := l.Values["size"]; size.Valid && err == nil && seconds > 0 {
 			add("Configured rate", fmt.Sprintf("%g %s/s", size.Number/seconds, unit))
 		}
-		metric("Recorded "+state, state, 1, "")
+		metric(label, field, 1, " "+unit)
 		metric("Hit count", "hit", 1, "")
 		metric("Miss count", "miss", 1, "")
 		metric("Wait duration", "waited", 1, " s")
@@ -116,8 +118,8 @@ func limiterPropertyRows(l *sidekiq.Limiter) []table.Row {
 		if value := l.Values["last"]; value.Valid {
 			last = time.Unix(int64(value.Number), int64((value.Number-float64(int64(value.Number)))*1e9)).UTC().Format(time.RFC3339Nano)
 		}
-		add("Last accounting time", last)
-		add("State semantics", "Last persisted state; elapsed-time drain/refill is not simulated.")
+		add("Last limiter update", last)
+		add("Usage note", note)
 	default:
 		add("Availability", "Unsupported limiter type; this record does not prevent inspecting other limiters.")
 	}
@@ -125,8 +127,8 @@ func limiterPropertyRows(l *sidekiq.Limiter) []table.Row {
 	if l.TTL >= 0 {
 		ttl = l.TTL.String()
 	}
-	add("Record TTL", ttl)
-	add("Observed at", l.ObservedAt.UTC().Format(time.RFC3339))
+	add("Limiter expires in", ttl)
+	add("Refreshed at", l.ObservedAt.UTC().Format(time.RFC3339))
 	add("Inspection scope", "Configuration is limited to persisted fields. Wait/lock timeout and policy are not stored.")
 	return rows
 }

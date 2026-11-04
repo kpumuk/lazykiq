@@ -16,8 +16,11 @@ acquisition actions.
 
 ## Find and inspect a limiter
 
-The overview shows each persisted limiter's name, type, capacity or rate, and
-record state. Press `Enter` to inspect it; `Esc` returns to the same list page.
+The overview shows each limiter's name, type, and capacity or rate. **Usage / notes**
+shows concurrent used/free slots or a warning about a missing, malformed, or
+unsupported limiter. It stays blank when there is no usage or warning to show;
+it does not indicate whether calls are currently being throttled.
+Press `Enter` to inspect a limiter; `Esc` returns to the same list page.
 Press `/` to search by a literal, case-sensitive name substring. Characters such
 as `*`, `?`, `[` and `\` are treated as text, not Redis patterns.
 
@@ -75,9 +78,12 @@ hit/miss totals or cumulative wait duration.
 **Leaky bucket** shows burst capacity in operations, the time to drain a full
 bucket in seconds, and the corresponding operations per second. **Points** shows
 burst capacity in points, full-refill time in seconds, and points per second.
-Both show recorded hit/miss counts, cumulative wait duration in seconds, last
-accounting time, and the persisted drops or points. Persisted state is the last
-accounted value; Lazykiq does not simulate drain, refill, or current token availability.
+Both show hit/miss counts and cumulative wait duration in seconds. **Last bucket
+fill** is the number of operations filling a leaky bucket at its last update.
+**Last points balance** is the number of points left at the last update.
+**Last limiter update** shows when those values were last updated by a caller.
+Buckets drain and points refill between calls, so these values can differ from
+what is available now. Lazykiq displays the saved values without estimating that change.
 
 **Unavailable** means a metric was absent or its counter expired; it does not
 mean zero. A displayed `0` was actually recorded, or is an observed empty capacity

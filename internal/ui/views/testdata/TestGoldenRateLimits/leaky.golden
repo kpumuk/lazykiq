@@ -1,5 +1,5 @@
 ╭─Leaky bucket───────────────────────────────────────────────────────────────────────────────────────────────╮
-│ Property / metric        Recorded value                                                                    │
+│ Property / metric        Value                                                                             │
 │ ─────────────────────────────────────────────────────────────────────────────────────────────────────────  │
 │ Name                     shopify                                                                           │
 │ Redis key                lmtr-k-shopify                                                                    │
@@ -8,14 +8,14 @@
 │ Burst capacity           40 operations                                                                     │
 │ Full drain interval      20 s                                                                              │
 │ Configured rate          2 operations/s                                                                    │
-│ Recorded drops           17                                                                                │
+│ Last bucket fill         17 operations                                                                     │
 │ Hit count                250                                                                               │
 │ Miss count               5                                                                                 │
 │ Wait duration            1.25 s                                                                            │
-│ Last accounting time     2026-11-03T21:30:00Z                                                              │
-│ State semantics          Last persisted state; elapsed-time drain/refill is not simulated.                 │
-│ Record TTL               10m0s                                                                             │
-│ Observed at              2026-11-03T21:30:00Z                                                              │
+│ Last limiter update      2026-11-03T21:30:00Z                                                              │
+│ Usage note               The bucket drains between calls; this is its fill at the last update.             │
+│ Limiter expires in       10m0s                                                                             │
+│ Refreshed at             2026-11-03T21:30:00Z                                                              │
 │ Inspection scope         Configuration is limited to persisted fields. Wait/lock timeout and policy are n  │
 │                                                                                                            │
 │                                                                                                            │

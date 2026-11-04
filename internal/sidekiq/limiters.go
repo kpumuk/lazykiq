@@ -442,8 +442,8 @@ func (l Limiter) Rate() string {
 	}
 }
 
-// State describes availability without manufacturing missing statistics.
-func (l Limiter) State() string {
+// UsageNote describes observed usage or a problem that needs attention.
+func (l Limiter) UsageNote() string {
 	if l.Missing {
 		return "Disappeared"
 	}
@@ -456,5 +456,5 @@ func (l Limiter) State() string {
 	if l.Type == "Concurrent" {
 		return fmt.Sprintf("%s used / %s free", l.Values["used"].Raw, l.Values["free"].Raw)
 	}
-	return "Recorded"
+	return ""
 }

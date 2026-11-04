@@ -69,8 +69,8 @@ type RateLimits struct {
 func NewRateLimits(client sidekiq.API) *RateLimits {
 	return &RateLimits{
 		client:  client,
-		table:   table.New(table.WithColumns([]table.Column{{Title: "Name", Width: 28}, {Title: "Type", Width: 14}, {Title: "Capacity / rate", Width: 27}, {Title: "State", Width: 40}})),
-		history: table.New(table.WithColumns([]table.Column{{Title: "Bucket start", Width: 26}, {Title: "Recorded counter", Width: 20}})),
+		table:   table.New(table.WithColumns([]table.Column{{Title: "Name", Width: 28}, {Title: "Type", Width: 14}, {Title: "Capacity / rate", Width: 27}, {Title: "Usage / notes", Width: 40}})),
+		history: table.New(table.WithColumns([]table.Column{{Title: "Bucket start", Width: 26}, {Title: "Attempts", Width: 20}})),
 	}
 }
 
@@ -78,7 +78,7 @@ func NewRateLimits(client sidekiq.API) *RateLimits {
 func NewRateLimitDetail(client sidekiq.API) *RateLimits {
 	m := NewRateLimits(client)
 	m.detail = true
-	m.table.SetColumns([]table.Column{{Title: "Property / metric", Width: 24}, {Title: "Recorded value", Width: 45}})
+	m.table.SetColumns([]table.Column{{Title: "Property / metric", Width: 24}, {Title: "Value", Width: 45}})
 	return m
 }
 
@@ -194,7 +194,7 @@ func (m *RateLimits) ShortHelp() []key.Binding { return nil }
 func (m *RateLimits) ContextItems() []ContextItem {
 	items := []ContextItem{{Label: "Limiter Redis", Value: m.client.DisplayLimiterRedis()}}
 	if m.detail && m.limiter != nil {
-		return append(items, ContextItem{Label: "Name", Value: m.limiter.Name}, ContextItem{Label: "Type", Value: m.limiter.Type}, ContextItem{Label: "State", Value: m.limiter.State()})
+		return append(items, ContextItem{Label: "Name", Value: m.limiter.Name}, ContextItem{Label: "Type", Value: m.limiter.Type})
 	}
 	if len(m.pages) > 0 {
 		items = append(items, ContextItem{Label: "Page", Value: strconv.Itoa(m.pageIndex + 1)}, ContextItem{Label: "Records", Value: strconv.Itoa(len(m.pages[m.pageIndex].page.Items))})
@@ -223,10 +223,11 @@ func (m *RateLimits) HelpSections() []HelpSection {
 		"Read-only Enterprise inspection. No limiter operations are executed.",
 		"Name search is a literal, case-sensitive substring. SCAN order is not a snapshot.",
 		"r refreshes this page; ctrl+r restarts discovery. Empty scan pages may have more results.",
-		"Unavailable means not recorded or expired; zero is a recorded value.",
+		"Unavailable means Sidekiq has not saved a value, or it expired. It does not mean zero.",
 		"Concurrent size is used + free slots, observed across separate keys.",
 		"Held/wait durations are cumulative seconds; overtime/reclaimed are counts.",
-		"Leaky drops and points are last recorded state, without simulated drain/refill.",
+		"Last bucket fill and points balance reflect the last limiter update.",
+		"Buckets drain and points refill between calls; these values do not include that change.",
 		"Bucket counters include attempts, may exceed size, and expire independently.",
 		"History covers 60 seconds, 60 minutes, 24 hours, or 30 calendar days.",
 		"Bucket calendar keys use --limiter-timezone (UTC by default). Missing is not zero.",
@@ -441,7 +442,7 @@ func (m *RateLimits) buildRows() {
 		}
 	} else if len(m.pages) > 0 {
 		for _, record := range m.pages[m.pageIndex].page.Items {
-			rows = append(rows, table.Row{ID: record.Key, Cells: []string{record.Name, record.Type, record.Rate(), record.State()}})
+			rows = append(rows, table.Row{ID: record.Key, Cells: []string{record.Name, record.Type, record.Rate(), record.UsageNote()}})
 		}
 	}
 	empty := "No rate limiters"

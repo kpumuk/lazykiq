@@ -1,5 +1,5 @@
 ╭─Bucket Counters────────────────╖minute · UTC · absent ≠ zero╓─╮
-│ Bucket start               Recorded counter                   │
+│ Bucket start               Attempts                           │
 │ ────────────────────────────────────────────────────────────  │
 │ 2026-11-03 21:30:00 +0000  0                                  │
 │ 2026-11-03 21:29:00 +0000  123                                │
