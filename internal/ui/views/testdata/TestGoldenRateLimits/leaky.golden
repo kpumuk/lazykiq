@@ -1,0 +1,24 @@
+╭─Leaky bucket───────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Property / metric        Value                                                                             │
+│ ─────────────────────────────────────────────────────────────────────────────────────────────────────────  │
+│ Name                     shopify                                                                           │
+│ Redis key                lmtr-k-shopify                                                                    │
+│ Type                     Leaky bucket                                                                      │
+│ Capacity / rate          40 operations / 20 s                                                              │
+│ Burst capacity           40 operations                                                                     │
+│ Full drain interval      20 s                                                                              │
+│ Configured rate          2 operations/s                                                                    │
+│ Last bucket fill         17 operations                                                                     │
+│ Hit count                250                                                                               │
+│ Miss count               5                                                                                 │
+│ Wait duration            1.25 s                                                                            │
+│ Last limiter update      2026-11-03T21:30:00Z                                                              │
+│ Usage note               The bucket drains between calls; this is its fill at the last update.             │
+│ Limiter expires in       10m0s                                                                             │
+│ Refreshed at             2026-11-03T21:30:00Z                                                              │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+╰────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
