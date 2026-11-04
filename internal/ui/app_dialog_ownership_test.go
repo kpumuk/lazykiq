@@ -110,7 +110,7 @@ type initIntentView struct {
 }
 
 func (v *initIntentView) Init() tea.Cmd {
-	return v.EmitIntent(dialogs.OpenDialogMsg{Model: filterdialog.New()})
+	return v.EmitIntent(views.ShowProcessesListMsg{})
 }
 
 func TestAppInitialIntentOwnership(t *testing.T) {
@@ -139,11 +139,8 @@ func TestAppInitialIntentOwnership(t *testing.T) {
 					app.setActiveView(id)
 				}
 				dialogStep(&app, cmd())
-				if app.dialogs.HasDialogs() == stale {
+				if (app.activeViewID() == viewProcessesList) == stale {
 					t.Fatal("initial intent did not follow its emitting activation")
-				}
-				if !stale && app.dialogs.ActiveSession().Owner.(dialogOwner).view != view {
-					t.Fatal("initial intent acquired a different owner")
 				}
 			})
 		}
@@ -190,7 +187,6 @@ func (m intentProgram) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func TestAppNestedViewCommands(t *testing.T) {
 	for name, intent := range map[string]tea.Msg{
-		"filter":    dialogs.OpenDialogMsg{Model: filterdialog.New()},
 		"processes": views.ShowProcessesListMsg{},
 		"job":       views.ShowJobDetailMsg{},
 		"errors":    views.ShowErrorDetailsMsg{},

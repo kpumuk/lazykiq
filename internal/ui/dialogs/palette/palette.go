@@ -72,7 +72,6 @@ func (loadedMsg) DialogID() dialogs.DialogID { return DialogID }
 
 // Model owns search input and completion selection.
 type Model struct {
-	dialogs.SessionScope
 	parent                        context.Context
 	loader                        Loader
 	cancel                        context.CancelFunc
@@ -173,13 +172,13 @@ func (m *Model) Update(msg tea.Msg) (dialogs.DialogModel, tea.Cmd) {
 	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "esc":
-			return m, m.CloseCmd(nil)
+			return m, func() tea.Msg { return dialogs.CloseDialogMsg{} }
 		case "enter":
 			if len(m.matches) == 0 {
 				return m, nil
 			}
 			item := m.matches[m.selected]
-			return m, m.CloseCmd(ActionMsg{ID: item.ID, Queue: item.Queue})
+			return m, func() tea.Msg { return dialogs.CloseDialogMsg{Action: ActionMsg{ID: item.ID, Queue: item.Queue}} }
 		case "up":
 			m.selected--
 			m.clamp()

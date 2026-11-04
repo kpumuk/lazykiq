@@ -238,34 +238,25 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !ok || !a.intentOwnerCurrent(origin) {
 			return a, nil
 		}
-		if open, ok := msg.Msg.(dialogs.OpenDialogMsg); ok {
-			open.Owner = origin.owner
-			return a.Update(open)
-		}
 		return a.Update(msg.Msg)
 	case devtoolsdialog.CommandResultMsg:
 		msg.Collect(a.devTracker)
 		return a, nil
 	case dialogs.OpenDialogMsg:
-		if origin, ok := msg.Owner.(viewIntentOwner); ok {
-			if !a.intentOwnerCurrent(origin) {
+		switch owner := msg.Owner.(type) {
+		case viewIntentOwner:
+			if !a.intentOwnerCurrent(owner) {
 				return a, nil
 			}
-			msg.Owner = origin.owner
-		}
-		if owner, ok := msg.Owner.(dialogOwner); ok {
+			msg.Owner = owner.owner
+		case dialogOwner:
 			if !a.dialogOwnerCurrent(owner) {
 				return a, nil
 			}
-		} else {
+		default:
 			msg.Owner = a.viewDialogOwner(a.activeViewID())
 		}
-		previous := a.dialogs.ActiveSession()
-		updated, cmd := a.dialogs.Update(msg)
-		a.dialogs = updated
-		if a.dialogs.ActiveSession() != previous {
-			a.dialogGeneration++
-		}
+		cmd := a.updateDialogStack(msg)
 		a.styleDialogs()
 		a.syncContextbar()
 		return a, cmd
@@ -273,12 +264,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Session != nil && msg.Session != a.dialogs.ActiveSession() {
 			return a, nil
 		}
-		previous := a.dialogs.ActiveSession()
-		updated, cmd := a.dialogs.Update(msg)
-		a.dialogs = updated
-		if a.dialogs.ActiveSession() != previous {
-			a.dialogGeneration++
-		}
+		cmd := a.updateDialogStack(msg)
 		if msg.Session != nil && msg.Action != nil {
 			if owner, ok := msg.Session.Owner.(dialogOwner); ok && a.dialogOwnerCurrent(owner) {
 				if action, ok := msg.Action.(palettedialog.ActionMsg); ok {
@@ -599,6 +585,16 @@ func (a App) View() tea.View {
 	v.SetContent(fitRectangle(base, a.width, a.height))
 
 	return v
+}
+
+func (a *App) updateDialogStack(msg tea.Msg) tea.Cmd {
+	previous := a.dialogs.ActiveSession()
+	updated, cmd := a.dialogs.Update(msg)
+	a.dialogs = updated
+	if a.dialogs.ActiveSession() != previous {
+		a.dialogGeneration++
+	}
+	return cmd
 }
 
 func (a *App) syncContextbar() {

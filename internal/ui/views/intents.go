@@ -2,7 +2,7 @@ package views
 
 import tea "charm.land/bubbletea/v2"
 
-// IntentMsg retains the owner of a view-local dialog or navigation command.
+// IntentMsg retains the owner of a view-local navigation command.
 type IntentMsg struct {
 	Owner any
 	Msg   tea.Msg

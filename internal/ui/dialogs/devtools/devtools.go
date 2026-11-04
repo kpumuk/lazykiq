@@ -84,7 +84,6 @@ type redisCommander interface {
 
 // Model defines state for the dev tools console.
 type Model struct {
-	dialogs.SessionScope
 	requestctx.Scope
 	styles         Styles
 	title          string
@@ -178,7 +177,7 @@ func (m *Model) Update(msg tea.Msg) (dialogs.DialogModel, tea.Cmd) {
 	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "f12", "~", "esc":
-			return m, m.CloseCmd(nil)
+			return m, func() tea.Msg { return dialogs.CloseDialogMsg{} }
 		case "tab", "shift+tab":
 			return m, m.toggleFocus()
 		case "enter":
