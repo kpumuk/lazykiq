@@ -173,7 +173,11 @@ func (m *RateLimits) View() string {
 			m.renderFrame(m.limiter.Type, m.table.View(), meta, "", left, m.height, !m.focusHistory),
 			m.renderFrame("Bucket Counters", m.history.View(), historyMeta, "", m.width-left, m.height, m.focusHistory))
 	}
-	return m.renderFrame(m.limiter.Type, m.table.View(), meta, "", m.width, m.height, true)
+	content := m.table.View()
+	if m.utilizationHeight() > 0 {
+		content = m.concurrentUtilization() + "\n\n" + content
+	}
+	return m.renderFrame(m.limiter.Type, content, meta, "", m.width, m.height, true)
 }
 
 // Name implements View.
@@ -224,7 +228,8 @@ func (m *RateLimits) HelpSections() []HelpSection {
 		"Name search is a literal, case-sensitive substring. SCAN order is not a snapshot.",
 		"r refreshes this page; ctrl+r restarts discovery. Empty scan pages may have more results.",
 		"Unavailable means Sidekiq has not saved a value, or it expired. It does not mean zero.",
-		"Concurrent size is used + free slots, observed across separate keys.",
+		"Concurrent utilization shows used (solid) and free (shaded) slots; red means all slots are used.",
+		"Concurrent capacity and metrics are read together; expired locks may still count as used.",
 		"Held/wait durations are cumulative seconds; overtime/reclaimed are counts.",
 		"Last bucket fill and points balance reflect the last limiter update.",
 		"Buckets drain and points refill between calls; these values do not include that change.",
@@ -245,7 +250,7 @@ func (m *RateLimits) SetSize(width, height int) View {
 		left = m.width * 55 / 100
 		right = m.width - left
 	}
-	m.table.SetSize(max(left-4, 0), max(m.height-2, 0))
+	m.table.SetSize(max(left-4, 0), max(m.height-2-m.utilizationHeight(), 0))
 	m.history.SetSize(max(right-4, 0), max(m.height-2, 0))
 	return m
 }

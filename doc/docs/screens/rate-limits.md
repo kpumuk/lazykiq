@@ -61,11 +61,18 @@ scrolling. Filters use the normal input dialog, which owns typing while open.
 ## Read the details
 
 **Concurrent** shows observed used and free slots and their sum as observed
-capacity. It includes held count and cumulative held duration, immediate
+capacity. A utilization bar stays above the metrics while you scroll: solid
+blocks show used slots, shaded blocks show free slots, and the counts and
+percentage remain readable without color. The used segment turns red when all
+slots are occupied. Missing or invalid capacity shows **Unavailable**, and zero
+total slots has no percentage. Very small terminals show the scrollable values
+without the bar.
+
+It includes held count and cumulative held duration, immediate
 acquisitions, waited count and cumulative wait duration, overtime count, and
 reclaimed locks. Durations are seconds; recorded millisecond totals are converted
-for display. Capacity reads span separate Redis keys and can change during the
-observation. Inspection does not reclaim expired locks or infer configured
+for display. Capacity and metrics are read together in one Redis transaction.
+Inspection does not reclaim expired locks or infer configured
 capacity from a partial record.
 
 **Window** shows configured size and interval, including arbitrary numeric

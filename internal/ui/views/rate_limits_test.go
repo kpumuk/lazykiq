@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"testing"
@@ -297,11 +298,12 @@ func TestGoldenRateLimits(t *testing.T) {
 
 func TestRateLimitsLayoutAndScrollBounds(t *testing.T) {
 	items := limiterViewFixture()
-	for name, detail := range map[string]bool{"list": false, "detail": true} {
+	for name, index := range map[string]int{"list": -1, "bucket": 2, "concurrent": 0} {
 		t.Run(name, func(t *testing.T) {
+			detail := index >= 0
 			m := newLimiterTestView(detail, items)
 			if detail {
-				m.SetLimiterKey(items[2].Key)
+				m.SetLimiterKey(items[index].Key)
 			}
 			m.Update(m.Init()())
 			for _, size := range [][2]int{{140, 24}, {80, 12}, {24, 6}, {4, 3}, {3, 2}, {1, 1}, {0, 0}, {-1, -1}, {120, 20}} {
@@ -325,6 +327,102 @@ func TestRateLimitsLayoutAndScrollBounds(t *testing.T) {
 					}
 				}
 			}
+		})
+	}
+}
+
+func TestConcurrentUtilization(t *testing.T) {
+	for name, test := range map[string]struct {
+		used, free    float64
+		missing       bool
+		label         string
+		solid, shaded bool
+	}{
+		"idle":        {used: 0, free: 8, label: "0%", shaded: true},
+		"partial":     {used: 6, free: 2, label: "75%", solid: true, shaded: true},
+		"full":        {used: 8, free: 0, label: "100%", solid: true},
+		"zero":        {label: "0 slots"},
+		"missing":     {used: 6, free: 2, missing: true, label: "Unavailable"},
+		"negative":    {used: -1, free: 9, label: "Unavailable"},
+		"not finite":  {used: math.NaN(), free: 8, label: "Unavailable"},
+		"overflow":    {used: math.MaxFloat64, free: math.MaxFloat64, label: "Unavailable"},
+		"tiny share":  {used: 1, free: 9999, label: "<1%", solid: true, shaded: true},
+		"almost full": {used: 9999, free: 1, label: ">99%", solid: true, shaded: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			items := limiterViewFixture()
+			for field, number := range map[string]float64{"used": test.used, "free": test.free, "size": test.used + test.free} {
+				items[0].Values[field] = sidekiq.LimiterValue{Raw: strconv.FormatFloat(number, 'f', -1, 64), Number: number, Valid: true}
+			}
+			if test.missing {
+				delete(items[0].Values, "free")
+			}
+			m := newLimiterTestView(true, items)
+			m.SetLimiterKey(items[0].Key)
+			m.Update(m.Init()())
+			for _, width := range []int{24, 42, 80, 140} {
+				m.SetSize(width, 24)
+				output := ansi.Strip(m.concurrentUtilization())
+				if !strings.Contains(output, test.label) || strings.Contains(output, "█") != test.solid || strings.Contains(output, "░") != test.shaded {
+					t.Fatalf("wrong utilization at width %d: %q", width, output)
+				}
+				for line := range strings.SplitSeq(output, "\n") {
+					if ansi.StringWidth(line) > width-4 {
+						t.Fatalf("utilization overflow at width %d: %q", width, line)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestConcurrentUtilizationPinnedAndRefreshed(t *testing.T) {
+	items := limiterViewFixture()
+	m := newLimiterTestView(true, items)
+	m.SetLimiterKey(items[0].Key)
+	m.Update(m.Init()())
+	m.SetSize(100, 12)
+	before := strings.Split(ansi.Strip(m.View()), "\n")
+	m.Update(periodicKey("G"))
+	after := strings.Split(ansi.Strip(m.View()), "\n")
+	if before[1] != after[1] || before[2] != after[2] || !strings.Contains(strings.Join(after, "\n"), "Inspection scope") {
+		t.Fatal("scrolling lost utilization header or access to the last metric")
+	}
+	updated := limiterViewFixture()
+	updated[0].Values["used"] = sidekiq.LimiterValue{Raw: "8", Number: 8, Valid: true}
+	updated[0].Values["free"] = sidekiq.LimiterValue{Raw: "0", Valid: true}
+	m.client.(*limiterViewClient).items = updated
+	_, refresh := m.Update(RefreshMsg{})
+	m.Update(refresh())
+	if !strings.Contains(ansi.Strip(m.View()), "100%") {
+		t.Fatal("refresh did not update pinned utilization")
+	}
+}
+
+func TestGoldenConcurrentUtilization(t *testing.T) {
+	for name, test := range map[string]struct {
+		used, free string
+		width      int
+	}{
+		"idle":           {used: "0", free: "8", width: 100},
+		"full":           {used: "8", free: "0", width: 100},
+		"zero":           {used: "0", free: "0", width: 100},
+		"unavailable":    {used: "", free: "", width: 100},
+		"partial_narrow": {used: "6", free: "2", width: 42},
+	} {
+		t.Run(name, func(t *testing.T) {
+			items := limiterViewFixture()
+			for field, raw := range map[string]string{"used": test.used, "free": test.free} {
+				number, err := strconv.ParseFloat(raw, 64)
+				items[0].Values[field] = sidekiq.LimiterValue{Raw: raw, Number: number, Valid: err == nil}
+			}
+			size := items[0].Values["used"].Number + items[0].Values["free"].Number
+			items[0].Values["size"] = sidekiq.LimiterValue{Raw: strconv.FormatFloat(size, 'f', -1, 64), Number: size, Valid: test.used != ""}
+			m := newLimiterTestView(true, items)
+			m.SetLimiterKey(items[0].Key)
+			m.Update(m.Init()())
+			m.SetSize(test.width, 12)
+			golden.RequireEqual(t, []byte(ansi.Strip(m.View())))
 		})
 	}
 }
