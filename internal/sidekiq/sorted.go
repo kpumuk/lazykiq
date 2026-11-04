@@ -325,6 +325,16 @@ func (c *Client) MoveSortedEntryToDead(ctx context.Context, kind SortedSetKind, 
 	return c.moveSortedEntryToDead(ctx, spec.key, entry)
 }
 
+// Check membership and move atomically so stale actions cannot recreate jobs.
+// Add before removing: a failed destination write must preserve the source.
+var moveSortedEntryToDeadScript = redis.NewScript(`
+if not redis.call("ZSCORE", KEYS[1], ARGV[1]) then
+    return 0
+end
+redis.call("ZADD", KEYS[2], ARGV[2], ARGV[1])
+return redis.call("ZREM", KEYS[1], ARGV[1])
+`)
+
 func (c *Client) moveSortedEntryToDead(ctx context.Context, key string, entry *SortedEntry) error {
 	if entry == nil || entry.JobRecord == nil {
 		return errors.New("sorted entry is nil")
@@ -334,15 +344,15 @@ func (c *Client) moveSortedEntryToDead(ctx context.Context, key string, entry *S
 		return errors.New("sorted entry payload is empty")
 	}
 
-	_, err := c.redis.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
-		pipe.ZRem(ctx, key, value)
-		pipe.ZAdd(ctx, deadSetKey, redis.Z{
-			Score:  nowSortedSetScore(),
-			Member: value,
-		})
-		return nil
-	})
-	return err
+	removed, err := moveSortedEntryToDeadScript.Run(ctx, c.redis,
+		[]string{key, deadSetKey}, value, nowSortedSetScore()).Int64()
+	if err != nil {
+		return err
+	}
+	if removed == 0 {
+		return errors.New("job not found")
+	}
+	return nil
 }
 
 // EnqueueSortedEntry moves a sorted-set job to its queue immediately.

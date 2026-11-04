@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -625,6 +627,98 @@ func TestKillRetryJob_MovesToDead(t *testing.T) {
 	windowEnd := end.Add(scoreWindow)
 	if deadAt.Before(windowStart) || deadAt.After(windowEnd) {
 		t.Fatalf("dead score time = %v, want between %v and %v", deadAt, windowStart, windowEnd)
+	}
+}
+
+func TestKillRetryJob_Missing(t *testing.T) {
+	_, client := setupTestRedis(t)
+	ctx := context.Background()
+	entry := NewSortedEntry(`{"jid":"gone","class":"Good","queue":"default"}`, 1)
+	err := client.MoveSortedEntryToDead(ctx, SortedSetRetry, entry)
+	if err == nil || err.Error() != "job not found" {
+		t.Errorf("kill missing job error = %v, want job not found", err)
+	}
+	if size, err := client.redis.ZCard(ctx, "dead").Result(); err != nil || size != 0 {
+		t.Fatalf("dead size = %d, err = %v, want 0", size, err)
+	}
+}
+
+func TestKillRetryJob_Repeated(t *testing.T) {
+	mr, client := setupTestRedis(t)
+	ctx := context.Background()
+	job := `{"jid":"kill_once","class":"Good","queue":"default"}`
+	_, _ = mr.ZAdd("retry", testScoreA, job)
+	entry := NewSortedEntry(job, testScoreA)
+	if err := client.MoveSortedEntryToDead(ctx, SortedSetRetry, entry); err != nil {
+		t.Fatal(err)
+	}
+	// Replaying or deleting the dead job must not let a stale kill recreate it.
+	if err := client.redis.Del(ctx, "dead").Err(); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.MoveSortedEntryToDead(ctx, SortedSetRetry, entry); err == nil || err.Error() != "job not found" {
+		t.Errorf("repeated kill error = %v, want job not found", err)
+	}
+	if size, err := client.redis.ZCard(ctx, "dead").Result(); err != nil || size != 0 {
+		t.Fatalf("dead size = %d, err = %v, want 0", size, err)
+	}
+}
+
+func TestKillRetryJob_Concurrent(t *testing.T) {
+	mr, client := setupTestRedis(t)
+	ctx := context.Background()
+	job := `{"jid":"kill_race","class":"Good","queue":"default"}`
+	_, _ = mr.ZAdd("retry", testScoreA, job)
+	entry := NewSortedEntry(job, testScoreA)
+	const workers = 16
+	start := make(chan struct{})
+	results := make(chan error, workers)
+	var wg sync.WaitGroup
+	for range workers {
+		wg.Go(func() {
+			<-start
+			results <- client.MoveSortedEntryToDead(ctx, SortedSetRetry, entry)
+		})
+	}
+	close(start)
+	wg.Wait()
+	close(results)
+	successes := 0
+	for err := range results {
+		if err == nil {
+			successes++
+		} else if err.Error() != "job not found" {
+			t.Errorf("kill error = %v, want job not found", err)
+		}
+	}
+	if successes != 1 {
+		t.Errorf("successful kills = %d, want 1", successes)
+	}
+	if size, err := client.redis.ZCard(ctx, "retry").Result(); err != nil || size != 0 {
+		t.Errorf("retry size = %d, err = %v, want 0", size, err)
+	}
+	if values, err := client.redis.ZRange(ctx, "dead", 0, -1).Result(); err != nil || len(values) != 1 || values[0] != job {
+		t.Errorf("dead entries = %v, err = %v, want original job", values, err)
+	}
+}
+
+func TestKillRetryJob_WrongTypeDestination(t *testing.T) {
+	mr, client := setupTestRedis(t)
+	ctx := context.Background()
+	job := `{"jid":"keep_retry","class":"Good","queue":"default"}`
+	_, _ = mr.ZAdd("retry", testScoreA, job)
+	if err := mr.Set("dead", "keep dead"); err != nil {
+		t.Fatal(err)
+	}
+	err := client.MoveSortedEntryToDead(ctx, SortedSetRetry, NewSortedEntry(job, testScoreA))
+	if err == nil || !strings.Contains(err.Error(), "WRONGTYPE") {
+		t.Errorf("kill error = %v, want WRONGTYPE", err)
+	}
+	if score, err := client.redis.ZScore(ctx, "retry", job).Result(); err != nil || score != testScoreA {
+		t.Errorf("retry score = %v, err = %v, want original score", score, err)
+	}
+	if value, err := mr.Get("dead"); err != nil || value != "keep dead" {
+		t.Errorf("dead value = %q, err = %v, want unchanged", value, err)
 	}
 }
 
