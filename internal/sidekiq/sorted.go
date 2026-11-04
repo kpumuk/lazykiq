@@ -15,7 +15,7 @@ import (
 
 const (
 	sortedSetScanCount int64 = 100
-	sortedSetPopBatch  int64 = 100
+	sortedSetMoveBatch int64 = 100
 )
 
 const (
@@ -378,20 +378,14 @@ func (c *Client) moveSortedEntryToQueue(ctx context.Context, key string, entry *
 		return err
 	}
 
-	removed, err := c.redis.ZRem(ctx, key, rawValue).Result()
-	if err != nil && !errors.Is(err, redis.Nil) {
+	moved, err := c.enqueueSortedPayloads(ctx, key, []string{rawValue}, []queuePayload{{queue: queueName, body: encoded}})
+	if err != nil {
 		return err
 	}
-	if removed == 0 {
+	if moved == 0 {
 		return errors.New("job not found")
 	}
-
-	_, err = c.redis.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
-		pipe.SAdd(ctx, queueSetKey, queueName)
-		pipe.LPush(ctx, queuePrefixKey+queueName, encoded)
-		return nil
-	})
-	return err
+	return nil
 }
 
 // DeleteAllSortedEntries removes all jobs from a sorted set.
@@ -489,11 +483,47 @@ func buildQueuePayload(rawValue string, decrementRetryCount bool, version Versio
 	return queueName, encoded, nil
 }
 
+// Validate every destination before writing: Redis scripts, like MULTI, do not
+// roll back commands on runtime errors. Membership checks and writes run together
+// so concurrent movers cannot enqueue the same source member twice.
+var enqueueSortedScript = redis.NewScript(`
+local stype = redis.call("TYPE", KEYS[2]).ok
+if stype ~= "none" and stype ~= "set" then return redis.error_reply("queues is not a set") end
+for i = 3, #KEYS do
+  local qtype = redis.call("TYPE", KEYS[i]).ok
+  if qtype ~= "none" and qtype ~= "list" then return redis.error_reply("queue is not a list") end
+  redis.call("ZSCORE", KEYS[1], ARGV[(i - 3) * 3 + 1])
+end
+local moved = 0
+for i = 3, #KEYS do
+  local offset = (i - 3) * 3
+  if redis.call("ZSCORE", KEYS[1], ARGV[offset + 1]) then
+    redis.call("SADD", KEYS[2], ARGV[offset + 2])
+    redis.call("LPUSH", KEYS[i], ARGV[offset + 3])
+    redis.call("ZREM", KEYS[1], ARGV[offset + 1])
+    moved = moved + 1
+  end
+end
+return moved
+`)
+
+func (c *Client) enqueueSortedPayloads(ctx context.Context, key string, entries []string, payloads []queuePayload) (int, error) {
+	keys := make([]string, 0, 2+len(entries))
+	keys = append(keys, key, queueSetKey)
+	args := make([]any, 0, 3*len(entries))
+	for i, raw := range entries {
+		payload := payloads[i]
+		keys = append(keys, queuePrefixKey+payload.queue)
+		args = append(args, raw, payload.queue, payload.body)
+	}
+	return enqueueSortedScript.Run(ctx, c.redis, keys, args...).Int()
+}
+
 func (c *Client) moveAllSortedEntriesToQueue(ctx context.Context, key string, decrementRetryCount bool) error {
 	version := c.DetectVersion(ctx)
 	for {
-		entries, err := c.redis.ZPopMin(ctx, key, sortedSetPopBatch).Result()
-		if err != nil && !errors.Is(err, redis.Nil) {
+		entries, err := c.redis.ZRange(ctx, key, 0, sortedSetMoveBatch-1).Result()
+		if err != nil {
 			return err
 		}
 		if len(entries) == 0 {
@@ -501,56 +531,43 @@ func (c *Client) moveAllSortedEntriesToQueue(ctx context.Context, key string, de
 		}
 
 		payloads := make([]queuePayload, 0, len(entries))
-		for _, entry := range entries {
-			rawValue, _ := entry.Member.(string)
+		for _, rawValue := range entries {
 			queueName, encoded, err := buildQueuePayload(rawValue, decrementRetryCount, version)
 			if err != nil {
 				return err
 			}
-			payloads = append(payloads, queuePayload{
-				queue: queueName,
-				body:  encoded,
-			})
+			payloads = append(payloads, queuePayload{queue: queueName, body: encoded})
 		}
-
-		_, err = c.redis.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
-			for _, payload := range payloads {
-				pipe.SAdd(ctx, queueSetKey, payload.queue)
-				pipe.LPush(ctx, queuePrefixKey+payload.queue, payload.body)
-			}
-			return nil
-		})
-		if err != nil {
+		if _, err := c.enqueueSortedPayloads(ctx, key, entries, payloads); err != nil {
 			return err
 		}
 	}
 }
 
+// Keep each batch bounded and atomic, including reading its source members.
+var moveSortedBatchToDeadScript = redis.NewScript(`
+local dtype = redis.call("TYPE", KEYS[2]).ok
+if dtype ~= "none" and dtype ~= "zset" then return redis.error_reply("dead is not a sorted set") end
+local entries = redis.call("ZRANGE", KEYS[1], 0, ARGV[1] - 1)
+for _, raw in ipairs(entries) do
+  if raw == "" then return redis.error_reply("sorted entry payload is empty") end
+end
+for _, raw in ipairs(entries) do
+  redis.call("ZADD", KEYS[2], ARGV[2], raw)
+  redis.call("ZREM", KEYS[1], raw)
+end
+return #entries
+`)
+
 func (c *Client) moveAllSortedEntriesToDead(ctx context.Context, key string) error {
 	for {
-		entries, err := c.redis.ZPopMin(ctx, key, sortedSetPopBatch).Result()
-		if err != nil && !errors.Is(err, redis.Nil) {
-			return err
-		}
-		if len(entries) == 0 {
-			return nil
-		}
-
-		_, err = c.redis.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
-			for _, entry := range entries {
-				rawValue, _ := entry.Member.(string)
-				if rawValue == "" {
-					continue
-				}
-				pipe.ZAdd(ctx, deadSetKey, redis.Z{
-					Score:  nowSortedSetScore(),
-					Member: rawValue,
-				})
-			}
-			return nil
-		})
+		moved, err := moveSortedBatchToDeadScript.Run(ctx, c.redis, []string{key, deadSetKey},
+			sortedSetMoveBatch, nowSortedSetScore()).Int()
 		if err != nil {
 			return err
+		}
+		if moved == 0 {
+			return nil
 		}
 	}
 }
