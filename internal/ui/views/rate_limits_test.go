@@ -385,7 +385,7 @@ func TestConcurrentUtilizationPinnedAndRefreshed(t *testing.T) {
 	before := strings.Split(ansi.Strip(m.View()), "\n")
 	m.Update(periodicKey("G"))
 	after := strings.Split(ansi.Strip(m.View()), "\n")
-	if before[1] != after[1] || before[2] != after[2] || !strings.Contains(strings.Join(after, "\n"), "Inspection scope") {
+	if before[1] != after[1] || before[2] != after[2] || !strings.Contains(strings.Join(after, "\n"), "Refreshed at") {
 		t.Fatal("scrolling lost utilization header or access to the last metric")
 	}
 	updated := limiterViewFixture()

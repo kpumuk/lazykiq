@@ -77,7 +77,7 @@ func limiterPropertyRows(l *sidekiq.Limiter) []table.Row {
 		metric("Wait duration", "wait_ms", 1000, " s")
 		metric("Overtime count", "overtime", 1, "")
 		metric("Reclaimed locks", "reclaimed", 1, "")
-		add("Usage note", "Free + used slots; expired locks may still count as used.")
+		add("Usage note", "Timed-out locks may count as used until another call reclaims them.")
 	case "Window", "Bucket":
 		metric("Configured size", "size", 1, " operations")
 		interval := l.Interval
@@ -121,7 +121,7 @@ func limiterPropertyRows(l *sidekiq.Limiter) []table.Row {
 		add("Last limiter update", last)
 		add("Usage note", note)
 	default:
-		add("Availability", "Unsupported limiter type; this record does not prevent inspecting other limiters.")
+		add("Availability", "Details are unavailable for this limiter type.")
 	}
 	ttl := "No expiry"
 	if l.TTL >= 0 {
@@ -129,6 +129,5 @@ func limiterPropertyRows(l *sidekiq.Limiter) []table.Row {
 	}
 	add("Limiter expires in", ttl)
 	add("Refreshed at", l.ObservedAt.UTC().Format(time.RFC3339))
-	add("Inspection scope", "Configuration is limited to persisted fields. Wait/lock timeout and policy are not stored.")
 	return rows
 }

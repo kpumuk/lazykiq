@@ -10,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/exp/golden"
 
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
@@ -218,6 +219,19 @@ func TestAppRateLimitsLayoutAndReadOnly(t *testing.T) {
 			app = applyLayoutRead(app, open)
 		}
 		assertLayoutBounds(t, app.View().Content, 120, 24)
+	}
+}
+
+func TestGoldenAppRateLimitsHelp(t *testing.T) {
+	for name, size := range map[string][2]int{"normal": {120, 30}, "narrow": {80, 24}} {
+		t.Run(name, func(t *testing.T) {
+			app, _ := rateLimitsTestApp(t, []string{"ent"})
+			dialogStep(&app, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+			app = applyLayoutRead(app, app.navigatePalette(int(viewRateLimits)))
+			app = applyLayoutRead(app, dialogStep(&app, tea.KeyPressMsg{Code: '?', Text: "?"}))
+			output := ansi.Strip(app.dialogs.ActiveModel().View())
+			golden.RequireEqual(t, []byte(output))
+		})
 	}
 }
 

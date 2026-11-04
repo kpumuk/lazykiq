@@ -4,21 +4,21 @@
 │                                                                                                  │
 │ Property / metric        Value                                                                   │
 │ ───────────────────────────────────────────────────────────────────────────────────────────────  │
-│ Name                     payments                                                              █ │
-│ Redis key                lmtr-c-payments                                                       █ │
-│ Type                     Concurrent                                                            █ │
-│ Capacity / rate          8 slots                                                               █ │
-│ Total capacity           8 slots                                                               █ │
-│ Used capacity            6 slots                                                               █ │
-│ Free capacity            2 slots                                                               █ │
-│ Held count               417                                                                   █ │
-│ Held duration            12.345 s                                                              █ │
-│ Immediate acquisitions   400                                                                   █ │
-│ Waited count             17                                                                    █ │
-│ Wait duration            1.25 s                                                                █ │
-│ Overtime count           0                                                                     █ │
-│ Reclaimed locks          0                                                                     █ │
-│ Usage note               Free + used slots; expired locks may still count as used.             █ │
-│ Limiter expires in       10m0s                                                                 █ │
-│ Refreshed at             2026-11-03T21:30:00Z                                                  ░ │
+│ Name                     payments                                                                │
+│ Redis key                lmtr-c-payments                                                         │
+│ Type                     Concurrent                                                              │
+│ Capacity / rate          8 slots                                                                 │
+│ Total capacity           8 slots                                                                 │
+│ Used capacity            6 slots                                                                 │
+│ Free capacity            2 slots                                                                 │
+│ Held count               417                                                                     │
+│ Held duration            12.345 s                                                                │
+│ Immediate acquisitions   400                                                                     │
+│ Waited count             17                                                                      │
+│ Wait duration            1.25 s                                                                  │
+│ Overtime count           0                                                                       │
+│ Reclaimed locks          0                                                                       │
+│ Usage note               Timed-out locks may count as used until another call reclaims them.     │
+│ Limiter expires in       10m0s                                                                   │
+│ Refreshed at             2026-11-03T21:30:00Z                                                    │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯

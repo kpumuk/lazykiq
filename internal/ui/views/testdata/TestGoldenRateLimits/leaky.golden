@@ -16,7 +16,7 @@
 │ Usage note               The bucket drains between calls; this is its fill at the last update.             │
 │ Limiter expires in       10m0s                                                                             │
 │ Refreshed at             2026-11-03T21:30:00Z                                                              │
-│ Inspection scope         Configuration is limited to persisted fields. Wait/lock timeout and policy are n  │
+│                                                                                                            │
 │                                                                                                            │
 │                                                                                                            │
 │                                                                                                            │

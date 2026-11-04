@@ -219,24 +219,13 @@ func (m *RateLimits) HintBindings() []key.Binding {
 		}
 		return bindings
 	}
-	return append([]key.Binding{helpBinding([]string{"/"}, "/", "filter name"), helpBinding([]string{"ctrl+u"}, "ctrl+u", "reset filter"), helpBinding([]string{"[", "]"}, "[/]", "previous/next scan page"), helpBinding([]string{"ctrl+r"}, "ctrl+r", "restart discovery"), helpBinding([]string{"enter"}, "enter", "inspect")}, bindings...)
+	return append([]key.Binding{helpBinding([]string{"/"}, "/", "filter name"), helpBinding([]string{"ctrl+u"}, "ctrl+u", "reset filter"), helpBinding([]string{"[", "]"}, "[/]", "previous/next page"), helpBinding([]string{"ctrl+r"}, "ctrl+r", "find new limiters"), helpBinding([]string{"enter"}, "enter", "open details")}, bindings...)
 }
 
-// HelpSections explains observation and retention semantics.
+// HelpSections implements HelpProvider.
 func (m *RateLimits) HelpSections() []HelpSection {
 	return []HelpSection{{Title: "Rate Limits", Bindings: m.HintBindings(), Lines: []string{
-		"Read-only Enterprise inspection. No limiter operations are executed.",
-		"Name search is a literal, case-sensitive substring. SCAN order is not a snapshot.",
-		"r refreshes this page; ctrl+r restarts discovery. Empty scan pages may have more results.",
-		"Unavailable means Sidekiq has not saved a value, or it expired. It does not mean zero.",
-		"Concurrent utilization shows used (solid) and free (shaded) slots; red means all slots are used.",
-		"Concurrent capacity and metrics are read together; expired locks may still count as used.",
-		"Held/wait durations are cumulative seconds; overtime/reclaimed are counts.",
-		"Last bucket fill and points balance reflect the last limiter update.",
-		"Buckets drain and points refill between calls; these values do not include that change.",
-		"Bucket counters include attempts, may exceed size, and expire independently.",
-		"History covers 60 seconds, 60 minutes, 24 hours, or 30 calendar days.",
-		"Bucket calendar keys use --limiter-timezone (UTC by default). Missing is not zero.",
+		"Unavailable is not zero.",
 	}}}
 }
 

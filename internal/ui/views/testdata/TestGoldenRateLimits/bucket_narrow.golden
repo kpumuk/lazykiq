@@ -11,6 +11,6 @@
 │ Counter includes         All attempts, including over-limit   │
 │ Limiter expires in       10m0s                                │
 │ Refreshed at             2026-11-03T21:30:00Z                 │
-│ Inspection scope         Configuration is limited to persist  │
+│                                                               │
 │                                                               │
 ╰───────────────────────────────────────────────────────────────╯
