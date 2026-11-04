@@ -199,7 +199,7 @@ func (a App) Init() tea.Cmd {
 	activeID := a.activeViewID()
 	return tea.Batch(
 		requestBackgroundCmd(),
-		a.viewRegistry[activeID].Init(),
+		a.initView(activeID),
 		a.metrics.Init(),
 		a.fetchStatsCmd(), // Fetch stats immediately
 		tickCmd(),         // Start the ticker for subsequent updates
@@ -229,7 +229,13 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		msg.Collect(a.devTracker)
 		return a, nil
 	case dialogs.OpenDialogMsg:
-		msg.Owner = dialogOwner{a.activeViewID(), a.viewRegistry[a.activeViewID()], a.viewGeneration}
+		if owner, ok := msg.Owner.(dialogOwner); ok {
+			if !a.dialogOwnerCurrent(owner) {
+				return a, nil
+			}
+		} else {
+			msg.Owner = a.viewDialogOwner(a.activeViewID())
+		}
 		updated, cmd := a.dialogs.Update(msg)
 		a.dialogs = updated
 		a.styleDialogs()
@@ -242,9 +248,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		updated, cmd := a.dialogs.Update(msg)
 		a.dialogs = updated
 		if msg.Session != nil && msg.Action != nil {
-			if owner, ok := msg.Session.Owner.(dialogOwner); ok &&
-				owner.id == a.activeViewID() && owner.generation == a.viewGeneration &&
-				owner.view == a.viewRegistry[owner.id] {
+			if owner, ok := msg.Session.Owner.(dialogOwner); ok && a.dialogOwnerCurrent(owner) {
 				if action, ok := msg.Action.(palettedialog.ActionMsg); ok {
 					cmds = append(cmds, a.navigatePaletteAction(action))
 				} else {
@@ -913,7 +917,23 @@ func (a *App) updateView(id viewID, msg tea.Msg) tea.Cmd {
 	}
 	updatedView, cmd := view.Update(msg)
 	a.viewRegistry[id] = updatedView
-	return cmd
+	return bindViewDialog(cmd, a.viewDialogOwner(id))
+}
+
+func (a App) viewDialogOwner(id viewID) dialogOwner {
+	return dialogOwner{id, a.viewRegistry[id], a.viewGeneration}
+}
+
+func (a App) dialogOwnerCurrent(owner dialogOwner) bool {
+	return owner.id == a.activeViewID() && owner.generation == a.viewGeneration &&
+		owner.view == a.viewRegistry[owner.id]
+}
+
+func (a App) initView(id viewID) tea.Cmd {
+	if view, ok := a.viewRegistry[id]; ok {
+		return bindViewDialog(view.Init(), a.viewDialogOwner(id))
+	}
+	return nil
 }
 
 func (a *App) cancelViewRequests(id viewID) {
@@ -941,10 +961,7 @@ func (a *App) setActiveView(id viewID) tea.Cmd {
 	}
 	a.viewStack = []viewID{id}
 	a.stackbar.SetStack(a.stackNames())
-	if view, ok := a.viewRegistry[id]; ok {
-		return view.Init()
-	}
-	return nil
+	return a.initView(id)
 }
 
 func (a *App) pushView(id viewID) tea.Cmd {
@@ -958,10 +975,7 @@ func (a *App) pushView(id viewID) tea.Cmd {
 	}
 	a.viewStack = append(a.viewStack, id)
 	a.stackbar.SetStack(a.stackNames())
-	if view, ok := a.viewRegistry[id]; ok {
-		return view.Init()
-	}
-	return nil
+	return a.initView(id)
 }
 
 func (a *App) popTopView() {

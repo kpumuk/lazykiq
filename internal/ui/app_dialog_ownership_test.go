@@ -1,8 +1,11 @@
 package ui
 
 import (
+	"context"
+	"io"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 
@@ -54,6 +57,168 @@ func TestAppFilterCompletionIsAtomic(t *testing.T) {
 	for _, item := range app.viewRegistry[viewErrorsSummary].(views.ContextProvider).ContextItems() {
 		if item.Label == "Filter" && item.Value == "x" {
 			t.Fatal("Busy completion filtered Errors")
+		}
+	}
+}
+
+func TestAppDelayedBusyDialogOpen(t *testing.T) {
+	for name, transition := range map[string]func(*App){
+		"current": func(*App) {},
+		"navigate": func(a *App) {
+			dialogStep(a, tea.KeyPressMsg{Code: '7', Text: "7"})
+		},
+		"away and back": func(a *App) {
+			dialogStep(a, tea.KeyPressMsg{Code: '7', Text: "7"})
+			dialogStep(a, tea.KeyPressMsg{Code: '2', Text: "2"})
+		},
+		"replacement": func(a *App) {
+			a.viewRegistry[viewBusy] = &dialogRecordingView{}
+		},
+		"push": func(a *App) {
+			dialogStep(a, views.ShowProcessesListMsg{})
+		},
+		"push and pop": func(a *App) {
+			dialogStep(a, views.ShowProcessesListMsg{})
+			dialogStep(a, tea.KeyPressMsg{Code: tea.KeyEsc})
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			app := New(&ownershipClient{}, "", false, nil)
+			t.Cleanup(app.cancel)
+			other := &dialogRecordingView{}
+			app.viewRegistry[viewErrorsSummary] = other
+			dialogStep(&app, tea.KeyPressMsg{Code: '2', Text: "2"})
+			open := dialogStep(&app, tea.KeyPressMsg{Code: '/', Text: "/"})
+			transition(&app)
+			dialogStep(&app, open())
+			if got, want := app.dialogs.HasDialogs(), name == "current"; got != want {
+				t.Fatalf("dialog open = %v, want %v", got, want)
+			}
+			if app.dialogs.HasDialogs() {
+				dialogStep(&app, tea.KeyPressMsg{Code: 'x', Text: "x"})
+				fetch := dialogStep(&app, dialogStep(&app, tea.KeyPressMsg{Code: tea.KeyEnter})())
+				dialogStep(&app, fetch())
+				dialogStep(&app, tea.WindowSizeMsg{Width: 120, Height: 30})
+				if output := ansi.Strip(app.viewRegistry[viewBusy].View()); !strings.Contains(output, "[x]") {
+					t.Fatalf("Busy filter missing: %s", output)
+				}
+			}
+			if len(other.actions) != 0 {
+				t.Fatalf("Errors received Busy filter action: %#v", other.actions)
+			}
+		})
+	}
+}
+
+type dialogCommandView struct {
+	dialogRecordingView
+	cmd tea.Cmd
+}
+
+func (v *dialogCommandView) Init() tea.Cmd { return v.cmd }
+
+func (v *dialogCommandView) Update(msg tea.Msg) (views.View, tea.Cmd) {
+	if key, ok := msg.(tea.KeyPressMsg); ok && key.Text == "/" {
+		return v, v.cmd
+	}
+	v.dialogRecordingView.Update(msg)
+	return v, nil
+}
+
+// Run command trees through Bubble Tea itself, including its private sequence
+// message, and hold their results for delivery after a navigation transition.
+type dialogCommandCollector struct {
+	initial  tea.Cmd
+	messages []tea.Msg
+}
+
+func (m dialogCommandCollector) Init() tea.Cmd  { return m.initial }
+func (m dialogCommandCollector) View() tea.View { return tea.NewView("") }
+func (m dialogCommandCollector) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg.(type) {
+	case dialogs.OpenDialogMsg, string:
+		m.messages = append(m.messages, msg)
+		if len(m.messages) == 3 {
+			return m, tea.Quit
+		}
+	}
+	return m, nil
+}
+
+func TestAppDialogCommandTrees(t *testing.T) {
+	for shape, compose := range map[string]func(tea.Cmd, tea.Cmd, tea.Cmd) tea.Cmd{
+		"batch":           func(a, b, c tea.Cmd) tea.Cmd { return tea.Batch(a, b, c) },
+		"nested batch":    func(a, b, c tea.Cmd) tea.Cmd { return tea.Batch(a, tea.Batch(b, c)) },
+		"sequence":        func(a, b, c tea.Cmd) tea.Cmd { return tea.Sequence(a, b, c) },
+		"nested sequence": func(a, b, c tea.Cmd) tea.Cmd { return tea.Sequence(a, tea.Sequence(b, c)) },
+		"mixed":           func(a, b, c tea.Cmd) tea.Cmd { return tea.Batch(a, tea.Sequence(b, c)) },
+	} {
+		for _, source := range []string{"update", "init", "app init", "stack init"} {
+			for _, stale := range []bool{false, true} {
+				name := shape + "/" + source + "/current"
+				if stale {
+					name = shape + "/" + source + "/stale"
+				}
+				t.Run(name, func(t *testing.T) {
+					app := New(nil, "", false, nil)
+					t.Cleanup(app.cancel)
+					owner := &dialogCommandView{cmd: compose(
+						func() tea.Msg { return "first" },
+						func() tea.Msg { return "second" },
+						func() tea.Msg { return dialogs.OpenDialogMsg{Model: filterdialog.New()} },
+					)}
+					app.viewRegistry[viewDashboard] = owner
+					var cmd tea.Cmd
+					switch source {
+					case "update":
+						cmd = dialogStep(&app, tea.KeyPressMsg{Code: '/', Text: "/"})
+					case "init":
+						cmd = app.setActiveView(viewDashboard)
+					case "app init":
+						cmd = app.Init()
+						// Select the view command without starting app subscriptions.
+						cmd = cmd().(tea.BatchMsg)[1]
+					case "stack init":
+						app.viewRegistry[viewProcessesList] = owner
+						cmd = dialogStep(&app, views.ShowProcessesListMsg{})
+					}
+					ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+					defer cancel()
+					program := tea.NewProgram(dialogCommandCollector{initial: cmd},
+						tea.WithInput(nil), tea.WithOutput(io.Discard), tea.WithoutRenderer(),
+						tea.WithWindowSize(80, 24), tea.WithContext(ctx), tea.WithoutSignalHandler())
+					model, err := program.Run()
+					if err != nil {
+						t.Fatal(err)
+					}
+					if stale {
+						dialogStep(&app, tea.KeyPressMsg{Code: '7', Text: "7"})
+						// A stale open must also leave a newer global dialog intact.
+						dialogStep(&app, dialogStep(&app, tea.KeyPressMsg{Code: '?', Text: "?"})())
+					}
+					var markers []string
+					for _, msg := range model.(dialogCommandCollector).messages {
+						if marker, ok := msg.(string); ok {
+							markers = append(markers, marker)
+						}
+						dialogStep(&app, msg)
+					}
+					if strings.Contains(shape, "sequence") && strings.Join(markers, ",") != "first,second" {
+						t.Fatalf("sequence markers = %v", markers)
+					}
+					if stale {
+						if len(app.dialogs.Dialogs()) != 1 || app.dialogs.ActiveDialogID() != helpdialog.New().ID() {
+							t.Fatal("stale open changed the global help dialog")
+						}
+						return
+					}
+					dialogStep(&app, tea.KeyPressMsg{Code: 'x', Text: "x"})
+					dialogStep(&app, dialogStep(&app, tea.KeyPressMsg{Code: tea.KeyEnter})())
+					if len(owner.actions) != 1 {
+						t.Fatalf("owner actions = %#v", owner.actions)
+					}
+				})
+			}
 		}
 	}
 }
