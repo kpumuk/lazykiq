@@ -30,6 +30,7 @@ func TestErrorDisplay(t *testing.T) {
 		"100 cells":                  {"E", strings.Repeat("x", 97), "E: " + strings.Repeat("x", 97)},
 		"101 cells":                  {"E", strings.Repeat("x", 98), "E: " + strings.Repeat("x", 96) + "…"},
 		"CJK fits despite bytes":     {"EE", strings.Repeat("界", 40), "EE: " + strings.Repeat("界", 40)},
+		"CJK split byte boundary":    {"E", strings.Repeat("界", 40), "E: " + strings.Repeat("界", 40)},
 		"CJK exact boundary":         {"EE", strings.Repeat("界", 48), "EE: " + strings.Repeat("界", 48)},
 		"CJK clipped":                {"EE", strings.Repeat("界", 49), "EE: " + strings.Repeat("界", 47) + "…"},
 		"emoji":                      {"E", strings.Repeat("😀", 49), "E: " + strings.Repeat("😀", 48) + "…"},
@@ -41,15 +42,23 @@ func TestErrorDisplay(t *testing.T) {
 		"empty error":                {"", "", ": "},
 	} {
 		t.Run(name, func(t *testing.T) {
-			got := errorDisplay(errorPreviewEntry(tc.class, tc.message))
-			if !utf8.ValidString(got) {
-				t.Fatalf("preview contains invalid UTF-8: %q", got)
-			}
-			if width := ansi.StringWidth(got); width > 100 {
-				t.Errorf("preview width = %d, exceeds 100 cells", width)
-			}
-			if got != tc.want {
-				t.Errorf("preview = %q, want %q", got, tc.want)
+			entry := errorPreviewEntry(tc.class, tc.message)
+			for view, got := range map[string]string{
+				"helper":  errorDisplay(entry),
+				"retries": NewRetries(nil).buildRows([]*sidekiq.SortedEntry{entry})[0].Cells[5],
+				"dead":    NewDead(nil).buildRows([]*sidekiq.SortedEntry{entry})[0].Cells[4],
+			} {
+				t.Run(view, func(t *testing.T) {
+					if !utf8.ValidString(got) {
+						t.Fatalf("preview contains invalid UTF-8: %q", got)
+					}
+					if width := ansi.StringWidth(got); width > 100 {
+						t.Errorf("preview width = %d, exceeds 100 cells", width)
+					}
+					if got != tc.want {
+						t.Errorf("preview = %q, want %q", got, tc.want)
+					}
+				})
 			}
 		})
 	}
@@ -65,6 +74,55 @@ func TestErrorDisplayWithoutError(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			if got := errorDisplay(entry); got != "" {
 				t.Errorf("preview = %q, want empty", got)
+			}
+			if entry != nil && entry.JobRecord != nil {
+				for view, got := range map[string]string{
+					"retries": NewRetries(nil).buildRows([]*sidekiq.SortedEntry{entry})[0].Cells[5],
+					"dead":    NewDead(nil).buildRows([]*sidekiq.SortedEntry{entry})[0].Cells[4],
+				} {
+					if got != "" {
+						t.Errorf("%s preview = %q, want empty", view, got)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestGoldenSortedJobsUnicodeErrorPreview(t *testing.T) {
+	entries := []*sidekiq.SortedEntry{
+		errorPreviewEntry("E", strings.Repeat("界", 40)),
+		errorPreviewEntry("EE", strings.Repeat("界", 60)),
+		errorPreviewEntry("E", strings.Repeat("e\u0301", 98)),
+		errorPreviewEntry("E", strings.Repeat("👩🏽‍💻", 49)),
+	}
+	for name, tc := range map[string]struct {
+		columns []table.Column
+		rows    []table.Row
+	}{
+		"retries": {retryJobColumns, NewRetries(nil).buildRows(entries)},
+		"dead":    {deadJobColumns, NewDead(nil).buildRows(entries)},
+	} {
+		t.Run(name, func(t *testing.T) {
+			for i := range tc.rows {
+				tc.rows[i].Cells[0] = "1h"
+			}
+			for _, width := range []int{80, 240} {
+				t.Run(fmt.Sprintf("width %d", width), func(t *testing.T) {
+					model := table.New(table.WithColumns(tc.columns), table.WithRows(tc.rows))
+					model.SetSize(width, 6)
+					model.ScrollToEnd()
+					output := ansi.Strip(model.View())
+					if !utf8.ValidString(output) {
+						t.Fatal("table contains invalid UTF-8")
+					}
+					for line := range strings.SplitSeq(output, "\n") {
+						if cells := ansi.StringWidth(line); cells > width {
+							t.Errorf("table line width = %d, exceeds %d cells", cells, width)
+						}
+					}
+					golden.RequireEqual(t, []byte(output))
+				})
 			}
 		})
 	}

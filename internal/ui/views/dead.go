@@ -332,14 +332,6 @@ func (d *Dead) buildRows(jobs []*sidekiq.SortedEntry) []table.Row {
 	for _, job := range jobs {
 		lastRetry := display.Duration(int64(now.Sub(job.At()).Seconds()))
 
-		errorStr := ""
-		if job.HasError() {
-			errorStr = fmt.Sprintf("%s: %s", job.ErrorClass(), job.ErrorMessage())
-			if len(errorStr) > 100 {
-				errorStr = errorStr[:97] + "..."
-			}
-		}
-
 		rows = append(rows, table.Row{
 			ID: job.JID(),
 			Cells: []string{
@@ -347,7 +339,7 @@ func (d *Dead) buildRows(jobs []*sidekiq.SortedEntry) []table.Row {
 				d.styles.QueueText.Render(job.Queue()),
 				job.DisplayClass(),
 				display.ArgsPreview(job.DisplayArgs()),
-				errorStr,
+				errorDisplay(job),
 			},
 		})
 	}
