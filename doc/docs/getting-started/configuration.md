@@ -22,6 +22,9 @@ FLAGS
   --danger       enable dangerous operations
   --development  enable development diagnostics
   --enable       enable optional features (pro, ent)
+  --limiter-redis  optional Enterprise limiter Redis URL (defaults to job Redis)
+  --limiter-cluster  use Redis Cluster for the limiter connection
+  --limiter-timezone  Ruby process timezone used in bucket limiter keys (UTC)
   --periodic-timezone  server timezone for periodic jobs without an explicit zone (UTC)
   -h --help      help for lazykiq
   --redis        redis URL (redis://localhost:6379/0)
@@ -76,6 +79,8 @@ lazykiq --enable=ent --danger
 ```
 
 Enterprise adds [Periodic]({{< relref "../screens/periodic.md" >}}) at `9`.
+It also adds [Rate Limits]({{< relref "../screens/rate-limits.md" >}}) through
+`Ctrl+t`, with read-only inspection of all five persisted limiter types.
 Enqueue and pause/resume require `--danger`. Set `--periodic-timezone` to your
 Sidekiq server's timezone for definitions without an explicit timezone; it
 defaults to UTC because Enterprise does not store the server timezone in Redis.
