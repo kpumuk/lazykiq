@@ -357,14 +357,6 @@ func (r *Retries) buildRows(jobs []*sidekiq.SortedEntry) []table.Row {
 		nextRetry := display.Duration(int64(now.Sub(job.At()).Seconds()))
 		retryCount := strconv.Itoa(job.RetryCount())
 
-		errorStr := ""
-		if job.HasError() {
-			errorStr = fmt.Sprintf("%s: %s", job.ErrorClass(), job.ErrorMessage())
-			if len(errorStr) > 100 {
-				errorStr = errorStr[:97] + "..."
-			}
-		}
-
 		rows = append(rows, table.Row{
 			ID: job.JID(),
 			Cells: []string{
@@ -373,7 +365,7 @@ func (r *Retries) buildRows(jobs []*sidekiq.SortedEntry) []table.Row {
 				r.styles.QueueText.Render(job.Queue()),
 				job.DisplayClass(),
 				display.ArgsPreview(job.DisplayArgs()),
-				errorStr,
+				errorDisplay(job),
 			},
 		})
 	}
