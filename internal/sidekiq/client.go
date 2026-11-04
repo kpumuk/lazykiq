@@ -61,7 +61,7 @@ func NewClient(redisURL string, options ...ClientOption) (*Client, error) {
 
 	opts, err := redis.ParseURL(redisURL)
 	if err != nil {
-		return nil, fmt.Errorf("parse redis url: %w", err)
+		return nil, fmt.Errorf("parse redis url: %w", redisURLParseError(err))
 	}
 
 	// Disable connection pool logging by disabling retries entirely.
@@ -90,6 +90,29 @@ func NewClient(redisURL string, options ...ClientOption) (*Client, error) {
 		return nil, err
 	}
 	return client, nil
+}
+
+// redisURLParseError retains diagnostic categories without quoting URL input.
+// Both net/url and go-redis errors can include sensitive input fragments.
+func redisURLParseError(err error) error {
+	if urlErr, ok := errors.AsType[*url.Error](err); ok {
+		_, escapeError := errors.AsType[url.EscapeError](urlErr.Err)
+		_, hostError := errors.AsType[url.InvalidHostError](urlErr.Err)
+		switch {
+		case escapeError:
+			return errors.New("invalid URL escape")
+		case hostError:
+			return errors.New("invalid character in URL host")
+		default:
+			return errors.New("invalid URL syntax (check scheme, userinfo, host, and port)")
+		}
+	}
+	for _, category := range []string{"invalid URL scheme", "invalid database number", "invalid URL path", "empty unix socket path", "unexpected option"} {
+		if strings.HasPrefix(err.Error(), "redis: "+category) {
+			return errors.New("redis: " + category)
+		}
+	}
+	return errors.New("invalid Redis URL option value")
 }
 
 // DisplayRedisURL returns a sanitized URL safe for display.

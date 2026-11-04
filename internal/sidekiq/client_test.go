@@ -3,6 +3,7 @@ package sidekiq
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/url"
 	"slices"
 	"strings"
@@ -12,6 +13,76 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
 )
+
+func TestNewClient_InvalidURLDoesNotDiscloseCredentials(t *testing.T) {
+	const secret = "synthetic-credential"
+	for name, test := range map[string]struct {
+		input string
+		want  string
+	}{
+		"path escape":              {"redis://user:" + secret + "@localhost/%zz", "invalid URL escape"},
+		"password escape":          {"redis://user:" + secret + "%zz@localhost", "invalid URL escape"},
+		"encoded password":         {"rediss://user:synthetic%2Dcredential@localhost/%zz", "invalid URL escape"},
+		"port":                     {"redis://user:" + secret + "@localhost:bad", "invalid URL syntax"},
+		"control character":        {"redis://user:" + secret + "@localhost/\n", "invalid URL syntax"},
+		"database":                 {"redis://user:" + secret + "@localhost/" + secret, "invalid database number"},
+		"path":                     {"redis://user:" + secret + "@localhost/a/" + secret, "invalid URL path"},
+		"scheme":                   {secret + "://user:" + secret + "@localhost", "invalid URL scheme"},
+		"option value":             {"redis://user:" + secret + "@localhost?pool_size=" + secret, "invalid Redis URL option value"},
+		"option name":              {"redis://user:" + secret + "@localhost?" + secret + "=1", "unexpected option"},
+		"password option rejected": {"redis://localhost?password=" + secret, "unexpected option"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			client, err := NewClient(test.input)
+			if client != nil {
+				_ = client.Close()
+				t.Fatal("invalid URL created a client")
+			}
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("expected diagnostic %q, got %v", test.want, err)
+			}
+			if strings.Contains(fmt.Sprintf("%+v", err), secret) || strings.Contains(err.Error(), test.input) {
+				t.Fatal("parse error disclosed sensitive URL input")
+			}
+		})
+	}
+}
+
+func TestRedisURLParseError_WrappedURL(t *testing.T) {
+	const secret = "synthetic-credential"
+	inner := &url.Error{Op: "parse", URL: "redis://user:" + secret + "@localhost/%zz", Err: url.EscapeError("%zz")}
+	err := redisURLParseError(fmt.Errorf("outer: %w", inner))
+	if !strings.Contains(err.Error(), "invalid URL escape") || strings.Contains(err.Error(), "synthetic-credential") {
+		t.Fatalf("unsafe or missing diagnostic: %v", err)
+	}
+	if errors.Unwrap(err) != nil {
+		t.Fatal("sanitized error retains unsafe cause")
+	}
+}
+
+func TestNewClient_ValidURLPreservesOptions(t *testing.T) {
+	const encodedSecret = "synthetic%2Dcredential"
+	for name, input := range map[string]string{
+		"tcp":  "redis://user:" + encodedSecret + "@[::1]:6380/2?pool_fifo=true",
+		"tls":  "rediss://user:" + encodedSecret + "@localhost:6380/2?pool_fifo=true",
+		"unix": "unix://user:" + encodedSecret + "@/tmp/redis.sock?db=2&pool_fifo=true",
+	} {
+		t.Run(name, func(t *testing.T) {
+			client, err := NewClient(input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = client.Close() })
+			opts := client.Redis().Options()
+			if opts.Username != "user" || opts.Password != "synthetic-credential" || opts.DB != 2 || !opts.PoolFIFO {
+				t.Fatal("valid URL options changed")
+			}
+			if strings.Contains(client.DisplayRedisURL(), "credential") {
+				t.Fatal("display URL disclosed password")
+			}
+		})
+	}
+}
 
 func testContext(t *testing.T) context.Context {
 	t.Helper()
