@@ -12,6 +12,25 @@ import (
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 )
 
+func TestInvalidRedisURLDoesNotDiscloseCredentials(t *testing.T) {
+	const secret = "synthetic-credential"
+	cmd := newRootCommand("test", "", "", "")
+	var stderr strings.Builder
+	cmd.SetErr(&stderr)
+	cmd.SetOut(io.Discard)
+	cmd.SetArgs([]string{"--redis", "redis://user:" + secret + "@localhost/%zz"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "create redis client") || !strings.Contains(err.Error(), "invalid URL escape") {
+		t.Fatalf("missing startup diagnostic: %v", err)
+	}
+	if !strings.Contains(stderr.String(), "invalid URL escape") {
+		t.Fatal("missing stderr diagnostic")
+	}
+	if strings.Contains(stderr.String(), secret) || strings.Contains(err.Error(), secret) {
+		t.Fatal("startup error disclosed password")
+	}
+}
+
 func TestEnableFeatures(t *testing.T) {
 	for name, test := range map[string]struct {
 		args    []string
