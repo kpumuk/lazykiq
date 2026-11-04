@@ -1,7 +1,7 @@
 ---
 title: "Rate Limits"
-description: "Inspect Sidekiq Enterprise rate limiters and retained bucket counters."
-summary: "Read-only limiter inspection through the command selector."
+description: "Check rate limiter usage, waiting, and recent activity."
+summary: "Usage and statistics for Sidekiq Enterprise rate limiters."
 date: 2026-11-03T00:00:00Z
 lastmod: 2026-11-03T00:00:00Z
 draft: false
@@ -9,152 +9,124 @@ weight: 130
 toc: true
 ---
 
-Start Lazykiq with `--enable=ent`, press `Ctrl+t`, and choose **Rate Limits**.
-This screen has no navigation-bar entry or numeric shortcut. Inspection works
-without `--danger`; there are no create, edit, reset, delete, unlock, or token
-acquisition actions.
+Rate Limits shows your Sidekiq Enterprise limiters, their capacity, and available
+usage statistics. Use it to check whether a limiter is full, how often calls
+have to wait, or how many attempts a bucket has received.
 
-## Find and inspect a limiter
+Start Lazykiq with Enterprise features enabled:
 
-The overview shows each limiter's name, type, and capacity or rate. **Usage / notes**
-shows concurrent used/free slots or a warning about a missing, malformed, or
-unsupported limiter. It stays blank when there is no usage or warning to show;
-it does not indicate whether calls are currently being throttled.
-Press `Enter` to inspect a limiter; `Esc` returns to the same list page.
-Press `/` to search by a literal, case-sensitive name substring. Characters such
-as `*`, `?`, `[` and `\` are treated as text, not Redis patterns.
+```sh
+lazykiq --enable=ent
+```
 
-Discovery uses bounded cursor scans, including every primary when connected to
-Redis Cluster. Each scan page contains at most 50 records and performs at most
-ten SCAN calls. An empty page can still have more results; press `]` to continue.
-Rows are sorted within each page. SCAN does not provide a consistent snapshot
-of a changing database, so new keys may require restarting discovery.
-Repeated keys are deduplicated during each traversal. Previously visited pages
-and their selection are retained until discovery restarts or you leave Rate Limits.
+Press `Ctrl+t` and choose **Rate Limits**. This screen is read-only.
+If your application uses a separate Redis connection for limiters, see
+[Configuration]({{< relref "../getting-started/configuration.md" >}}#rate-limits).
 
-`r` and the five-second refresh reread the current page by Redis key. They preserve
-selection and page boundaries, including a visible **Disappeared** row for an
-expired limiter. `Ctrl+r` starts a fresh discovery traversal. If the cluster's
-primary set changes during paging, restart discovery when prompted.
+## Find a limiter
+
+The list shows each limiter's name, type, and capacity or rate. Concurrent
+limiters also show used and free slots in **Usage / notes**. Warnings appear
+there when a limiter's data cannot be read.
+
+Press `/` and enter part of a limiter's name to filter the list. Names are
+case-sensitive. Use `[` and `]` to browse result pages, then press `Enter` to
+open a limiter. `Esc` returns to your place in the list.
+
+The current page and open details refresh every five seconds. Press `r` to
+refresh immediately, or `Ctrl+r` in the list to search again from the first page
+and find newly added limiters.
+An empty page can still have more results; follow the `] more` hint to continue.
+
+## Concurrent usage
+
+The utilization bar shows how many slots are in use. For example, **75%** with
+**6 used · 2 free · 8 total** means six of eight slots are occupied. Solid blocks
+show used slots; shaded blocks show free slots. The bar turns red when all slots
+are occupied and stays visible while you scroll through the metrics.
+
+{{< lightbox src="assets/rate_limits.png" alt="Concurrent limiter with six of eight slots in use" >}}
+
+A full bar shows that no slots are free. Use the waiting metrics to see how
+often callers have had to wait. A timed-out lock can remain in the used count
+until another call reclaims it.
+
+| Metric | Meaning |
+| --- | --- |
+| Held count | Number of times a call acquired a slot. |
+| Held duration | Total time spent holding slots, in seconds. |
+| Immediate acquisitions | Calls that acquired a slot without waiting. |
+| Waited count | Calls that had to wait for a slot. |
+| Wait duration | Total time callers spent waiting, in seconds. |
+| Overtime count | Operations that exceeded the limiter's lock timeout. |
+| Reclaimed locks | Times another caller took over a timed-out lock. |
+
+These totals accumulate across calls. Rising wait counts and durations indicate
+callers are competing for slots. Overtime or reclaimed locks are a reason to check
+whether operations are taking longer than the lock timeout allows.
+
+## Window and bucket usage
+
+Both types show the allowed number of operations and the interval. Window
+limiters also show attempts in the current window and how long until it ends.
+
+Bucket limiters show recent attempts in the **Bucket Counters** panel:
+
+| Bucket interval | History shown |
+| --- | --- |
+| Second | Last 60 seconds |
+| Minute | Last 60 minutes |
+| Hour | Last 24 hours |
+| Day | Last 30 days |
+
+Counts include attempts that exceeded the limit, so a count can be higher than
+the allowed size. The current interval is still in progress. On narrow terminals,
+press `Tab` to switch between details and counters.
+
+Set [the history timezone]({{< relref "../getting-started/configuration.md" >}}#rate-limits)
+to match your application. If an hour repeats when daylight saving time ends,
+**Shared calendar bucket (DST)** means both occurrences share one count.
+
+## Leaky bucket and points usage
+
+These types show burst capacity, the drain or refill interval, and the steady
+rate per second. Hits count attempts allowed by the limiter; misses count
+attempts that reached the limit. Wait duration is the total time callers spent
+waiting, in seconds.
+
+**Last bucket fill** shows how full a leaky bucket was at its last update.
+**Last points balance** shows how many points remained at the last update.
+Check **Last limiter update** for the time: buckets drain and points refill
+between calls, so these values may differ from what is available now.
+
+## Missing data
+
+**Unavailable** means Sidekiq has no value to show, or the value has expired.
+It does not mean zero. Some statistics are only available for certain limiter
+types, and older bucket counts may no longer be available.
+
+**Disappeared** means the limiter is no longer available. Press `Esc` to return
+to the list, then `Ctrl+r` to update the results.
+
+## Key bindings
 
 | Key | Action |
 | --- | --- |
-| `/` | Open the name filter. |
-| `Ctrl+u` | Clear the filter and restart discovery. |
-| `[` / `]` | Previous / next discovery page. |
-| `r` | Refresh the current page or detail. |
-| `Ctrl+r` | Restart overview discovery; refresh in detail. |
+| `/` | Filter by name. |
+| `Ctrl+u` | Clear the name filter. |
+| `[` / `]` | Previous / next results page. |
+| `r` | Refresh the current page or details. |
+| `Ctrl+r` | Restart the search for limiters; refresh when viewing details. |
 | `Enter` | Open the selected limiter. |
-| `Esc` | Return from detail. |
+| `Esc` | Return to the list. |
 | `c` / `C` | Copy the limiter name / Redis key. |
-| `Tab` / `Shift+Tab` | Switch between bucket properties and counters. |
-| `Up` / `k`, `Down` / `j` | Move within the focused table. |
-| `PgUp` / `PgDn`, `g` / `G` | Page within the table; jump to its top / bottom. |
+| `Tab` / `Shift+Tab` | Switch between bucket details and counters. |
+| `Up` / `k`, `Down` / `j` | Move up or down. |
+| `PgUp` / `PgDn` | Scroll a page at a time. |
+| `g` / `G` | Jump to the first / last row. |
 | `Left` / `h`, `Right` / `l` | Scroll horizontally. |
 | `Home` / `0`, `End` / `$` | Scroll to the first / last column. |
-| `?` | Open contextual help. |
-
-On narrow terminals, bucket properties and counters share one panel; use `Tab`
-to switch. Long keys, warnings, and explanations remain accessible by horizontal
-scrolling. Filters use the normal input dialog, which owns typing while open.
-
-## Read the details
-
-**Concurrent** shows observed used and free slots and their sum as observed
-capacity. A utilization bar stays above the metrics while you scroll: solid
-blocks show used slots, shaded blocks show free slots, and the counts and
-percentage remain readable without color. The used segment turns red when all
-slots are occupied. Missing or invalid capacity shows **Unavailable**, and zero
-total slots has no percentage. Very small terminals show the scrollable values
-without the bar.
-
-It includes held count and cumulative held duration, immediate
-acquisitions, waited count and cumulative wait duration, overtime count, and
-reclaimed locks. Durations are seconds; recorded millisecond totals are converted
-for display. Capacity and metrics are read together in one Redis transaction.
-Inspection does not reclaim expired locks or infer configured
-capacity from a partial record.
-
-**Window** shows configured size and interval, including arbitrary numeric
-intervals in seconds. It also shows the retained active-window counter and its
-remaining lifetime when present. **Bucket** shows configured size and interval
-and recent retained counters. These counters record attempted units, including
-over-limit attempts, and can exceed the configured size. Neither type records
-hit/miss totals or cumulative wait duration.
-
-**Leaky bucket** shows burst capacity in operations, the time to drain a full
-bucket in seconds, and the corresponding operations per second. **Points** shows
-burst capacity in points, full-refill time in seconds, and points per second.
-Both show hit/miss counts and cumulative wait duration in seconds. **Last bucket
-fill** is the number of operations filling a leaky bucket at its last update.
-**Last points balance** is the number of points left at the last update.
-**Last limiter update** shows when those values were last updated by a caller.
-Buckets drain and points refill between calls, so these values can differ from
-what is available now. Lazykiq displays the saved values without estimating that change.
-
-**Unavailable** means a metric was absent or its counter expired; it does not
-mean zero. A displayed `0` was actually recorded, or is an observed empty capacity
-structure. Malformed records and unsupported limiter types remain visible and
-do not prevent inspecting valid records. A limiter that expires or changes type
-while its detail is open is shown as disappeared; return and restart discovery
-to find a replacement under another key.
-
-Details also show the record's remaining lifetime and observation time.
-Application options that are not persisted, including lock/wait timeouts and
-policy, cannot be recovered from Redis.
-
-## Bucket counter history
-
-History reads existing string counters with `GET`. It never creates missing
-counters, changes counts, or extends expiration. No history is retained by
-Lazykiq, and missing samples remain unavailable.
-
-| Interval | Display window | Calendar key resolution |
-| --- | --- | --- |
-| Second | Current second and preceding 59 seconds | Minute and second |
-| Minute | Current minute and preceding 59 minutes | Hour and minute |
-| Hour | Current hour and preceding 23 elapsed hours | Date and hour |
-| Day | Current day and preceding 29 calendar days | Date |
-
-Counter lifetimes depend on the writer. A missing value can mean no attempted
-operations or an expired counter, so it cannot safely be reported as zero.
-The current bucket is incomplete. Local calendar hours can repeat at the end
-of daylight saving time; those hours share one persisted counter. Lazykiq marks
-the duplicate sample as a shared calendar bucket rather than reporting its
-count twice.
-
-## Configure the limiter connection
-
-Limiters use job Redis by default. To inspect a different pool, pass its Redis URL:
-
-```bash
-lazykiq --enable=ent --limiter-redis=redis://limiter.internal:6379/2
-```
-
-Standalone URLs support the existing Redis URL authentication, database, TLS
-(`rediss://`), and Unix-socket options. Connection labels omit credentials and
-URL query parameters. Separately created pools are closed on exit.
-
-For Redis Cluster, supply an explicit seed URL and `--limiter-cluster`. Cluster
-supports database zero only. Additional seed addresses share the first URL's
-authentication and TLS settings:
-
-```bash
-lazykiq --enable=ent --limiter-cluster \
-  --limiter-redis='rediss://limiter.internal:6379/0?addr=limiter2.internal:6379'
-```
-
-Bucket writers format their keys in the Ruby process's timezone, which is not
-stored in Redis. Set `--limiter-timezone` to that timezone. Its default is UTC;
-it is independent of `--periodic-timezone`:
-
-```bash
-lazykiq --enable=ent --limiter-timezone=America/Toronto
-```
-
-Use the timezone of the processes writing the limiters, not the machine running
-Lazykiq. Mixed writer timezones cannot be reconstructed reliably from these keys.
-Host clock skew can also affect which recent counters are available.
+| `?` | Show help. |
 
 See the [Sidekiq Enterprise rate limiting documentation](https://github.com/sidekiq/sidekiq/wiki/Ent-Rate-Limiting)
-for the application-side behavior of each limiter type.
+for help choosing and configuring limiters in your application.
