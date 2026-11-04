@@ -236,6 +236,9 @@ func (c *Client) readLimiter(ctx context.Context, key string, history bool, now 
 	}
 	record := &Limiter{Key: key, Name: name, Type: kind, Values: make(map[string]LimiterValue), ObservedAt: now}
 	pipe := c.limiterRedis.Pipeline()
+	if kind == "Concurrent" {
+		pipe = c.limiterRedis.TxPipeline()
+	}
 	props := pipe.HMGet(ctx, key, limiterFields...)
 	ttl := pipe.PTTL(ctx, key)
 	var free, used *redis.IntCmd

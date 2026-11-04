@@ -203,6 +203,50 @@ func TestLimiterRuntimeFixtures(t *testing.T) {
 	}
 }
 
+func TestConcurrentLimiterSnapshotDuringActivity(t *testing.T) {
+	client, mr := limiterTestClient(t)
+	writer := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = writer.Close() })
+	const key = "lmtr-c-active"
+	const free, used = "{" + key + "}-free", "{" + key + "}-used"
+	mr.HSet(key, "held", "0")
+	_, _ = mr.Push(free, "a", "b")
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() {
+		for count := 0; ctx.Err() == nil; count++ {
+			pipe := writer.TxPipeline()
+			pipe.Del(ctx, free, used)
+			if count%2 == 0 {
+				pipe.RPush(ctx, free, "a", "b")
+			} else {
+				pipe.ZAdd(ctx, used, redis.Z{Member: "a", Score: 1}, redis.Z{Member: "b", Score: 1})
+			}
+			pipe.HSet(ctx, key, "held", count)
+			if _, err := pipe.Exec(ctx); err != nil && ctx.Err() == nil {
+				done <- err
+				return
+			}
+		}
+		done <- nil
+	}()
+	t.Cleanup(func() {
+		cancel()
+		if err := <-done; err != nil {
+			t.Errorf("limiter activity: %v", err)
+		}
+	})
+	for range 200 {
+		limiter, err := client.GetLimiter(t.Context(), key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if limiter.Values["size"].Raw != "2" || limiter.Values["used"].Number+limiter.Values["free"].Number != 2 {
+			t.Fatalf("inconsistent capacity during activity: %+v", limiter.Values)
+		}
+	}
+}
+
 func TestLimiterMalformedExpiredAndMetrics(t *testing.T) {
 	client, mr := limiterTestClient(t)
 	ctx := t.Context()
