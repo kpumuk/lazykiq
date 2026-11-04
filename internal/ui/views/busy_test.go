@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/alicebob/miniredis/v2"
 
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 )
@@ -15,6 +16,62 @@ import (
 type busyFetchClient struct {
 	sidekiq.API
 	name string
+}
+
+func TestBusySkipsIncompleteWork(t *testing.T) {
+	for mode, tree := range map[string]bool{"flat": false, "tree": true} {
+		t.Run(mode, func(t *testing.T) {
+			mr := miniredis.RunT(t)
+			client, err := sidekiq.NewClient("redis://" + mr.Addr())
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = client.Close() })
+			const identity = "host:1:abc"
+			_, _ = mr.SetAdd("processes", identity)
+			mr.HSet(identity, "info", `{"hostname":"host","pid":1}`, "busy", "4")
+			mr.HSet(identity+":work",
+				"absent", `{"queue":"default","run_at":1700000000}`,
+				"empty", `{"queue":"default","payload":""}`,
+				"null", `{"queue":"default","payload":null}`,
+				"valid", `{"queue":"default","payload":"{\"jid\":\"good\",\"class\":\"ExampleJob\",\"args\":[]}"}`)
+			b := NewBusy(client)
+			t.Cleanup(b.CancelRequests)
+			b.treeMode = tree
+			b.SetSize(160, 20)
+			fetch := b.Init()
+			b.SetProcessIdentity(identity)
+			b.Update(fetch())
+			if b.selectedIdentity() != identity || len(b.filteredJobs) != 1 {
+				t.Fatalf("selection = %q, jobs = %d; want selected process and one valid job", b.selectedIdentity(), len(b.filteredJobs))
+			}
+			if !strings.Contains(b.View(), "good") || !strings.Contains(b.View(), "ExampleJob") {
+				t.Fatal("valid neighboring job was not rendered")
+			}
+			row := 0
+			if tree {
+				row = 1 // Skip the process header.
+			}
+			b.table.SetCursor(row)
+			_, cmd := b.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+			if cmd == nil {
+				t.Fatal("valid job did not return a detail command")
+			}
+			if msg, ok := cmd().(ShowJobDetailMsg); !ok || msg.Job == nil || msg.Job.JID() != "good" {
+				t.Fatal("selected detail did not refer to the valid job")
+			}
+
+			mr.HDel(identity+":work", "valid")
+			b.Update(b.fetchDataCmd()())
+			b.View()
+			if len(b.filteredJobs) != 0 || b.selectedIdentity() != identity {
+				t.Fatal("incomplete-only refresh lost process selection or retained jobs")
+			}
+			if _, cmd := b.Update(tea.KeyPressMsg{Code: tea.KeyEnter}); cmd != nil {
+				t.Fatal("incomplete work returned a job detail command")
+			}
+		})
+	}
 }
 
 func TestBusyRefreshPreservesProcessSelection(t *testing.T) {
