@@ -43,6 +43,10 @@ type Client struct {
 	versionPending   chan struct{}
 	capabilities     Capabilities
 	periodicTimezone string
+	limiterConfig    LimiterConnection
+	limiterRedis     redis.UniversalClient
+	limiterLocation  *time.Location
+	limiterDisplay   string
 }
 
 // ClientOption configures a client at construction.
@@ -86,6 +90,10 @@ func NewClient(redisURL string, options ...ClientOption) (*Client, error) {
 		option(client)
 	}
 	if _, err := periodicLocation(client.periodicTimezone); err != nil {
+		_ = client.Close()
+		return nil, err
+	}
+	if err := client.openLimiterConnection(); err != nil {
 		_ = client.Close()
 		return nil, err
 	}
@@ -141,7 +149,11 @@ func sanitizeRedisURL(redisURL string) string {
 
 // Close closes the Redis connection.
 func (c *Client) Close() error {
-	return c.redis.Close()
+	var limiterErr error
+	if c.limiterRedis != nil && c.limiterRedis != c.redis {
+		limiterErr = c.limiterRedis.Close()
+	}
+	return errors.Join(limiterErr, c.redis.Close())
 }
 
 // Redis returns the underlying Redis client for benchmarking and testing.
