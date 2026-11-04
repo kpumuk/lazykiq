@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -13,7 +14,9 @@ import (
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
+	helpdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/help"
 	palettedialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/palette"
+	"github.com/kpumuk/lazykiq/internal/ui/views"
 )
 
 func rateLimitsTestApp(t *testing.T, features []string) (App, *miniredis.Miniredis) {
@@ -138,6 +141,54 @@ func TestAppRateLimitsPaletteJourneyAndOwnedFilter(t *testing.T) {
 	dialogStep(&app, stale)
 	if app.activeViewID() != viewRateLimits || len(app.viewStack) != 1 {
 		t.Fatal("old detail intent reopened after leaving and returning")
+	}
+}
+
+func TestAppRateLimitsDetailIntentOwnership(t *testing.T) {
+	for state, tc := range map[string]struct{ wantDetail bool }{
+		"current":        {wantDetail: true},
+		"refresh":        {wantDetail: true},
+		"covered":        {},
+		"covered-closed": {},
+		"rediscovery":    {},
+	} {
+		for _, executeLate := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/executeLate=%t", state, executeLate), func(t *testing.T) {
+				app, _ := rateLimitsTestApp(t, []string{"ent"})
+				app = applyLayoutRead(app, app.navigatePalette(int(viewRateLimits)))
+				cmd := dialogStep(&app, tea.KeyPressMsg{Code: tea.KeyEnter})
+				if cmd == nil {
+					t.Fatal("selected limiter did not emit navigation")
+				}
+				var result tea.Msg
+				if !executeLate {
+					result = cmd()
+				}
+				switch state {
+				case "refresh":
+					app = applyLayoutRead(app, dialogStep(&app, views.RefreshMsg{}))
+				case "covered", "covered-closed":
+					dialogStep(&app, dialogs.OpenDialogMsg{Model: helpdialog.New()})
+					if state == "covered-closed" {
+						dialogStep(&app, dialogs.CloseDialogMsg{})
+					}
+				case "rediscovery":
+					app = applyLayoutRead(app, dialogStep(&app, tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl}))
+				}
+				session := app.dialogs.ActiveSession()
+				if executeLate {
+					result = cmd()
+				}
+				dialogStep(&app, result)
+				if tc.wantDetail {
+					if app.activeViewID() != viewRateLimitDetail || len(app.viewStack) != 2 {
+						t.Fatal("current limiter navigation was rejected")
+					}
+				} else if app.activeViewID() != viewRateLimits || len(app.viewStack) != 1 || app.dialogs.ActiveSession() != session {
+					t.Fatal("stale limiter navigation changed screen or modal")
+				}
+			})
+		}
 	}
 }
 

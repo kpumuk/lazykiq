@@ -45,6 +45,7 @@ type limiterDataMsg struct {
 
 // RateLimits owns either the cursor-paged inspector or its stacked detail.
 type RateLimits struct {
+	IntentScope
 	dialogs.Opener
 	requestctx.Scope
 	client                       sidekiq.API
@@ -359,9 +360,7 @@ func (m *RateLimits) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "enter":
 		if !m.detail {
 			if record := m.selectedLimiter(); record != nil {
-				key := record.Key
-				owner, ctx := m, m.intentContext
-				return func() tea.Msg { return ShowRateLimitDetailMsg{Key: key, Owner: owner, context: ctx} }
+				return m.EmitIntent(ShowRateLimitDetailMsg{Key: record.Key, Owner: m, context: m.intentContext})
 			}
 		}
 		return nil
