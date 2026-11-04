@@ -17,6 +17,7 @@ import (
 )
 
 type detailListView struct {
+	IntentScope
 	dialogs.Opener
 	requestctx.Scope
 	title       string

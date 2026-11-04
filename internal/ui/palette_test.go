@@ -217,11 +217,10 @@ func TestAppCoveredPaletteReceivesQueueResults(t *testing.T) {
 	updated, _ := app.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	app = updated.(App)
 	app.setActiveView(viewBusy)
-	// A previously requested filter can open after the palette takes focus.
-	_, filterOpen := app.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
 	updated, load := app.Update(tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl})
 	app = updated.(App)
-	updated, _ = app.Update(filterOpen())
+	// Explicitly cover the palette while its queue discovery is in flight.
+	updated, _ = app.Update(dialogs.OpenDialogMsg{Model: filterdialog.New()})
 	app = updated.(App)
 	app = applyLayoutRead(app, load)
 	if app.dialogs.ActiveDialogID() != filterdialog.DialogID {

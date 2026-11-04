@@ -28,6 +28,7 @@ type processesListDataMsg struct {
 
 // ProcessesList shows all Sidekiq processes in a table.
 type ProcessesList struct {
+	IntentScope
 	dialogs.Opener
 	requestctx.Scope
 	client                  sidekiq.API
@@ -131,9 +132,7 @@ func (p *ProcessesList) Update(msg tea.Msg) (View, tea.Cmd) {
 		case "enter":
 			if idx := p.table.Cursor(); idx >= 0 && idx < len(p.processes) {
 				identity := p.processes[idx].Identity
-				return p, func() tea.Msg {
-					return ShowProcessSelectMsg{Identity: identity}
-				}
+				return p, p.EmitIntent(ShowProcessSelectMsg{Identity: identity})
 			}
 			return p, nil
 		}

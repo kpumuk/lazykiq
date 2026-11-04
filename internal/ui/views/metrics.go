@@ -35,6 +35,7 @@ type metricsRow struct {
 
 // Metrics shows job execution metrics.
 type Metrics struct {
+	IntentScope
 	dialogs.Opener
 	requestctx.Scope
 	client sidekiq.API
@@ -132,9 +133,7 @@ func (m *Metrics) Update(msg tea.Msg) (View, tea.Cmd) {
 		case "enter":
 			if selected, ok := m.selectedRow(); ok {
 				intent := ShowJobMetricsMsg{Job: selected.class, Period: m.period}
-				return m, func() tea.Msg {
-					return intent
-				}
+				return m, m.EmitIntent(intent)
 			}
 			return m, nil
 		case "{":

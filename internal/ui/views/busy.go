@@ -30,6 +30,7 @@ type busyDataMsg struct {
 
 // Busy shows active workers/processes.
 type Busy struct {
+	IntentScope
 	dialogs.Opener
 	requestctx.Scope
 	client                 sidekiq.API
@@ -148,9 +149,7 @@ func (b *Busy) Update(msg tea.Msg) (View, tea.Cmd) {
 			}
 			return b, nil
 		case "s":
-			return b, func() tea.Msg {
-				return ShowProcessesListMsg{}
-			}
+			return b, b.EmitIntent(ShowProcessesListMsg{})
 		}
 		if b.handleProcessSelectKey(key) {
 			return b, nil
@@ -162,9 +161,7 @@ func (b *Busy) Update(msg tea.Msg) (View, tea.Cmd) {
 				jobIdx := b.rowJobIndex[idx]
 				if jobIdx >= 0 && jobIdx < len(b.filteredJobs) {
 					job := b.filteredJobs[jobIdx].JobRecord
-					return b, func() tea.Msg {
-						return ShowJobDetailMsg{Job: job}
-					}
+					return b, b.EmitIntent(ShowJobDetailMsg{Job: job})
 				}
 			}
 			return b, nil

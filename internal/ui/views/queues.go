@@ -40,6 +40,7 @@ type queuesListDataMsg struct {
 
 // QueuesList shows all Sidekiq queues in a table.
 type QueuesList struct {
+	IntentScope
 	dialogs.Opener
 	requestctx.Scope
 	client                  sidekiq.API
@@ -150,9 +151,7 @@ func (q *QueuesList) Update(msg tea.Msg) (View, tea.Cmd) {
 			// Show queue details for selected queue
 			if idx := q.table.Cursor(); idx >= 0 && idx < len(q.queues) {
 				queueName := q.queues[idx].Name
-				return q, func() tea.Msg {
-					return ShowQueueDetailsMsg{QueueName: queueName}
-				}
+				return q, q.EmitIntent(ShowQueueDetailsMsg{QueueName: queueName})
 			}
 			return q, nil
 		}

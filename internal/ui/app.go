@@ -70,6 +70,13 @@ type dialogOwner struct {
 	generation uint64
 }
 
+// viewIntentOwner identifies the activation that created a local UI command.
+type viewIntentOwner struct {
+	owner            dialogOwner
+	lifetime         context.Context
+	dialogGeneration uint64
+}
+
 // App is the main application model.
 type App struct {
 	ctx                     context.Context
@@ -95,6 +102,7 @@ type App struct {
 	devTracker              *devtools.Tracker
 	statsRequest            *requestctx.Controller
 	viewGeneration          uint64
+	dialogGeneration        uint64
 }
 
 // New creates a new App instance.
@@ -225,19 +233,30 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	dialogUpdated := false
 
 	switch msg := msg.(type) {
+	case views.IntentMsg:
+		origin, ok := msg.Owner.(viewIntentOwner)
+		if !ok || !a.intentOwnerCurrent(origin) {
+			return a, nil
+		}
+		return a.Update(msg.Msg)
 	case devtoolsdialog.CommandResultMsg:
 		msg.Collect(a.devTracker)
 		return a, nil
 	case dialogs.OpenDialogMsg:
-		if owner, ok := msg.Owner.(dialogOwner); ok {
+		switch owner := msg.Owner.(type) {
+		case viewIntentOwner:
+			if !a.intentOwnerCurrent(owner) {
+				return a, nil
+			}
+			msg.Owner = owner.owner
+		case dialogOwner:
 			if !a.dialogOwnerCurrent(owner) {
 				return a, nil
 			}
-		} else {
+		default:
 			msg.Owner = a.viewDialogOwner(a.activeViewID())
 		}
-		updated, cmd := a.dialogs.Update(msg)
-		a.dialogs = updated
+		cmd := a.updateDialogStack(msg)
 		a.styleDialogs()
 		a.syncContextbar()
 		return a, cmd
@@ -245,8 +264,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Session != nil && msg.Session != a.dialogs.ActiveSession() {
 			return a, nil
 		}
-		updated, cmd := a.dialogs.Update(msg)
-		a.dialogs = updated
+		cmd := a.updateDialogStack(msg)
 		if msg.Session != nil && msg.Action != nil {
 			if owner, ok := msg.Session.Owner.(dialogOwner); ok && a.dialogOwnerCurrent(owner) {
 				if action, ok := msg.Action.(palettedialog.ActionMsg); ok {
@@ -567,6 +585,16 @@ func (a App) View() tea.View {
 	v.SetContent(fitRectangle(base, a.width, a.height))
 
 	return v
+}
+
+func (a *App) updateDialogStack(msg tea.Msg) tea.Cmd {
+	previous := a.dialogs.ActiveSession()
+	updated, cmd := a.dialogs.Update(msg)
+	a.dialogs = updated
+	if a.dialogs.ActiveSession() != previous {
+		a.dialogGeneration++
+	}
+	return cmd
 }
 
 func (a *App) syncContextbar() {
@@ -915,10 +943,15 @@ func (a *App) updateView(id viewID, msg tea.Msg) tea.Cmd {
 	if !ok {
 		return nil
 	}
-	a.setViewDialogOwner(id)
+	a.setViewOwners(id)
 	updatedView, cmd := view.Update(msg)
 	a.viewRegistry[id] = updatedView
 	return cmd
+}
+
+func (a App) intentOwnerCurrent(origin viewIntentOwner) bool {
+	return origin.lifetime == a.ctx && a.ctx.Err() == nil &&
+		a.dialogOwnerCurrent(origin.owner) && origin.dialogGeneration == a.dialogGeneration
 }
 
 func (a App) viewDialogOwner(id viewID) dialogOwner {
@@ -932,15 +965,24 @@ func (a App) dialogOwnerCurrent(owner dialogOwner) bool {
 
 func (a App) initView(id viewID) tea.Cmd {
 	if view, ok := a.viewRegistry[id]; ok {
-		a.setViewDialogOwner(id)
+		a.setViewOwners(id)
 		return view.Init()
 	}
 	return nil
 }
 
-func (a App) setViewDialogOwner(id viewID) {
-	if setter, ok := a.viewRegistry[id].(dialogs.OwnerSetter); ok {
-		setter.SetDialogOwner(a.viewDialogOwner(id))
+func (a App) setViewOwners(id viewID) {
+	view := a.viewRegistry[id]
+	origin := viewIntentOwner{
+		owner:            a.viewDialogOwner(id),
+		lifetime:         a.ctx,
+		dialogGeneration: a.dialogGeneration,
+	}
+	if setter, ok := view.(dialogs.OwnerSetter); ok {
+		setter.SetDialogOwner(origin)
+	}
+	if setter, ok := view.(views.IntentOwnerSetter); ok {
+		setter.SetIntentOwner(origin)
 	}
 }
 
