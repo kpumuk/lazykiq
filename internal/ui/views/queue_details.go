@@ -150,7 +150,7 @@ func (q *QueueDetails) Update(msg tea.Msg) (View, tea.Cmd) {
 		case "p":
 			if q.dangerousActionsEnabled && q.capabilities.SupportsQueuePause() {
 				if queue, ok := q.currentQueue(); ok {
-					return q, q.actions.pauseDialog(queue.Name, queue.Paused, q.styles)
+					return q, q.actions.pauseDialog(queue.Name, queue.Paused, q.styles, q.Opener)
 				}
 			}
 			return q, nil

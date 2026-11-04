@@ -40,6 +40,7 @@ type queuesListDataMsg struct {
 
 // QueuesList shows all Sidekiq queues in a table.
 type QueuesList struct {
+	dialogs.Opener
 	requestctx.Scope
 	client                  sidekiq.API
 	width                   int
@@ -144,9 +145,7 @@ func (q *QueuesList) Update(msg tea.Msg) (View, tea.Cmd) {
 				filterdialog.WithStyles(q.filterStyle),
 				filterdialog.WithQuery(q.filter),
 			)
-			return q, func() tea.Msg {
-				return dialogs.OpenDialogMsg{Model: dialog}
-			}
+			return q, q.OpenDialog(dialog)
 		case "enter":
 			// Show queue details for selected queue
 			if idx := q.table.Cursor(); idx >= 0 && idx < len(q.queues) {
@@ -169,7 +168,7 @@ func (q *QueuesList) Update(msg tea.Msg) (View, tea.Cmd) {
 			}
 			if idx := q.table.Cursor(); idx >= 0 && idx < len(q.queues) {
 				queue := q.queues[idx]
-				return q, q.actions.pauseDialog(queue.Name, queue.Paused, q.styles)
+				return q, q.actions.pauseDialog(queue.Name, queue.Paused, q.styles, q.Opener)
 			}
 			return q, nil
 		case "d":
@@ -178,20 +177,16 @@ func (q *QueuesList) Update(msg tea.Msg) (View, tea.Cmd) {
 				if !ok {
 					return q, nil
 				}
-				return q, func() tea.Msg {
-					return dialogs.OpenDialogMsg{
-						Model: newConfirmDialog(
-							q.styles,
-							"Delete queue",
-							fmt.Sprintf(
-								"Are you sure you want to delete the %s queue?\n\nThis will remove all jobs currently in the queue.\nThe queue will be created again automatically if you add new jobs to it later.",
-								q.styles.Text.Bold(true).Render(queueName),
-							),
-							action.target,
-							q.styles.DangerAction,
-						),
-					}
-				}
+				return q, q.OpenDialog(newConfirmDialog(
+					q.styles,
+					"Delete queue",
+					fmt.Sprintf(
+						"Are you sure you want to delete the %s queue?\n\nThis will remove all jobs currently in the queue.\nThe queue will be created again automatically if you add new jobs to it later.",
+						q.styles.Text.Bold(true).Render(queueName),
+					),
+					action.target,
+					q.styles.DangerAction,
+				))
 			}
 			return q, nil
 		}

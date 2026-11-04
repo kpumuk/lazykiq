@@ -28,6 +28,7 @@ type processesListDataMsg struct {
 
 // ProcessesList shows all Sidekiq processes in a table.
 type ProcessesList struct {
+	dialogs.Opener
 	requestctx.Scope
 	client                  sidekiq.API
 	width                   int
@@ -121,9 +122,7 @@ func (p *ProcessesList) Update(msg tea.Msg) (View, tea.Cmd) {
 				filterdialog.WithStyles(p.filterStyle),
 				filterdialog.WithQuery(p.filter),
 			)
-			return p, func() tea.Msg {
-				return dialogs.OpenDialogMsg{Model: dialog}
-			}
+			return p, p.OpenDialog(dialog)
 		case "c":
 			if identity, ok := p.selectedProcessIdentity(); ok {
 				return p, copyTextCmd(identity)
@@ -399,17 +398,13 @@ func (p *ProcessesList) openStopProcessConfirm(identity string) tea.Cmd {
 }
 
 func (p *ProcessesList) confirmProcessActionCmd(title, message, action, identity string) tea.Cmd {
-	return func() tea.Msg {
-		return dialogs.OpenDialogMsg{
-			Model: newConfirmDialog(
-				p.styles,
-				title,
-				message,
-				action+":"+identity,
-				p.styles.DangerAction,
-			),
-		}
-	}
+	return p.OpenDialog(newConfirmDialog(
+		p.styles,
+		title,
+		message,
+		action+":"+identity,
+		p.styles.DangerAction,
+	))
 }
 
 func (p *ProcessesList) pauseProcessCmd(identity string) tea.Cmd {

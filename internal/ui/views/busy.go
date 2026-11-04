@@ -30,6 +30,7 @@ type busyDataMsg struct {
 
 // Busy shows active workers/processes.
 type Busy struct {
+	dialogs.Opener
 	requestctx.Scope
 	client                 sidekiq.API
 	width                  int
@@ -537,9 +538,7 @@ func (b *Busy) openFilterDialog() tea.Cmd {
 		filterdialog.WithStyles(b.filterStyle),
 		filterdialog.WithQuery(b.filter),
 	)
-	return func() tea.Msg {
-		return dialogs.OpenDialogMsg{Model: dialog}
-	}
+	return b.OpenDialog(dialog)
 }
 
 // renderJobsBox renders the bordered box containing the jobs table.

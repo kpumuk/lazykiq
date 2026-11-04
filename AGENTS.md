@@ -14,6 +14,7 @@ Use [create-pull-request](.agents/skills/create-pull-request/SKILL.md) when prep
 
 ## Code Quality
 
+- Do not introduce runtime reflection (`reflect.ValueOf`, `reflect.TypeOf`, or reflective traversal). Use explicit interfaces, typed helpers, or type switches. Capture ownership and other metadata at creation rather than inspecting private framework types after composition.
 - Make sure to always perform `mise run ci` to ensure code formatting matches the style of the repository, linters don't have any offenses, and tests pass.
 
 ```bash
@@ -77,6 +78,7 @@ internal/
 ## Patterns
 
 - Views implement `views.View` interface
+- Views that open dialogs embed `dialogs.Opener` and call `OpenDialog` before composing commands. The app supplies the owner before `Init`/`Update`; never read mutable ownership inside an asynchronous command or create an unowned view dialog.
 - Components own package-local `Styles`, `DefaultStyles()`, `WithStyles()`, and `SetStyles()`; compose them from `theme.NewStyles()` at app/view boundaries
 - Theme resolves centralized light/dark ColorPairs in app-owned state from Bubble Tea background replies, with a dark no-reply fallback; never query the terminal from palette initialization
 - All color values must live in `theme.DefaultTheme`; no inline colors outside it

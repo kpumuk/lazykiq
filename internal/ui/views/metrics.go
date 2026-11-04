@@ -35,6 +35,7 @@ type metricsRow struct {
 
 // Metrics shows job execution metrics.
 type Metrics struct {
+	dialogs.Opener
 	requestctx.Scope
 	client sidekiq.API
 	width  int
@@ -449,9 +450,7 @@ func (m *Metrics) openFilterDialog() tea.Cmd {
 		filterdialog.WithStyles(m.filterStyle),
 		filterdialog.WithQuery(m.filter),
 	)
-	return func() tea.Msg {
-		return dialogs.OpenDialogMsg{Model: dialog}
-	}
+	return m.OpenDialog(dialog)
 }
 
 func (m *Metrics) setFilterAndReload(filter string) tea.Cmd {
