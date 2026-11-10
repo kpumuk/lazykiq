@@ -5,6 +5,7 @@ import (
 	"math"
 	"reflect"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -578,6 +579,151 @@ func TestProcessRefresh_BusyOverflow(t *testing.T) {
 
 	if int64(process.Busy) != math.MaxInt64 {
 		t.Fatalf("Busy = %d, want %d", process.Busy, int64(math.MaxInt64))
+	}
+}
+
+func TestProcessSignals(t *testing.T) {
+	for name, tc := range map[string]struct {
+		initialInfo string
+		currentInfo string
+		refresh     bool
+		rejected    bool
+	}{
+		"direct embedded": {
+			currentInfo: `{"hostname":"worker","pid":123,"version":"8.1.0","embedded":true}`,
+			rejected:    true,
+		},
+		"refreshed embedded": {
+			initialInfo: `{"hostname":"worker","pid":123,"version":"8.1.0","embedded":true}`,
+			refresh:     true,
+			rejected:    true,
+		},
+		"stale ordinary metadata": {
+			initialInfo: `{"hostname":"worker","pid":123,"embedded":false}`,
+			currentInfo: `{"hostname":"worker","pid":123,"embedded":true}`,
+			refresh:     true,
+			rejected:    true,
+		},
+		"stale embedded metadata": {
+			initialInfo: `{"hostname":"worker","pid":123,"embedded":true}`,
+			currentInfo: `{"hostname":"worker","pid":123,"embedded":false}`,
+			refresh:     true,
+		},
+		"direct ordinary": {
+			currentInfo: `{"hostname":"worker","pid":123,"embedded":false}`,
+		},
+		"legacy ordinary": {
+			currentInfo: `{"hostname":"worker","pid":123,"version":"7.3.10"}`,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			mr, client := setupTestRedis(t)
+			ctx := t.Context()
+			const identity = "worker:123:abc"
+			process := client.NewProcess(identity)
+			if tc.initialInfo != "" {
+				mr.HSet(identity, "info", tc.initialInfo)
+			}
+			if tc.refresh {
+				if err := process.Refresh(ctx); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tc.currentInfo != "" {
+				mr.HSet(identity, "info", tc.currentInfo)
+			}
+
+			pauseErr, stopErr := process.Pause(ctx), process.Stop(ctx)
+			t.Logf("Pause=%v Stop=%v signals=%v", pauseErr, stopErr,
+				client.redis.LRange(ctx, identity+"-signals", 0, -1).Val())
+			if tc.rejected {
+				for action, err := range map[string]error{"Pause": pauseErr, "Stop": stopErr} {
+					if err == nil || !strings.Contains(err.Error(), "embedded") {
+						t.Errorf("%s = %v, want an embedded process error", action, err)
+					}
+				}
+				if mr.Exists(identity + "-signals") {
+					t.Fatal("unsupported action created a signal key")
+				}
+				return
+			}
+			if pauseErr != nil || stopErr != nil {
+				t.Fatalf("Pause = %v, Stop = %v", pauseErr, stopErr)
+			}
+			signals, err := mr.List(identity + "-signals")
+			if err != nil || !reflect.DeepEqual(signals, []string{"TERM", "TSTP"}) {
+				t.Fatalf("signals = %v, %v; want [TERM TSTP]", signals, err)
+			}
+			if ttl := mr.TTL(identity + "-signals"); ttl != time.Minute {
+				t.Fatalf("signal expiry = %v, want one minute", ttl)
+			}
+			mr.FastForward(time.Minute)
+			if mr.Exists(identity + "-signals") {
+				t.Fatal("signal key did not expire")
+			}
+		})
+	}
+}
+
+func TestProcessSignalsRequireMetadata(t *testing.T) {
+	for name, tc := range map[string]struct{ info string }{
+		"missing":   {},
+		"malformed": {info: `{"embedded":`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			mr, client := setupTestRedis(t)
+			const identity = "worker:123:abc"
+			if tc.info != "" {
+				mr.HSet(identity, "info", tc.info)
+			}
+			process := client.NewProcess(identity)
+			if err := process.Pause(t.Context()); err == nil {
+				t.Error("Pause succeeded without readable process metadata")
+			}
+			if err := process.Stop(t.Context()); err == nil {
+				t.Error("Stop succeeded without readable process metadata")
+			}
+			if mr.Exists(identity + "-signals") {
+				t.Fatal("action created a signal key without readable process metadata")
+			}
+		})
+	}
+}
+
+func TestEmbeddedProcessStatus(t *testing.T) {
+	for name, tc := range map[string]struct {
+		quiet   string
+		signals []string
+		want    string
+	}{
+		"pause ignored": {signals: []string{"TSTP"}, want: ProcessStatusRunning},
+		"stop ignored":  {signals: []string{"TERM", "TSTP"}, want: ProcessStatusRunning},
+		"quiet":         {quiet: "true", signals: []string{"TERM"}, want: ProcessStatusQuiet},
+	} {
+		t.Run(name, func(t *testing.T) {
+			mr, client := setupTestRedis(t)
+			const identity = "embedded:123:abc"
+			_, _ = mr.SetAdd("processes", identity)
+			mr.HSet(identity, "info", `{"hostname":"embedded","pid":123,"embedded":true}`, "quiet", tc.quiet)
+			for _, signal := range tc.signals {
+				_, _ = mr.Lpush(identity+"-signals", signal)
+			}
+			data, err := client.GetProcessesData(t.Context())
+			if err != nil || len(data) != 1 {
+				t.Fatalf("GetProcessesData = %v, %v", data, err)
+			}
+			if !data[0].Embedded || data[0].Status != tc.want {
+				t.Fatalf("embedded process = %+v, want status %s", data[0], tc.want)
+			}
+			process := client.NewProcess(identity)
+			if err := process.Refresh(t.Context()); err != nil || !process.Embedded {
+				t.Fatalf("Refresh = %v, embedded = %v", err, process.Embedded)
+			}
+			mr.HSet(identity, "info", `{"hostname":"embedded","pid":123}`)
+			if err := process.Refresh(t.Context()); err != nil || process.Embedded {
+				t.Fatalf("Refresh = %v, embedded = %v after metadata changed", err, process.Embedded)
+			}
+		})
 	}
 }
 

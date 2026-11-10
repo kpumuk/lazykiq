@@ -137,7 +137,7 @@ func (p *ProcessesList) Update(msg tea.Msg) (View, tea.Cmd) {
 			return p, nil
 		}
 
-		if p.dangerousActionsEnabled {
+		if p.canSignalSelectedProcess() {
 			switch msg.String() {
 			case "p":
 				if identity, ok := p.selectedProcessIdentity(); ok {
@@ -228,7 +228,7 @@ func (p *ProcessesList) HintBindings() []key.Binding {
 
 // MutationBindings implements MutationHintProvider.
 func (p *ProcessesList) MutationBindings() []key.Binding {
-	if !p.dangerousActionsEnabled {
+	if !p.canSignalSelectedProcess() {
 		return nil
 	}
 	return []key.Binding{
@@ -247,13 +247,10 @@ func (p *ProcessesList) HelpSections() []HelpSection {
 			helpBinding([]string{"enter"}, "enter", "select process"),
 		},
 	}}
-	if p.dangerousActionsEnabled {
+	if bindings := p.MutationBindings(); len(bindings) > 0 {
 		sections = append(sections, HelpSection{
-			Title: "Dangerous Actions",
-			Bindings: []key.Binding{
-				helpBinding([]string{"p"}, "p", "pause process"),
-				helpBinding([]string{"s"}, "s", "stop process"),
-			},
+			Title:    "Dangerous Actions",
+			Bindings: bindings,
 		})
 	}
 	return sections
@@ -367,6 +364,11 @@ func (p *ProcessesList) selectedProcessIdentity() (string, bool) {
 	return p.processes[idx].Identity, true
 }
 
+func (p *ProcessesList) canSignalSelectedProcess() bool {
+	idx := p.table.Cursor()
+	return p.dangerousActionsEnabled && idx >= 0 && idx < len(p.processes) && !p.processes[idx].Embedded
+}
+
 const (
 	processActionPause = "pause"
 	processActionStop  = "stop"
@@ -457,6 +459,9 @@ func (p *ProcessesList) updateTableRows() {
 		name := processIdentity(process)
 		if process.Tag != "" {
 			name += " [" + process.Tag + "]"
+		}
+		if process.Embedded {
+			name += " [embedded]"
 		}
 
 		queues := formatProcessCapsules(process, p.styles.QueueText, p.styles.QueueWeight, p.styles.Muted)

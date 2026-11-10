@@ -72,6 +72,9 @@ Process view lists all Sidekiq processes, and allows to select one for job filte
 | `Esc`        | Back to Busy view.                   |
 | `q`          | Quit.                                |
 
+Embedded processes are marked `[embedded]`. Sidekiq does not support pausing or
+stopping them, so their `p` and `s` actions are unavailable even with `--danger`.
+
 ## Job Details
 
 Shows detailed information about a running job.

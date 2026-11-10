@@ -143,13 +143,16 @@ func TestProcessesListCapturesFilter(t *testing.T) {
 
 func TestGoldenProcessesListMetadata(t *testing.T) {
 	for name, tc := range map[string]struct {
-		width  int
-		filter string
+		width    int
+		filter   string
+		embedded bool
 	}{
-		"wide":       {width: 160},
-		"narrow":     {width: 80},
-		"filtered":   {width: 160, filter: "CRITICAL"},
-		"no matches": {width: 80, filter: "missing"},
+		"wide":            {width: 160},
+		"narrow":          {width: 80},
+		"filtered":        {width: 160, filter: "CRITICAL"},
+		"no matches":      {width: 80, filter: "missing"},
+		"embedded":        {width: 160, embedded: true},
+		"embedded narrow": {width: 80, embedded: true},
 	} {
 		t.Run(name, func(t *testing.T) {
 			mr := miniredis.RunT(t)
@@ -162,6 +165,9 @@ func TestGoldenProcessesListMetadata(t *testing.T) {
 			mr.HSet("alpha:1:nonce", "info", `{"hostname":"alpha","pid":1,"tag":"web","concurrency":8,"version":"8.1.0","capsules":{"default":{"concurrency":8,"mode":"weighted","weights":{"critical":5,"default":1}}}}`, "busy", "3", "rss", "2048")
 			mr.HSet("beta:2:nonce", "info", `{"hostname":"beta","pid":2,"concurrency":4,"queues":["mailers"],"version":"7.0.0"}`, "busy", "1", "quiet", "true")
 			_, _ = mr.Lpush("alpha:1:nonce-signals", "TSTP")
+			if tc.embedded {
+				mr.HSet("alpha:1:nonce", "info", `{"hostname":"alpha","pid":1,"tag":"web","concurrency":8,"version":"8.1.0","embedded":true,"capsules":{"default":{"concurrency":8,"mode":"weighted","weights":{"critical":5,"default":1}}}}`)
+			}
 			// A work hash of the wrong type makes any active-work read fail.
 			_ = mr.Set("alpha:1:nonce:work", "unreadable work")
 			view := NewProcessesList(client)
@@ -237,6 +243,66 @@ func TestProcessesListDangerousActionsRequireConfirmation(t *testing.T) {
 			wantTarget := tc.action + ":worker:123:abc"
 			if confirmed.Target != wantTarget {
 				t.Fatalf("target = %q, want %q", confirmed.Target, wantTarget)
+			}
+		})
+	}
+}
+
+func TestProcessesListEmbeddedActions(t *testing.T) {
+	for name, tc := range map[string]struct{ key string }{
+		"pause": {key: "p"},
+		"stop":  {key: "s"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			mr := miniredis.RunT(t)
+			client, err := sidekiq.NewClient("redis://" + mr.Addr())
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = client.Close() })
+			const identity = "worker:123:abc"
+			_, _ = mr.SetAdd("processes", identity)
+			mr.HSet(identity, "info", `{"hostname":"worker","pid":123,"embedded":false}`)
+			view := NewProcessesList(client)
+			view.SetSize(120, 12)
+			view.SetDangerousActionsEnabled(true)
+			t.Cleanup(view.CancelRequests)
+			view.Update(view.Init()())
+
+			_, cmd := view.Update(tea.KeyPressMsg{Text: tc.key, Code: []rune(tc.key)[0]})
+			if cmd == nil || len(view.MutationBindings()) != 2 {
+				t.Fatal("ordinary process did not offer confirmation")
+			}
+			open := cmd().(dialogs.OpenDialogMsg)
+			mr.HSet(identity, "info", `{"hostname":"worker","pid":123,"embedded":true}`)
+			_, yes := open.Model.Update(tea.KeyPressMsg{Text: "y", Code: 'y'})
+			_, action := view.Update(collectConfirmAction(t, yes))
+			msg, ok := action().(ConnectionErrorMsg)
+			if !ok || msg.Err == nil || !strings.Contains(msg.Err.Error(), "embedded") {
+				t.Fatalf("stale confirmation returned %+v, want embedded process error", msg)
+			}
+			if mr.Exists(identity + "-signals") {
+				t.Fatal("stale process confirmation queued an unsupported signal")
+			}
+
+			_, refresh := view.Update(RefreshMsg{})
+			view.Update(refresh())
+			_, cmd = view.Update(tea.KeyPressMsg{Text: tc.key, Code: []rune(tc.key)[0]})
+			if cmd != nil || len(view.MutationBindings()) != 0 {
+				t.Fatal("embedded process offered an unsupported action")
+			}
+			for _, section := range view.HelpSections() {
+				if section.Title == "Dangerous Actions" {
+					t.Fatal("help offered unsupported process actions")
+				}
+			}
+			if !strings.Contains(ansi.Strip(view.View()), "[embedded]") {
+				t.Fatal("embedded process is not identified in the list")
+			}
+			for _, key := range []tea.KeyPressMsg{{Text: "c", Code: 'c'}, {Code: tea.KeyEnter}} {
+				if _, cmd := view.Update(key); cmd == nil {
+					t.Fatalf("embedded process lost nonmutating action %s", key.String())
+				}
 			}
 		})
 	}
