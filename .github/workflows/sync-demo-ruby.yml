@@ -1,0 +1,58 @@
+name: sync demo Ruby
+
+# App secrets must stay outside untrusted PR jobs. Only default-branch code
+# runs here; PR data never enters shell commands, caches, or executable files.
+on: # zizmor: ignore[dangerous-triggers]
+  workflow_run:
+    workflows: [test]
+    types: [completed]
+
+permissions:
+  contents: read
+  pull-requests: read # Verify the PR author, head, base, and complete file list.
+
+concurrency:
+  group: sync-demo-ruby-${{ github.event.workflow_run.pull_requests[0].number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Sync demo Ruby pin
+    if: >-
+      github.repository == 'kpumuk/lazykiq' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.actor.id == 49699333 &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.pull_requests[0].number
+    runs-on: ubuntu-24.04
+    env:
+      PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
+      PR_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      # Only default-branch code runs with secrets. PR files are read as data
+      # through the API; no PR checkout, artifacts, or caches are used.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Check whether the Ruby pin needs updating
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node .github/scripts/sync-demo-ruby.mjs
+      - name: Create repository-scoped token
+        if: steps.check.outputs.needs-sync == 'true'
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.DEPENDABOT_SYNC_APP_CLIENT_ID }}
+          private-key: ${{ secrets.DEPENDABOT_SYNC_APP_PRIVATE_KEY }}
+          owner: kpumuk
+          repositories: lazykiq
+          permission-contents: write
+          permission-pull-requests: read
+      - name: Update the Ruby pin
+        if: steps.check.outputs.needs-sync == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: node .github/scripts/sync-demo-ruby.mjs --apply
