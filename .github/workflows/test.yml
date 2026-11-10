@@ -30,3 +30,33 @@ jobs:
         run: go build ./...
       - name: Test
         run: go test ./...
+
+  demo-dependencies:
+    name: demo dependencies
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: demo
+    env:
+      BUNDLE_FROZEN: "true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
+        with:
+          working-directory: demo
+          bundler: Gemfile.lock
+      - name: Install demo bundles
+        run: |
+          for gemfile in Gemfile bundles/sidekiq-*/Gemfile; do
+            BUNDLE_GEMFILE="$gemfile" bundle install
+          done
+      - name: Audit demo bundles
+        run: |
+          bundle exec bundle-audit update
+          status=0
+          for lockfile in Gemfile.lock bundles/sidekiq-*/Gemfile.lock; do
+            bundle exec bundle-audit check --gemfile-lock "$lockfile" || status=1
+          done
+          exit "$status"

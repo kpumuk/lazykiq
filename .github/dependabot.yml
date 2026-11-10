@@ -64,3 +64,36 @@ updates:
     commit-message:
       prefix: "chore"
       include: "scope"
+
+  - package-ecosystem: "bundler"
+    directories:
+      - "/demo/bundles/sidekiq-7.3"
+      - "/demo/bundles/sidekiq-8.0"
+      - "/demo/bundles/sidekiq-8.1"
+    versioning-strategy: "lockfile-only"
+    allow:
+      - dependency-type: "all"
+    ignore:
+      - dependency-name: "sidekiq"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
+    groups:
+      sidekiq-bundles:
+        applies-to: "version-updates"
+        patterns: ["*"]
+      sidekiq-bundles-security:
+        applies-to: "security-updates"
+        patterns: ["*"]
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "05:00"
+      timezone: "America/New_York"
+    cooldown:
+      default-days: 7
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "chore"
+      include: "scope"

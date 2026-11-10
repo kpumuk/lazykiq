@@ -133,7 +133,7 @@ Lefthook can be used to setup Git hooks:
 lefthook install
 ```
 
-The pre-push hooks check Go dependencies and all demo Ruby lockfiles (`Gemfile.lock` and `Gemfile.sidekiq-*.lock`) for known vulnerabilities. The pre-commit hooks check code quality.
+The pre-push hooks check Go dependencies and all demo Ruby lockfiles (`demo/Gemfile.lock` and `demo/bundles/sidekiq-*/Gemfile.lock`) for known vulnerabilities. The pre-commit hooks check code quality.
 
 ### Test environment
 

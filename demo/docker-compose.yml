@@ -37,7 +37,7 @@ services:
     build:
       context: .
       args:
-        BUNDLE_GEMFILE: Gemfile.sidekiq-8.1
+        BUNDLE_DIR: bundles/sidekiq-8.1
     environment:
       LAZYKIQ_DEMO_LAYOUT: stretched
       REDIS_URL: redis://redis:6379/0
@@ -49,7 +49,7 @@ services:
     build:
       context: .
       args:
-        BUNDLE_GEMFILE: Gemfile.sidekiq-8.0
+        BUNDLE_DIR: bundles/sidekiq-8.0
     environment:
       LAZYKIQ_DEMO_LAYOUT: compact
       REDIS_URL: redis://redis:6379/1
@@ -61,7 +61,7 @@ services:
     build:
       context: .
       args:
-        BUNDLE_GEMFILE: Gemfile.sidekiq-7.3
+        BUNDLE_DIR: bundles/sidekiq-7.3
     environment:
       LAZYKIQ_DEMO_LAYOUT: compact
       REDIS_URL: redis://redis:6379/2

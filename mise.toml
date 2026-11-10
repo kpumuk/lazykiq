@@ -61,7 +61,11 @@ run = "go get -u ./... && go mod tidy"
 
 [tasks.deps-ruby]
 description = "Update Ruby dependencies"
-run = "find . -maxdepth 1 -name 'Gemfile*' ! -name '*.lock' -exec mise exec ruby -- bundle update --gemfile '{}' --all \\;"
+run = """
+for gemfile in Gemfile bundles/sidekiq-*/Gemfile; do
+  mise exec ruby -- bundle update --gemfile "$gemfile" --all || exit "$?"
+done
+"""
 dir = "demo"
 
 [tasks.website-dev]
