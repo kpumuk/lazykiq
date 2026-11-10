@@ -65,6 +65,8 @@ queue's jobs title.
 
 Shows detailed information about a queued job.
 
+Job arguments and copied JSON preserve the original numeric values, including large integer IDs.
+
 {{< lightbox src="assets/job_details.png" alt="Job details screen" >}}
 
 **Key bindings:**

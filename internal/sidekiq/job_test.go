@@ -75,21 +75,79 @@ func TestNewJobRecord_QueueOverride(t *testing.T) {
 }
 
 func TestNewJobRecord_InvalidJSON(t *testing.T) {
-	value := "{invalid"
+	for name, value := range map[string]string{
+		"malformed":       "{invalid",
+		"truncated":       `{"jid":"audit","queue":"default","args":[`,
+		"trailing object": `{"jid":"audit","queue":"default"} {}`,
+		"trailing null":   `{"jid":"audit","queue":"default"} null`,
+		"trailing junk":   `{"jid":"audit","queue":"default"} junk`,
+		"array":           `[1,2]`,
+		"scalar":          `42`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			record := NewJobRecord(value, "")
+			if got := record.Queue(); got != "" {
+				t.Fatalf("Queue() = %q, want empty", got)
+			}
+			if got := record.JID(); got != "" {
+				t.Fatalf("JID() = %q, want empty", got)
+			}
+			if got := record.Item(); len(got) != 0 {
+				t.Fatalf("Item() len = %d, want 0", len(got))
+			}
+			if args := record.Args(); len(args) != 1 || args[0] != value {
+				t.Fatalf("Args() = %v, want [%q]", args, value)
+			}
+		})
+	}
+}
 
+func TestJobRecordPreservesNumbers(t *testing.T) {
+	value := ` {"args":[9007199254740991,9007199254740992,9007199254740993,{"ids":[9223372036854775807,-9223372036854775808],"decimal":1.234567890123456789,"exponent":1e309}],"cattr":{"id":-9007199254740993}} `
+	want := []any{
+		json.Number("9007199254740991"), json.Number("9007199254740992"), json.Number("9007199254740993"),
+		map[string]any{
+			"ids":      []any{json.Number("9223372036854775807"), json.Number("-9223372036854775808")},
+			"decimal":  json.Number("1.234567890123456789"),
+			"exponent": json.Number("1e309"),
+		},
+	}
 	record := NewJobRecord(value, "")
+	for name, args := range map[string][]any{
+		"Args": record.Args(), "DisplayArgs": record.DisplayArgs(), "Item": record.Item()["args"].([]any),
+	} {
+		if !reflect.DeepEqual(args, want) {
+			t.Errorf("%s = %#v, want %#v", name, args, want)
+		}
+	}
+	if got := record.Context()["id"]; got != json.Number("-9007199254740993") {
+		t.Errorf("Context id = %#v, want exact negative integer", got)
+	}
+	if record.Value() != value {
+		t.Fatal("inspection changed the stored payload")
+	}
+}
 
-	if got := record.Queue(); got != "" {
-		t.Fatalf("Queue() = %q, want empty", got)
-	}
-	if got := record.JID(); got != "" {
-		t.Fatalf("JID() = %q, want empty", got)
-	}
-	if got := record.Item(); len(got) != 0 {
-		t.Fatalf("Item() len = %d, want 0", len(got))
-	}
-	if args := record.Args(); len(args) != 1 || args[0] != value {
-		t.Fatalf("Args() = %v, want [%q]", args, value)
+func TestJobRecordRetryCount(t *testing.T) {
+	for name, tc := range map[string]struct {
+		value string
+		want  int
+	}{
+		"integer":  {"2", 2},
+		"decimal":  {"3.75", 3},
+		"exponent": {"2e1", 20},
+		"negative": {"-4", -4},
+		"overflow": {"1e309", 0},
+		"string":   {`"5"`, 0},
+		"null":     {"null", 0},
+		"bool":     {"true", 0},
+	} {
+		t.Run(name, func(t *testing.T) {
+			record := NewJobRecord(`{"retry_count":`+tc.value+`}`, "")
+			if got := record.RetryCount(); got != tc.want {
+				t.Fatalf("RetryCount() = %d, want %d", got, tc.want)
+			}
+		})
 	}
 }
 
@@ -151,7 +209,12 @@ func TestJobRecord_DisplayArgs(t *testing.T) {
 		{
 			name:  "wrapper_basic",
 			value: `{"class":"ActiveJob::QueueAdapters::SidekiqAdapter::JobWrapper","wrapped":"MyJob","args":[{"arguments":[1,2]}]}`,
-			want:  []any{float64(1), float64(2)},
+			want:  []any{json.Number("1"), json.Number("2")},
+		},
+		{
+			name:  "wrapper_exact_numbers",
+			value: `{"class":"Sidekiq::ActiveJob::Wrapper","wrapped":"MyJob","args":[{"arguments":[9007199254740993,{"id":9223372036854775807,"_aj_ignore":0}]}]}`,
+			want:  []any{json.Number("9007199254740993"), map[string]any{"id": json.Number("9223372036854775807")}},
 		},
 		{
 			name:  "wrapper_global_id",
@@ -172,14 +235,14 @@ func TestJobRecord_DisplayArgs(t *testing.T) {
 			name:  "mailer_params",
 			value: `{"class":"Sidekiq::ActiveJob::Wrapper","wrapped":"ActionMailer::MailDeliveryJob","args":[{"arguments":["UserMailer","welcome","deliver_now",{"params":{"x":1},"args":[2,3]}]}]}`,
 			want: []any{
-				map[string]any{"x": float64(1)},
-				[]any{float64(2), float64(3)},
+				map[string]any{"x": json.Number("1")},
+				[]any{json.Number("2"), json.Number("3")},
 			},
 		},
 		{
 			name:  "encrypted",
 			value: `{"class":"PlainJob","encrypt":true,"args":[1,"secret"]}`,
-			want:  []any{float64(1), "[encrypted data]"},
+			want:  []any{json.Number("1"), "[encrypted data]"},
 		},
 	}
 
@@ -341,19 +404,19 @@ func serializedActiveJobTests() []serializedActiveJobTest {
 			name:      "5x_active_job",
 			value:     `{"class":"ActiveJob::QueueAdapters::SidekiqAdapter::JobWrapper","wrapped":"ApiAjJob","queue":"default","args":[{"job_class":"ApiAjJob","job_id":"f1bde53f-3852-4ae4-a879-c12eacebbbb0","provider_job_id":null,"queue_name":"default","priority":null,"arguments":[1,2,3],"executions":0,"locale":"en"}],"retry":true,"jid":"099eee72911085a511d0e312","created_at":1568305542.339916,"enqueued_at":1568305542.339947}`,
 			wantClass: "ApiAjJob",
-			wantArgs:  []any{float64(1), float64(2), float64(3)},
+			wantArgs:  []any{json.Number("1"), json.Number("2"), json.Number("3")},
 		},
 		{
 			name:      "5x_mailer_delivery",
 			value:     `{"class":"ActiveJob::QueueAdapters::SidekiqAdapter::JobWrapper","wrapped":"ActionMailer::DeliveryJob","queue":"mailers","args":[{"job_class":"ActionMailer::DeliveryJob","job_id":"19cc0115-3d1c-4bbe-a51e-bfa1385895d1","provider_job_id":null,"queue_name":"mailers","priority":null,"arguments":["ApiMailer","test_email","deliver_now",1,2,3],"executions":0,"locale":"en"}],"retry":true,"jid":"37436e5504936400e8cf98db","created_at":1568305542.370133,"enqueued_at":1568305542.370241}`,
 			wantClass: "ApiMailer#test_email",
-			wantArgs:  []any{float64(1), float64(2), float64(3)},
+			wantArgs:  []any{json.Number("1"), json.Number("2"), json.Number("3")},
 		},
 		{
 			name:      "6x_active_job",
 			value:     `{"class":"ActiveJob::QueueAdapters::SidekiqAdapter::JobWrapper","wrapped":"ApiAjJob","queue":"default","args":[{"job_class":"ApiAjJob","job_id":"ff2b48d4-bdce-4825-af6b-ef8c11ab651e","provider_job_id":null,"queue_name":"default","priority":null,"arguments":[1,2,3],"executions":0,"exception_executions":{},"locale":"en","timezone":"UTC","enqueued_at":"2019-09-12T16:28:37Z"}],"retry":true,"jid":"ce121bf77b37ae81fe61b6dc","created_at":1568305717.9469702,"enqueued_at":1568305717.947005}`,
 			wantClass: "ApiAjJob",
-			wantArgs:  []any{float64(1), float64(2), float64(3)},
+			wantArgs:  []any{json.Number("1"), json.Number("2"), json.Number("3")},
 		},
 		{
 			name:      "6x_mailer_delivery",
@@ -361,14 +424,14 @@ func serializedActiveJobTests() []serializedActiveJobTest {
 			wantClass: "ApiMailer#test_email",
 			wantArgs: []any{
 				map[string]any{"user": "gid://app/User/1"},
-				[]any{float64(1), float64(2), float64(3)},
+				[]any{json.Number("1"), json.Number("2"), json.Number("3")},
 			},
 		},
 		{
 			name:      "8x_active_job",
 			value:     `{"class":"Sidekiq::ActiveJob::Wrapper","wrapped":"ApiAjJob","queue":"default","args":[{"job_class":"ApiAjJob","job_id":"37649eb0-c437-4e00-8a29-85cc12da1440","provider_job_id":null,"queue_name":"default","priority":null,"arguments":[1,2,3],"executions":0,"exception_executions":{},"locale":"en","timezone":null,"enqueued_at":"2024-09-19T16:39:26.609737000Z","scheduled_at":null}],"retry":true,"jid":"ec42f101ed1b16f27c6a6188","created_at":1726763966.610073,"enqueued_at":1726763966.6101718}`,
 			wantClass: "ApiAjJob",
-			wantArgs:  []any{float64(1), float64(2), float64(3)},
+			wantArgs:  []any{json.Number("1"), json.Number("2"), json.Number("3")},
 		},
 		{
 			name:      "8x_mailer_delivery",
@@ -376,7 +439,7 @@ func serializedActiveJobTests() []serializedActiveJobTest {
 			wantClass: "ApiMailer#test_email",
 			wantArgs: []any{
 				nil,
-				[]any{float64(1), float64(2), float64(3)},
+				[]any{json.Number("1"), json.Number("2"), json.Number("3")},
 			},
 		},
 	}

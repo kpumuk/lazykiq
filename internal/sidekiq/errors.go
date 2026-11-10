@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"sort"
-	"strconv"
 	"strings"
 )
 
@@ -336,7 +335,7 @@ func parseErrorJobMetadata(value string) (errorJobMetadata, bool) {
 	var metadata errorJobMetadata
 	var wrapped, args []byte
 	for pos = skipErrorJSONSpace(raw, pos+1); raw[pos] != '}'; {
-		key, value, next, ok := errorJSONFieldAt(raw, pos, true)
+		key, value, next, ok := errorJSONFieldAt(raw, pos)
 		if !ok {
 			return errorJobMetadata{}, false
 		}
@@ -437,7 +436,7 @@ func errorJSONObjectField(raw []byte, name string) ([]byte, bool) {
 	var value []byte
 	otherFields := false
 	for pos := skipErrorJSONSpace(raw, 1); raw[pos] != '}'; {
-		key, field, next, ok := errorJSONFieldAt(raw, pos, false)
+		key, field, next, ok := errorJSONFieldAt(raw, pos)
 		if !ok {
 			return nil, false
 		}
@@ -457,10 +456,7 @@ func firstErrorJSONValues(raw []byte, count int) [][]byte {
 	}
 	values := make([][]byte, 0, count)
 	for pos := skipErrorJSONSpace(raw, 1); raw[pos] != ']' && len(values) < count; {
-		end, ok := errorJSONValueEnd(raw, pos, false)
-		if !ok {
-			return nil
-		}
+		end := errorJSONValueEnd(raw, pos)
 		values = append(values, raw[pos:end])
 		pos = skipErrorJSONSpace(raw, end)
 		if raw[pos] == ',' {
@@ -470,9 +466,8 @@ func firstErrorJSONValues(raw []byte, count int) [][]byte {
 	return values
 }
 
-// errorJSONFieldAt reads a field from an already validated object. The top-level
-// walk checks numeric ranges; nested lookups reuse that check. Value bytes borrow raw.
-func errorJSONFieldAt(raw []byte, pos int, checkNumbers bool) (string, []byte, int, bool) {
+// errorJSONFieldAt reads a field from an already validated object. Value bytes borrow raw.
+func errorJSONFieldAt(raw []byte, pos int) (string, []byte, int, bool) {
 	keyEnd := errorJSONStringEnd(raw, pos)
 	key := string(raw[pos+1 : keyEnd-1])
 	if bytes.ContainsRune(raw[pos:keyEnd], '\\') {
@@ -482,10 +477,7 @@ func errorJSONFieldAt(raw []byte, pos int, checkNumbers bool) (string, []byte, i
 	}
 	colon := skipErrorJSONSpace(raw, keyEnd)
 	start := skipErrorJSONSpace(raw, colon+1)
-	end, ok := errorJSONValueEnd(raw, start, checkNumbers)
-	if !ok {
-		return "", nil, 0, false
-	}
+	end := errorJSONValueEnd(raw, start)
 	next := skipErrorJSONSpace(raw, end)
 	if raw[next] == ',' {
 		next = skipErrorJSONSpace(raw, next+1)
@@ -518,9 +510,8 @@ func errorJSONStringEnd(raw []byte, pos int) int {
 }
 
 // errorJSONValueEnd walks one already validated value without decoding strings,
-// containers or backtraces. The top-level pass must check even skipped numbers:
-// JobRecord rejects float64 overflow and discards the entire job on error.
-func errorJSONValueEnd(raw []byte, pos int, checkNumbers bool) (int, bool) {
+// containers or backtraces.
+func errorJSONValueEnd(raw []byte, pos int) int {
 	depth := 0
 	for pos < len(raw) {
 		switch raw[pos] {
@@ -535,21 +526,15 @@ func errorJSONValueEnd(raw []byte, pos int, checkNumbers bool) (int, bool) {
 		case ',', ':', ' ', '\t', '\n', '\r':
 			pos++
 		default:
-			start := pos
 			if end := bytes.IndexAny(raw[pos:], ",]} \t\r\n"); end >= 0 {
 				pos += end
 			} else {
 				pos = len(raw)
 			}
-			if checkNumbers && (raw[start] == '-' || (raw[start] >= '0' && raw[start] <= '9')) {
-				if _, err := strconv.ParseFloat(string(raw[start:pos]), 64); err != nil {
-					return 0, false
-				}
-			}
 		}
 		if depth == 0 {
-			return pos, true
+			return pos
 		}
 	}
-	return pos, true
+	return pos
 }

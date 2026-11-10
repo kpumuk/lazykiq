@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -112,6 +113,8 @@ func ArgsPreview(args []any) string {
 
 const argsPreviewSmallSize = 512
 
+var jsonNumberPattern = regexp.MustCompile(`^-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?$`)
+
 // truncateArgsPreview clips JSON text at complete graphemes, including keycaps
 // that start with an ASCII digit. JSON escaping removes terminal control codes.
 func truncateArgsPreview(s string) string {
@@ -145,6 +148,14 @@ func previewJSONSize(value any, depth int) int {
 	switch v := value.(type) {
 	case string:
 		return 2 + min(len(v), argsPreviewSmallSize+1)
+	case json.Number:
+		if v == "" {
+			return 1
+		}
+		if !jsonNumberPattern.MatchString(string(v)) {
+			return -1
+		}
+		return min(len(v), argsPreviewSmallSize+1)
 	case nil, bool:
 		return 5
 	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, uintptr:
@@ -194,6 +205,12 @@ func (p *argsPreview) value(value any) {
 	switch v := value.(type) {
 	case string:
 		p.quoted(v)
+	case json.Number:
+		if v == "" {
+			p.write("0")
+		} else {
+			p.write(string(v[:min(len(v), 201)]))
+		}
 	case []any:
 		if v == nil {
 			p.write("null")

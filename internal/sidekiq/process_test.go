@@ -689,7 +689,7 @@ func TestParseJobsFromWorkSkipsMissingPayload(t *testing.T) {
 					t.Fatalf("filter %q returned %d jobs, want 1", filter, len(jobs))
 				}
 				job := jobs[0]
-				if job.JID() != "good" || job.Queue() != "default" || job.DisplayClass() != "ExampleJob" || !reflect.DeepEqual(job.DisplayArgs(), []any{float64(42)}) {
+				if job.JID() != "good" || job.Queue() != "default" || job.DisplayClass() != "ExampleJob" || !reflect.DeepEqual(job.DisplayArgs(), []any{json.Number("42")}) {
 					t.Fatalf("valid neighboring job changed: %+v", job)
 				}
 				if job.ProcessIdentity != process.Identity || job.ThreadID != "valid" || job.RunAt.Unix() != 1700000000 {

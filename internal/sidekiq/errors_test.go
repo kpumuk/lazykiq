@@ -278,7 +278,7 @@ func TestErrorMetadataMatchesJobRecord(t *testing.T) {
 func TestErrorMetadataLeavesUnusedPayloadLazy(t *testing.T) {
 	for _, field := range []string{"args", "context", "error_backtrace"} {
 		t.Run(field, func(t *testing.T) {
-			payload := fmt.Sprintf(`{"class":"Worker","queue":"default","%s":["%s"],"error_class":"Error","error_message":" boom "}`, field, strings.Repeat("x", 65536))
+			payload := fmt.Sprintf(`{"class":"Worker","queue":"default","%s":["%s",1e309,-1e309,9007199254740993],"error_class":"Error","error_message":" boom "}`, field, strings.Repeat("x", 65536))
 			entry := NewSortedEntry(payload, 1)
 			rows := make(map[ErrorGroupKey]*errorSummaryState)
 			addErrorSummaryEntry(rows, entry, "dead")
@@ -367,13 +367,14 @@ func TestErrorSummaryMalformedAndWrappedJobs(t *testing.T) {
 	rows, meta, err := client.GetErrorSummary(testContext(t), "")
 	want := []ErrorSummaryRow{
 		{DisplayClass: "Worker", Queue: "default", ErrorClass: "Error", Count: 2, ErrorMessage: "newest"},
-		{DisplayClass: "unknown", Queue: "unknown", ErrorClass: "unknown", Count: 3, ErrorMessage: "unknown"},
+		{DisplayClass: "Worker", Queue: "unknown", ErrorClass: "Error", Count: 1, ErrorMessage: "unknown"},
+		{DisplayClass: "unknown", Queue: "unknown", ErrorClass: "unknown", Count: 2, ErrorMessage: "unknown"},
 	}
 	if err != nil || meta.DeadCount != 5 || meta.RetryCount != 0 || !slices.Equal(rows, want) {
 		t.Fatalf("summary = %#v, %#v, %v; want %#v", rows, meta, err, want)
 	}
 	window, err := client.GetErrorGroupWindow(testContext(t), ErrorGroupKey{}, "", 99, 2)
-	if err != nil || window.Total != 3 || window.WindowStart != 1 || len(window.Entries) != 2 {
+	if err != nil || window.Total != 2 || window.WindowStart != 0 || len(window.Entries) != 2 {
 		t.Fatalf("clamped unknown group = %#v, %v", window, err)
 	}
 	for _, entry := range window.Entries {

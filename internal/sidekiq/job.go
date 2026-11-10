@@ -177,8 +177,9 @@ func (jr *JobRecord) HasError() bool {
 // RetryCount returns the number of times this job has been retried.
 func (jr *JobRecord) RetryCount() int {
 	jr.ensureParsed()
-	if rc, ok := jr.item["retry_count"].(float64); ok {
-		return int(rc)
+	if rc, ok := jr.item["retry_count"].(json.Number); ok {
+		count, _ := parseOptionalInt(rc)
+		return count
 	}
 	return 0
 }
@@ -303,7 +304,7 @@ func (jr *JobRecord) ensureParsed() {
 	}
 	jr.parsed = true
 
-	if err := json.Unmarshal([]byte(jr.value), &jr.item); err != nil {
+	if err := safeParseJSON([]byte(jr.value), &jr.item); err != nil {
 		jr.item = make(map[string]any)
 		jr.args = []any{jr.value}
 		return
