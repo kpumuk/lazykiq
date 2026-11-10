@@ -9,7 +9,7 @@ zizmor = "1.29.0"
 GOMEMLIMIT = "{{ env.GOMEMLIMIT | default(value='400MiB') }}"
 
 [settings]
-idiomatic_version_file_enable_tools = ["go"]
+idiomatic_version_file_enable_tools = ["go", "ruby"]
 jobs = 1
 
 [tasks.ci]

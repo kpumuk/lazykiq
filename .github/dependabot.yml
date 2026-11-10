@@ -50,6 +50,28 @@ updates:
       prefix: "chore"
       include: "scope"
 
+  - package-ecosystem: "docker"
+    directory: "/demo"
+    allow:
+      - dependency-name: "ruby"
+    ignore:
+      - dependency-name: "ruby"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "05:00"
+      timezone: "America/New_York"
+    cooldown:
+      default-days: 7
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+
   - package-ecosystem: "bundler"
     directory: "/demo"
     schedule:

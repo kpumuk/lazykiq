@@ -55,6 +55,8 @@ The three tasks can run in parallel because each demo stand uses its own Redis d
 
 `Gemfile` and `Gemfile.lock` contain the auditing and formatting tools. Each runtime has its own `bundles/sidekiq-{7.3,8.0,8.1}/Gemfile` and `Gemfile.lock`, so the demos can retain different Sidekiq versions.
 
+Local tooling, CI, and Docker use Ruby 4.0, with exact patch versions pinned in `.ruby-version` and `Dockerfile`. Dependabot updates the Docker image's tag and digest within 4.0.x. It does not update `.ruby-version`; keep that pin current alongside image updates.
+
 To install the tooling and one runtime locally, run these commands from `demo/`:
 
 ```bash
