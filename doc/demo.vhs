@@ -1,4 +1,4 @@
-Output doc/assets/demo.gif
+Output doc/assets/demo.mp4
 
 Set Shell "bash"
 Set Framerate 24
@@ -12,7 +12,7 @@ Set Height 1600
 Set Padding 40
 
 Hide
-Type@1ms "go build -o /tmp/lazykiq-demo ./cmd/lazykiq && env -u NO_COLOR COLORTERM=truecolor /tmp/lazykiq-demo --redis redis://localhost:6379/1" Enter
+Type@1ms "env -u NO_COLOR COLORTERM=truecolor ./bin/lazykiq --redis redis://localhost:6379/1" Enter
 Wait+Screen /Processed/
 Show
 
