@@ -10,7 +10,7 @@ pre-push:
         - security
       run: |
         status=0
-        for lockfile in Gemfile.lock Gemfile.sidekiq-*.lock; do
+        for lockfile in Gemfile.lock bundles/sidekiq-*/Gemfile.lock; do
           mise exec ruby -- bundle audit --gemfile-lock "$lockfile" || status=1
         done
         exit "$status"
@@ -30,5 +30,6 @@ pre-commit:
       glob:
         - "demo/**/*.rb"
         - "demo/Gemfile*"
+        - "demo/bundles/**/Gemfile"
       run: mise exec ruby -- bundle exec standardrb --fix
       root: "demo/"

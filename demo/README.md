@@ -51,12 +51,33 @@ The three tasks can run in parallel because each demo stand uses its own Redis d
   - 8% failure rate per iteration for realistic retry behavior
   - Demonstrates job interruption and resumption on worker restart
 
+## Development and dependency updates
+
+`Gemfile` and `Gemfile.lock` contain the auditing and formatting tools. Each runtime has its own `bundles/sidekiq-{7.3,8.0,8.1}/Gemfile` and `Gemfile.lock`, so the demos can retain different Sidekiq versions.
+
+Local tooling, CI, and Docker use Ruby 4.0, with exact patch versions pinned in `.ruby-version` and `Dockerfile`. Dependabot updates the Docker image's tag and digest within 4.0.x. After its test workflow finishes, `sync demo Ruby` copies a new patch version into `.ruby-version` on the same PR. Digest-only updates need no extra commit. Major and minor Ruby upgrades remain manual.
+
+To install the tooling and one runtime locally, run these commands from `demo/`:
+
+```bash
+mise exec ruby -- bundle install
+BUNDLE_GEMFILE=bundles/sidekiq-8.1/Gemfile mise exec ruby -- bundle install
+```
+
+Set the same `BUNDLE_GEMFILE` when running a demo process outside Docker. The existing `mise run demo*` commands select their bundles automatically. Run `mise run deps-ruby` to update all four bundles within their declared ranges.
+
+Dependabot groups runtime dependency updates across the three bundles, with separate pull requests for routine and security updates. Tooling updates stay separate. Sidekiq receives only patch updates within 7.3, 8.0, and 8.1: the three-component version constraints and `lockfile-only` strategy prevent automatic release-line changes. Fixes outside any manifest range require a manual manifest change; vulnerability alerts remain visible even when an automatic fix is blocked.
+
+The test workflow installs all four bundles in frozen mode and audits their lockfiles. Ruby CodeQL analyzes the demo source, including the web setup in `web.rb`; it does not replace the dependency advisory audit.
+
 ## Files
 
 ```
 ├── start.rb          # Entry point
 ├── scheduler.rb      # Job scheduling logic
 ├── boot.rb           # Sidekiq configuration
-├── config.ru         # Web UI
+├── config.ru         # Rack entry point
+├── web.rb            # Web UI and session middleware
+├── bundles/          # Independent Sidekiq runtime bundles
 └── lib/jobs/         # Job classes
 ```

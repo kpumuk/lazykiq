@@ -1,14 +1,14 @@
-FROM ruby:4.0.2-alpine@sha256:e973e9aa7573233432565798734a891d648b8f9f6ae20d57db7338b63c35db02
+FROM ruby:4.0.9-alpine@sha256:8ad6909db16ad53b5dc90bb8cc157e5fdd89ba1172798316b95cfd2a61f14b1e
 
-ARG BUNDLE_GEMFILE=Gemfile
+ARG BUNDLE_DIR=.
 
 RUN apk add --no-cache build-base
 
 WORKDIR /app
 
-ENV BUNDLE_GEMFILE=${BUNDLE_GEMFILE}
+ENV BUNDLE_GEMFILE=/app/${BUNDLE_DIR}/Gemfile
 
-COPY "${BUNDLE_GEMFILE}" "${BUNDLE_GEMFILE}.lock" ./
+COPY "${BUNDLE_DIR}/Gemfile" "${BUNDLE_DIR}/Gemfile.lock" /app/${BUNDLE_DIR}/
 RUN bundle install
 
 COPY . .
