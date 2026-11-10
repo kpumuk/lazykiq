@@ -128,46 +128,72 @@ func TestPeriodicFeatureGuards(t *testing.T) {
 }
 
 func TestPeriodicPauseAndEnqueue(t *testing.T) {
-	for name, version := range map[string]Version{"Sidekiq 7": Version7, "Sidekiq 8": Version8} {
+	for name, tt := range map[string]struct {
+		workerVersion string
+		metricsKey    string
+		version       Version
+	}{
+		"no workers or metrics": {},
+		"idle Sidekiq 7":        {workerVersion: "7.3.10"},
+		"Sidekiq 7 metrics":     {workerVersion: "7.3.10", metricsKey: "j|20231114|22:13", version: Version7},
+		"Sidekiq 8 metrics":     {workerVersion: "8.1.0", metricsKey: "j|231114|22:13", version: Version8},
+	} {
 		t.Run(name, func(t *testing.T) {
-			_, client := setupTestRedis(t)
-			job := seedPeriodic(t, client, "id", "CleanupJob")
-			ctx := t.Context()
-			client.redis.SAdd(ctx, "processes", "worker")
-			workerVersion := "7.3.9"
-			if version == Version8 {
-				workerVersion = "8.1.0"
-			}
-			client.redis.HSet(ctx, "worker", "info", `{"version":"`+workerVersion+`"}`)
-			client.version = version
-			client.versionDetected = true
-			if err := client.SetPeriodicJobPaused(ctx, job, true); err != nil {
-				t.Fatal(err)
-			}
-			before := time.Now()
-			jid, err := client.EnqueuePeriodicJob(ctx, job)
-			if err != nil || len(jid) != 24 {
-				t.Fatalf("enqueue = %s, %v", jid, err)
-			}
-			var payload map[string]any
-			if err := safeParseJSON([]byte(client.redis.LIndex(ctx, "queue:low", 0).Val()), &payload); err != nil {
-				t.Fatal(err)
-			}
-			if payload["class"] != job.Class || payload["jid"] != jid || payload["queue"] != "low" || payload["args"].([]any)[0].(json.Number).String() != "9007199254740993" {
-				t.Fatalf("payload = %+v", payload)
-			}
-			timestamp, _ := payload["enqueued_at"].(json.Number).Float64()
-			if version == Version8 {
-				timestamp /= 1000
-			}
-			if timestamp < float64(before.Unix()) || timestamp > float64(time.Now().Unix()+1) {
-				t.Fatalf("timestamp = %f", timestamp)
-			}
-			if client.redis.ZCard(ctx, "loop-history-id").Val() != 0 || client.redis.HGet(ctx, "loop-id", "paused").Val() != "1" || !client.redis.SIsMember(ctx, "queues", "low").Val() {
-				t.Fatal("manual enqueue changed history or pause state, or missed queue registration")
-			}
-			if err := client.SetPeriodicJobPaused(ctx, job, false); err != nil || client.redis.HExists(ctx, "loop-id", "paused").Val() {
-				t.Fatalf("resume = %v", err)
+			for name, clock := range map[string]struct {
+				nanoseconds  int64
+				seconds      string
+				milliseconds string
+			}{
+				"integral":   {seconds: "1700000000.0", milliseconds: "1700000000000"},
+				"fractional": {nanoseconds: 125000000, seconds: "1700000000.125", milliseconds: "1700000000125"},
+			} {
+				t.Run(name, func(t *testing.T) {
+					_, client := setupTestRedis(t)
+					job := seedPeriodic(t, client, "id", "CleanupJob")
+					ctx := t.Context()
+					if tt.workerVersion != "" {
+						client.redis.SAdd(ctx, "processes", "worker")
+						client.redis.HSet(ctx, "worker", "info", `{"hostname":"worker","pid":123,"version":"`+tt.workerVersion+`"}`)
+					}
+					if tt.metricsKey != "" {
+						client.redis.Set(ctx, tt.metricsKey, "metrics", 0)
+					}
+					originalNow := nowFuncSidekiq
+					nowFuncSidekiq = func() time.Time { return time.Unix(1700000000, clock.nanoseconds) }
+					t.Cleanup(func() { nowFuncSidekiq = originalNow })
+					if err := client.SetPeriodicJobPaused(ctx, job, true); err != nil {
+						t.Fatal(err)
+					}
+					jid, err := client.EnqueuePeriodicJob(ctx, job)
+					if err != nil || len(jid) != 24 {
+						t.Fatalf("enqueue = %s, %v", jid, err)
+					}
+					if got := client.DetectVersion(ctx); got != tt.version {
+						t.Fatalf("detected version = %v, want %v", got, tt.version)
+					}
+					var payload map[string]any
+					if err := safeParseJSON([]byte(client.redis.LIndex(ctx, "queue:low", 0).Val()), &payload); err != nil {
+						t.Fatal(err)
+					}
+					if payload["class"] != job.Class || payload["jid"] != jid || payload["queue"] != "low" || payload["args"].([]any)[0].(json.Number).String() != "9007199254740993" {
+						t.Fatalf("payload = %+v", payload)
+					}
+					wantTimestamp := clock.seconds
+					if tt.version == Version8 {
+						wantTimestamp = clock.milliseconds
+					}
+					for _, field := range []string{"created_at", "enqueued_at"} {
+						if payload[field] != json.Number(wantTimestamp) {
+							t.Errorf("%s = %v, want JSON number %s", field, payload[field], wantTimestamp)
+						}
+					}
+					if client.redis.ZCard(ctx, "loop-history-id").Val() != 0 || client.redis.HGet(ctx, "loop-id", "paused").Val() != "1" || !client.redis.SIsMember(ctx, "queues", "low").Val() {
+						t.Fatal("manual enqueue changed history or pause state, or missed queue registration")
+					}
+					if err := client.SetPeriodicJobPaused(ctx, job, false); err != nil || client.redis.HExists(ctx, "loop-id", "paused").Val() {
+						t.Fatalf("resume = %v", err)
+					}
+				})
 			}
 		})
 	}
