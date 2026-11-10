@@ -3,6 +3,7 @@ package views
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -16,6 +17,70 @@ import (
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/display"
 )
+
+func TestJobDetailPreservesNumbers(t *testing.T) {
+	for name, tc := range map[string]struct {
+		args    string
+		numbers []string
+	}{
+		"integer precision boundary": {
+			args:    `[9007199254740991,9007199254740992,9007199254740993]`,
+			numbers: []string{"9007199254740991", "9007199254740992", "9007199254740993"},
+		},
+		"nested signed boundaries": {
+			args:    `[{"ids":[9223372036854775807,-9223372036854775808,-9007199254740993]}]`,
+			numbers: []string{"9223372036854775807", "-9223372036854775808", "-9007199254740993"},
+		},
+		"decimal and exponent": {
+			args:    `[1.234567890123456789,1.0,-0,9.007199254740993e+15]`,
+			numbers: []string{"1.234567890123456789", "1.0", "-0", "9.007199254740993e+15"},
+		},
+		"large exponent": {
+			args:    `[1e309,-1e309,1e-999]`,
+			numbers: []string{"1e309", "-1e309", "1e-999"},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			raw := `{"jid":"audit","class":"ImportJob","queue":"default","args":` + tc.args + `}`
+			job := sidekiq.NewJobRecord(raw, "")
+			view := NewJobDetail()
+			view.SetJob(job)
+			view.SetSize(240, 30)
+
+			var want, copied map[string]any
+			for _, input := range []struct {
+				text string
+				dest *map[string]any
+			}{{raw, &want}, {view.jobJSON(), &copied}} {
+				decoder := json.NewDecoder(strings.NewReader(input.text))
+				decoder.UseNumber()
+				if err := decoder.Decode(input.dest); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if !reflect.DeepEqual(copied, want) {
+				t.Errorf("copied JSON changed numbers: got %v, want %v", copied, want)
+			}
+
+			outputs := map[string]string{
+				"arguments": display.Args(job.DisplayArgs()),
+				"preview":   display.ArgsPreview(job.DisplayArgs()),
+				"details":   ansi.Strip(view.renderLeftPanel()),
+				"JSON":      ansi.Strip(view.renderRightPanel()),
+			}
+			for label, output := range outputs {
+				for _, number := range tc.numbers {
+					if !strings.Contains(output, number) {
+						t.Errorf("%s lost %s", label, number)
+					}
+				}
+			}
+			if job.Value() != raw {
+				t.Fatal("inspection changed the stored payload")
+			}
+		})
+	}
+}
 
 func TestWrapText(t *testing.T) {
 	for name, tc := range map[string]struct {

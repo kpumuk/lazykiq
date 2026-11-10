@@ -147,6 +147,8 @@ func TestArgsPreview(t *testing.T) {
 		"many args":     {args: []any{strings.Repeat("x", 196), 123, "tail"}, want: `"` + strings.Repeat("x", 196) + `",…`},
 		"wide unicode":  {args: []any{strings.Repeat("界", 1024)}, want: `"` + strings.Repeat("界", 99) + "…"},
 		"graphemes":     {args: []any{strings.Repeat("e\u0301", 1024)}, want: `"` + strings.Repeat("e\u0301", 198) + "…"},
+		"exact number":  {args: []any{json.Number("9007199254740993"), strings.Repeat("x", 1024)}, want: `9007199254740993, "` + strings.Repeat("x", 180) + "…"},
+		"long number":   {args: []any{json.Number(strings.Repeat("7", 1024))}, want: strings.Repeat("7", 199) + "…"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			got := ArgsPreview(tc.args)
@@ -168,6 +170,14 @@ func TestArgsPreviewCompatibility(t *testing.T) {
 	wide := strings.Repeat("payload", 1024)
 	for name, args := range map[string][]any{
 		"scalars":                     {nil, true, false, int64(-42), uint64(math.MaxUint64), 1e-9, 1e21, float32(1.25)},
+		"JSON numbers":                {json.Number("9007199254740993"), json.Number("-9223372036854775808"), json.Number("1.0"), json.Number("1e309"), json.Number("-0"), wide},
+		"nested JSON numbers":         {map[string]any{"a": json.Number("9223372036854775807"), "b": []any{json.Number("1.234567890123456789"), wide}}},
+		"empty JSON number":           {json.Number(""), wide},
+		"invalid JSON number":         {json.Number("01"), wide},
+		"signed JSON number":          {json.Number("+1"), wide},
+		"spaced JSON number":          {json.Number("1 "), wide},
+		"nonnumeric JSON number":      {json.Number("true"), wide},
+		"hidden invalid JSON number":  {[]any{wide, json.Number("1e")}},
 		"nested":                      {map[string]any{"z": []any{true, nil, "tail"}, "a": map[string]any{"b": wide}}},
 		"nil containers":              {[]any(nil), map[string]any(nil), []any{}, map[string]any{}},
 		"many arguments":              {strings.Repeat("a", 196), "\n\t\"\\", "tail"},
@@ -232,9 +242,15 @@ func TestArgsPreviewPreservesHiddenCustomMarshaler(t *testing.T) {
 
 func TestArgsPreviewBoundedAllocations(t *testing.T) {
 	const iterations = 32
-	for name, unit := range map[string]string{"ascii": "x", "unicode": "界", "escaped": "\n", "emoji": "👩🏽‍💻"} {
+	for name, args := range map[string][]any{
+		"ascii":       {strings.Repeat("x", 1024*1024)},
+		"unicode":     {strings.Repeat("界", 1024*1024/len("界"))},
+		"escaped":     {strings.Repeat("\n", 1024*1024)},
+		"emoji":       {strings.Repeat("👩🏽‍💻", 1024*1024/len("👩🏽‍💻"))},
+		"JSON number": {json.Number(strings.Repeat("7", 1024*1024))},
+		"nested":      {map[string]any{"id": json.Number("9007199254740993"), "text": strings.Repeat("x", 1024*1024)}},
+	} {
 		t.Run(name, func(t *testing.T) {
-			args := []any{strings.Repeat(unit, 1024*1024/len(unit))}
 			var before, after runtime.MemStats
 			var preview string
 			runtime.GC()
@@ -254,6 +270,8 @@ func TestArgsPreviewBoundedAllocations(t *testing.T) {
 func FuzzArgsPreview(f *testing.F) {
 	for _, raw := range []string{
 		`[]`, `[null,true,1,1e-9,{"z":"last","a":["first"]}]`,
+		`[9007199254740993,{"ids":[9223372036854775807,-9223372036854775808],"exp":1e309}]`,
+		`[` + strings.Repeat("7", 1024) + `]`,
 		`["\u2028\ufe0f\u20e3\n\"\\<>&","👩🏽‍💻é🇨🇦"]`,
 		`["` + strings.Repeat("界", 200) + `"]`,
 		`["` + strings.Repeat("x", 197) + `👩🏽‍💻"]`,
@@ -262,7 +280,9 @@ func FuzzArgsPreview(f *testing.F) {
 	}
 	f.Fuzz(func(t *testing.T, raw string) {
 		var args []any
-		if err := json.Unmarshal([]byte(raw), &args); err != nil {
+		decoder := json.NewDecoder(strings.NewReader(raw))
+		decoder.UseNumber()
+		if err := decoder.Decode(&args); err != nil {
 			return
 		}
 		full := Args(args)
