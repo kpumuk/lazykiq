@@ -20,7 +20,9 @@
 - Check job execution metrics
 - ... more to come!
 
-![lazykiq demo](./doc/assets/demo.gif)
+[![Watch the lazykiq demo](./doc/assets/dashboard.png)](./doc/assets/demo.mp4)
+
+[Watch the demo (MP4)](./doc/assets/demo.mp4).
 
 ## Usage
 
@@ -82,6 +84,32 @@ Build a smaller release binary with:
 ```bash
 mise run build-release
 ```
+
+### Memory-constrained development
+
+Mise defaults to one task or tool installation at a time and sets `GOMEMLIMIT=400MiB` for Go programs it runs. This keeps cold builds, linting, and tests from competing for memory in a 2 GB development environment. `GOMEMLIMIT` is a soft target for each Go process, not a limit on total memory or process RSS. These settings do not change the compiled app's runtime defaults.
+
+For Go commands outside Mise, set the same target explicitly:
+
+```bash
+GOMEMLIMIT=400MiB go test ./...
+```
+
+On a machine with more memory, override the defaults with `GOMEMLIMIT=1GiB mise --jobs 4 run ci`. Avoid overlapping separate cold validation runs; each invocation has its own task limit. Run only the demo versions you need, and stop unused demo services before cold validation or browser-based terminal captures.
+
+CodeQL analysis runs separately in GitHub Actions, not in `mise run ci`. It is not covered by the 2 GB development budget: GitHub [recommends at least 8 GB for small codebases](https://docs.github.com/en/code-security/code-scanning/creating-an-advanced-setup-for-code-scanning/recommended-hardware-resources-for-running-codeql), and the [query evaluator rounds memory targets below 2048 MB up](https://docs.github.com/en/code-security/codeql-cli/codeql-cli-manual/resolve-ram). Run full CodeQL analysis on the existing hosted runners rather than alongside local development tools.
+
+### Documentation captures
+
+With VHS, FFmpeg, the JetBrains Mono Nerd Font, and the Sidekiq 8.0 demo installed and running, regenerate the documentation media with:
+
+```bash
+mise run demo-record
+```
+
+The task builds the app before starting the browser-based capture, then writes screenshots and `doc/assets/demo.mp4` at the full 2400 × 1600 resolution. MP4 avoids the frame buffering used by VHS's GIF palette generation, which can exceed the 2 GB development budget. The README links a static dashboard preview to the video.
+
+Documentation images and video use Git LFS. Install [Git LFS](https://git-lfs.com/) and run `git lfs pull` to download the media after cloning.
 
 ### Release Process
 

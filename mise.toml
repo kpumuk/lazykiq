@@ -5,8 +5,12 @@ hugo-extended = "0.165.0"
 lefthook = "2.1.11"
 zizmor = "1.29.0"
 
+[env]
+GOMEMLIMIT = "{{ env.GOMEMLIMIT | default(value='400MiB') }}"
+
 [settings]
 idiomatic_version_file_enable_tools = ["go"]
+jobs = 1
 
 [tasks.ci]
 description = "Format code and run all CI checks"
@@ -41,6 +45,11 @@ run = "go test ./..."
 description = "Run tests with coverage"
 run = "go test -coverprofile=coverage.out ./... && go tool cover -html=coverage.out"
 alias = "cov"
+
+[tasks.demo-record]
+description = "Record documentation screenshots and video"
+depends = ["build"]
+run = "vhs < doc/demo.vhs"
 
 [tasks.deps]
 description = "Update development dependencies"
