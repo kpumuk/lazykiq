@@ -10,6 +10,7 @@ const rubyPin = 'demo/.ruby-version';
 export async function syncRubyPin({ request, number, head, apply = false }) {
   const skip = (reason) => ({ needsSync: false, reason });
   const pr = await request('GET', `/pulls/${number}`);
+  // dependabot[bot] account ID 49699333: https://api.github.com/users/dependabot%5Bbot%5D
   if (pr.state !== 'open' || pr.user.login !== 'dependabot[bot]' ||
       pr.user.id !== 49699333 || pr.user.type !== 'Bot' ||
       pr.base.repo.full_name !== repository || pr.head.repo?.full_name !== repository ||
