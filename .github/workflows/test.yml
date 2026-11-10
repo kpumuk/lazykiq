@@ -33,7 +33,7 @@ jobs:
 
   demo-dependencies:
     name: demo dependencies
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: demo
