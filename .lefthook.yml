@@ -8,7 +8,12 @@ pre-push:
     - name: gems audit
       tags:
         - security
-      run: mise exec ruby -- bundle audit
+      run: |
+        status=0
+        for lockfile in Gemfile.lock Gemfile.sidekiq-*.lock; do
+          mise exec ruby -- bundle audit --gemfile-lock "$lockfile" || status=1
+        done
+        exit "$status"
       root: "demo/"
 
 pre-commit:
