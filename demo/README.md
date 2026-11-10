@@ -70,23 +70,6 @@ Dependabot groups runtime dependency updates across the three bundles, with sepa
 
 The test workflow installs all four bundles in frozen mode and audits their lockfiles. Ruby CodeQL analyzes the demo source, including the web setup in `web.rb`; it does not replace the dependency advisory audit.
 
-## Ruby synchronization setup
-
-The synchronization workflow needs a GitHub App installation token so its commit triggers normal PR checks. The built-in `GITHUB_TOKEN` does not provide unattended follow-up checks. Configure the App before relying on automated pin updates:
-
-1. In your account's **Settings → Developer settings → GitHub Apps**, create a private App. Use this repository's URL as its homepage and disable the webhook. No callback URL or event subscriptions are needed.
-2. Grant repository permissions **Contents: Read and write** and **Pull requests: Read-only**. Leave other permissions unchanged; GitHub adds read-only metadata access. Install the App only on `kpumuk/lazykiq`.
-3. In the repository's **Settings → Environments**, create `demo-ruby-sync`. Under **Deployment branches and tags**, choose **Selected branches and tags** and allow only the **branch** `main`. Do not add tag or PR-ref rules. The `workflow_run` job runs on the default branch, not the Dependabot branch.
-4. In that environment's **Environment variables**, save the App's **Client ID** as `DEPENDABOT_SYNC_APP_CLIENT_ID`.
-5. Generate a private key on the App's settings page. Store the downloaded PEM file's full contents in that environment's **Environment secrets** as `DEPENDABOT_SYNC_APP_PRIVATE_KEY`. After saving the environment copy, remove any repository-level copy of the key. Do not put it in Dependabot secrets, commit it, or share it in an issue or chat. The workflow creates a short-lived installation token; there is no personal access token to maintain.
-6. In the repository's **Settings → Actions → General**, add `actions/create-github-app-token@*` to the allowed actions. Keep the full-commit-SHA requirement; the workflow pins the action to a reviewed revision.
-
-Only jobs referencing `demo-ruby-sync` can access its credentials. This is not an exclusive workflow allowlist: another job on an allowed ref can name the same environment, so protect workflow changes on `main`. Leave required reviewers and wait timers disabled for unattended synchronization, or enable them if each run should wait for approval or a delay.
-
-The workflow becomes active only when it is on the default branch. It reads current PR data with a read-only token and creates the App token only when a pin update is needed. It accepts only open, same-repository Dependabot PRs against `main` that modify `demo/Dockerfile` and optionally `.ruby-version`. It runs default-branch code, never PR code or downloaded artifacts. It rejects release-line changes, downgrades, and stale runs, and never force-pushes. Commit creation atomically requires the validated PR head, so a concurrent push or rewind cannot be overwritten. A `[dependabot skip]` commit allows Dependabot to replace and regenerate the synchronization after a rebase. Missing setup prevents synchronization, not the original Dependabot image update; maintain `.ruby-version` manually until setup is complete.
-
-CI rejects mismatched Ruby pins. A new Dependabot patch PR initially fails that check; synchronization runs after the test workflow completes, even if it failed. After setup and merge, verify the next Dependabot Ruby patch PR: its completed `test` run should trigger `sync demo Ruby`, append a commit changing only `demo/.ruby-version`, and start a new set of PR checks. A digest-only update should finish without an extra commit. To run the helper and pin-consistency tests locally, use `node --test .github/scripts/*.test.mjs` from the repository root.
-
 ## Files
 
 ```
