@@ -49,7 +49,9 @@ Never invent commands, APIs, outputs, errors, or benchmark numbers. Keep explana
 
 Read [Visual evidence](references/visual-evidence.md) for capture and attachment instructions. Use VHS for both PNG screenshots and recordings. Read `doc/demo.vhs` at capture time and match its font, theme, colors, and rendering style; do not use desktop screenshots or a different terminal recorder.
 
-Use a focused tape and a reproducible demo fixture. Show enough surrounding UI and state to make the result understandable. Inspect PNGs and play recordings before attaching them. Verify normal application colors are visible; a matching terminal theme alone does not prove color output is enabled. Follow the color setup in the visual evidence reference and recapture monochrome output before uploading. Attach the actual files to GitHub and embed the resulting assets in the PR body; local paths, committed binaries, or external hosting links do not satisfy the attachment requirement.
+Use a focused tape and a reproducible demo fixture. Show enough surrounding UI and state to make the result understandable. Inspect PNGs and play recordings before attaching them. Verify normal application colors are visible; a matching terminal theme alone does not prove color output is enabled. Follow the color setup in the visual evidence reference and recapture monochrome output before uploading.
+
+In Amp orbs, publish media with `amp.public_artifact_url` and embed the returned public URLs; GitHub rejects uploads made with Amp's GitHub App token. On a personal laptop or other local checkout, upload with `gh --attach`. Follow the visual evidence reference for both routes, including animated previews for Amp-hosted recordings. Local paths, unpublished thread attachments, and committed binaries do not satisfy the media requirement.
 
 ## Measure optimizations
 
@@ -87,10 +89,10 @@ Run `mise run ci` and `git diff --check`. Check that relevant regressions and UI
 
 Prepare the complete title, body, and evidence before pushing. Present the full draft and inspectable local media to the user. Respect existing authorization: a request to raise a PR authorizes the focused commit, push, and PR creation; a request only to review or draft does not. Ask for approval only when it is still required by the user's instructions or execution permissions, after the result is ready to review.
 
-Use the GitHub Code plugin for PR review, comments, and CI as required by `AGENTS.md`. Use its creation/editing tools when they support the complete body and attachments; otherwise use `gh` for publication and media upload. Write the body to a temporary file and pass `--body-file` so literal code and newlines survive.
+Use the GitHub Code plugin for PR review, comments, and CI as required by `AGENTS.md`. Use its creation/editing tools when they support the complete body and evidence; otherwise use `gh` for PR publication. Write the body to a temporary file and pass `--body-file` so literal code and newlines survive.
 
-Push only the intended branch. Look for an existing PR for the exact repository/head before creating one; update it when appropriate. Always specify the repository, base, and head on creation. For `gh` attachment syntax and recovery from partial uploads, follow [Visual evidence](references/visual-evidence.md).
+Push only the intended branch. Look for an existing PR for the exact repository/head before creating one; update it when appropriate. Always specify the repository, base, and head on creation. For environment-specific media publication and recovery from partial uploads, follow [Visual evidence](references/visual-evidence.md).
 
-After creation, attach the PR to this Codex chat with the app's `attach_artifact` tool when available. Read back the PR to verify title, full body, base/head, commits, and uploaded assets. Open the rendered PR and confirm screenshots display and recordings play. Never report completion while required attachments are missing or broken.
+After creation, attach the PR to this Codex chat with the app's `attach_artifact` tool when available. Read back the PR to verify title, full body, base/head, commits, and published media. Open the rendered PR and confirm screenshots and animated previews display, and recording links or players work. Never report completion while required media is missing or broken.
 
 Report the PR URL, branch, final commit, worktree status, and any material verification limits. Retain local evidence until uploads are verified; use `trash` for temporary cleanup.

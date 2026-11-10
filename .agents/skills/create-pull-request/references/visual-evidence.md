@@ -31,7 +31,37 @@ Inspect each PNG and play the full recording. Confirm the metrics bar, selected 
 
 ## Attach to the PR
 
-Prefer a supported connected upload tool when available. Otherwise, check `gh pr create --help` / `gh pr edit --help` for `--attach`. Current GitHub CLI supports uploading local images/videos and rewriting matching local references in a `--body-file` into GitHub asset URLs; see [the official attachment guide](https://docs.github.com/en/github-cli/github-cli/attaching-files-with-github-cli).
+Choose the media publication route by execution environment. Capture and inspection requirements are the same for both routes.
+
+### Amp orbs
+
+Publish media with `amp.public_artifact_url`. GitHub rejects image and video uploads made with Amp's GitHub App token; see [How Orbs Authenticate to GitHub](https://ampcode.com/docs/github#how-orbs-authenticate-to-github). Use Amp's public media route directly instead of trying `gh --attach`, custom upload endpoints, browser sign-in, or a separate CLI login in the orb. Continue to create and edit the PR with `gh` and `--body-file`, without `--attach`.
+
+Discover `amp.public_artifact_url` with `tool_search`, then call it through `code_exec` with the absolute paths of the inspected media. For example, pass:
+
+```json
+{"paths":["/tmp/lazykiq-pr-evidence/before.png","/tmp/lazykiq-pr-evidence/after.png"]}
+```
+
+Embed each returned public image URL in the prepared body, using the returned URLs verbatim rather than guessing them:
+
+```markdown
+![Before: the queue name is clipped](<returned-before-image-url>)
+![After: the queue name and new column remain readable](<returned-after-image-url>)
+```
+
+GitHub does not play externally hosted videos inline. For a recording, also publish an animated GIF derived from the inspected VHS recording, embed the GIF as the preview, and link the full video:
+
+```markdown
+![After: scrolling keeps the selected job visible](<returned-public-gif-url>)
+[Watch the full recording](<returned-public-video-url>)
+```
+
+Published URLs are public to anyone with the link and remain available until unpublished. Check that media contains no secrets or private customer data before publishing, and retain it while the PR needs it. Amp-hosted media satisfies this skill's evidence requirement; unpublished thread attachments do not.
+
+### Personal laptops and other local checkouts
+
+Use the local GitHub CLI authentication to upload media to GitHub. Check `gh pr create --help` / `gh pr edit --help` for `--attach`. GitHub CLI supports uploading local images/videos and rewriting matching local references in a `--body-file` into GitHub asset URLs; see [the official attachment guide](https://docs.github.com/en/github-cli/github-cli/attaching-files-with-github-cli).
 
 For example, place the PNG under the intended heading in the prepared body:
 
@@ -56,6 +86,8 @@ gh pr create --repo kpumuk/lazykiq --base main --head <branch> \
 
 Substitute the resolved repository, base, head, and prepared paths; do not assume `main` or the example paths. For an existing PR, use `gh pr edit <url> --body-file ... --attach ...`. Preserve already uploaded asset URLs on updates and attach only new files.
 
-If the installed CLI lacks uploads, use the authenticated GitHub browser attachment control, retain its returned asset URLs, and embed them in the prepared body. Do not invent an API upload endpoint or substitute VHS's public hosting service. If no upload route is available, retain the files and report that publication is blocked on attaching them.
+If the installed CLI or its credential cannot upload, retain the files and report the exact blocker. Do not invent an API upload endpoint or substitute VHS's public hosting service.
 
-A nonzero `gh` exit can still mean the PR was created or updated with only some attachments. Inspect the returned URL and current body before retrying. Repair missing assets on that PR, preserving successful uploads; do not create a duplicate PR. After successful creation, register the PR with the Codex app's `attach_artifact` tool when available, including when an upload repair remains pending. Read back the final body to ensure there are no local-only references, then inspect the rendered images and video players.
+### Verify publication
+
+A nonzero `gh` exit can still mean the PR was created or updated with only some attachments. Inspect the returned URL and current body before retrying. Repair missing media on that PR, preserving successful uploads; do not create a duplicate PR. After successful creation, register the PR with the Codex app's `attach_artifact` tool when available, including when an upload repair remains pending. Read back the final body to ensure there are no local-only references. Verify published media is accessible without an Amp sign-in, then inspect the rendered images, animated previews, and recording links or players.
