@@ -29,6 +29,7 @@ type Process struct {
 	Busy        int                // From busy field (converted to int)
 	Beat        time.Time          // From beat field (heartbeat timestamp)
 	Quiet       bool               // From quiet field
+	Embedded    bool               // From info.embedded; cannot receive process signals
 	Status      string             // Running, Pausing, Quiet, Stopping
 	Capsules    map[string]Capsule // From info.capsules (Sidekiq 8+)
 	RSS         int64              // From rss field in KB, convert to bytes (*1024)
@@ -286,8 +287,20 @@ func (p *Process) signal(ctx context.Context, sig string) error {
 		return errors.New("process identity is empty")
 	}
 
+	infoJSON, err := p.client.redis.HGet(ctx, p.Identity, "info").Result()
+	if err != nil {
+		return err
+	}
+	var info processInfo
+	if err := json.Unmarshal([]byte(infoJSON), &info); err != nil {
+		return err
+	}
+	if info.Embedded {
+		return errors.New("embedded processes cannot be paused or stopped")
+	}
+
 	key := p.Identity + "-signals"
-	_, err := p.client.redis.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+	_, err = p.client.redis.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
 		pipe.LPush(ctx, key, sig)
 		pipe.Expire(ctx, key, time.Minute)
 		return nil
@@ -308,6 +321,7 @@ func (p *Process) refreshFromFields(fields []any) {
 	p.Busy = 0
 	p.Beat = time.Time{}
 	p.Quiet = false
+	p.Embedded = false
 	p.Status = ProcessStatusRunning
 	p.RSS = 0
 	p.RTTUS = 0
@@ -349,11 +363,11 @@ func (p *Process) refreshFromFields(fields []any) {
 func (p *Process) updateStatus(signals []string) {
 	status := ProcessStatusRunning
 	switch {
-	case slices.Contains(signals, "TERM"):
+	case !p.Embedded && slices.Contains(signals, "TERM"):
 		status = ProcessStatusStopping
 	case p.Quiet:
 		status = ProcessStatusQuiet
-	case slices.Contains(signals, "TSTP"):
+	case !p.Embedded && slices.Contains(signals, "TSTP"):
 		status = ProcessStatusPausing
 	}
 	p.Status = status
@@ -425,6 +439,7 @@ func parseProcessInfo(field any, process *Process) {
 	}
 	process.Tag = info.Tag
 	process.Version = info.Version
+	process.Embedded = info.Embedded
 	process.StartedAt = parseTimestamp(info.StartedAt)
 }
 
