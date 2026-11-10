@@ -34,6 +34,8 @@ jobs:
   demo-dependencies:
     name: demo dependencies
     runs-on: ubuntu-latest
+    container:
+      image: ruby:3.4.8-bookworm@sha256:b02edfdea7fbaa5ae8e31d6798549aa2d8970fa50e1699d625066172840d3f56
     defaults:
       run:
         working-directory: demo
@@ -43,10 +45,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
-        with:
-          working-directory: demo
-          bundler: Gemfile.lock
       - name: Install demo bundles
         run: |
           for gemfile in Gemfile bundles/sidekiq-*/Gemfile; do
