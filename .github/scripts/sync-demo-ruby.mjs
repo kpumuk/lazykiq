@@ -5,8 +5,8 @@ const repository = 'kpumuk/lazykiq';
 const dockerfile = 'demo/Dockerfile';
 const rubyPin = 'demo/.ruby-version';
 
-// PR contents are data, never executable code. Writes have an explicit parent
-// and use a non-forced ref update so a concurrent push cannot be overwritten.
+// PR contents are data, never executable code. The commit requires the exact
+// validated head, so concurrent pushes and rewinds cannot be overwritten.
 export async function syncRubyPin({ request, number, head, apply = false }) {
   const skip = (reason) => ({ needsSync: false, reason });
   const pr = await request('GET', `/pulls/${number}`);
@@ -54,21 +54,24 @@ export async function syncRubyPin({ request, number, head, apply = false }) {
   if (current === target) return skip('Ruby pin already matches the image');
   if (!apply) return { needsSync: true, reason: `Ruby pin needs ${target}` };
 
-  const parent = await request('GET', `/git/commits/${head}`);
-  const tree = await request('POST', '/git/trees', {
-    base_tree: parent.tree.sha,
-    tree: [{ path: rubyPin, mode: '100644', type: 'blob', content: `${target}\n` }],
+  const result = await request('POST', '/graphql', {
+    query: `mutation SyncRubyPin($input: CreateCommitOnBranchInput!) {
+      createCommitOnBranch(input: $input) { commit { oid } }
+    }`,
+    variables: {
+      input: {
+        branch: { repositoryNameWithOwner: repository, branchName: pr.head.ref },
+        expectedHeadOid: head,
+        message: { headline: `chore: Sync demo Ruby to ${target} [dependabot skip]` },
+        fileChanges: {
+          additions: [{ path: rubyPin, contents: Buffer.from(`${target}\n`).toString('base64') }],
+        },
+      },
+    },
   });
-  const commit = await request('POST', '/git/commits', {
-    message: `chore: Sync demo Ruby to ${target} [dependabot skip]`,
-    tree: tree.sha,
-    parents: [head],
-  });
-  const branch = pr.head.ref.split('/').map(encodeURIComponent).join('/');
-  await request('PATCH', `/git/refs/heads/${branch}`, {
-    sha: commit.sha,
-    force: false,
-  });
+  if (result.errors?.length) {
+    throw new Error(`GitHub GraphQL: ${result.errors.map((error) => error.message).join('; ')}`);
+  }
   return { needsSync: true, reason: `Synced Ruby pin to ${target}` };
 }
 
@@ -78,7 +81,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     throw new Error('PR_NUMBER, PR_HEAD_SHA, and GH_TOKEN are required');
   }
   const request = async (method, path, body) => {
-    const response = await fetch(`https://api.github.com/repos/${repository}${path}`, {
+    const endpoint = path === '/graphql' ? path : `/repos/${repository}${path}`;
+    const response = await fetch(`https://api.github.com${endpoint}`, {
       method,
       headers: {
         Authorization: `Bearer ${token}`,

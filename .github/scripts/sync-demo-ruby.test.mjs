@@ -24,7 +24,11 @@ function fixture() {
   };
   const files = [{ filename: 'demo/Dockerfile', status: 'modified' }];
   const contents = {
-    [base]: { 'demo/Dockerfile': image('4.0.9') },
+    [base]: {
+      'demo/Dockerfile': image('4.0.9'),
+      'demo/.ruby-version': '4.0.9\n',
+      'unrelated.txt': 'keep me\n',
+    },
     [head]: {
       'demo/Dockerfile': image('4.0.10'),
       'demo/.ruby-version': '4.0.9\n',
@@ -32,33 +36,32 @@ function fixture() {
     },
   };
   const state = { branch: head, contents: structuredClone(contents[head]), commit: null };
-  let nextTree;
   const request = async (method, path, body) => {
     if (method === 'GET') {
       if (path === '/pulls/42') return structuredClone(pr);
       if (path === '/pulls/42/files?per_page=100') return structuredClone(files);
-      if (path === `/git/commits/${head}`) return { tree: { sha: 'parent-tree' } };
       if (path.startsWith('/contents/')) {
         const [file, ref] = path.slice('/contents/'.length).split('?ref=');
         return { type: 'file', encoding: 'base64', content: Buffer.from(contents[ref][file]).toString('base64') };
       }
     }
-    if (method === 'POST' && path === '/git/trees') {
-      assert.equal(body.base_tree, 'parent-tree');
-      nextTree = structuredClone(contents[head]);
-      for (const entry of body.tree) nextTree[entry.path] = entry.content;
-      return { sha: 'new-tree' };
-    }
-    if (method === 'POST' && path === '/git/commits') {
-      state.commit = body;
-      return { sha: 'new-commit' };
-    }
-    if (method === 'PATCH' && path === `/git/refs/heads/${pr.head.ref}`) {
-      if (body.force || state.branch !== state.commit.parents[0]) throw new Error('Not a fast forward');
-      assert.equal(body.sha, 'new-commit');
-      state.branch = body.sha;
+    if (method === 'POST' && path === '/graphql') {
+      const { input } = body.variables;
+      assert.deepEqual(input.branch, { repositoryNameWithOwner: 'kpumuk/lazykiq', branchName: pr.head.ref });
+      if (input.expectedHeadOid !== state.branch) {
+        return { data: { createCommitOnBranch: null }, errors: [{ message: 'Expected head does not match current branch' }] };
+      }
+      const nextTree = structuredClone(state.contents);
+      for (const entry of input.fileChanges.additions ?? []) {
+        nextTree[entry.path] = Buffer.from(entry.contents, 'base64').toString('utf8');
+      }
+      for (const entry of input.fileChanges.deletions ?? []) {
+        delete nextTree[entry.path];
+      }
+      state.commit = { message: input.message.headline, parents: [state.branch] };
+      state.branch = 'new-commit';
       state.contents = nextTree;
-      return {};
+      return { data: { createCommitOnBranch: { commit: { oid: state.branch } } } };
     }
     throw new Error(`Unexpected request: ${method} ${path}`);
   };
@@ -136,7 +139,17 @@ test('a concurrent branch push is not overwritten', async () => {
   const f = fixture();
   f.state.branch = 'concurrent-commit';
   const before = structuredClone(f.state.contents);
-  await assert.rejects(f.run(), /Not a fast forward/);
+  await assert.rejects(f.run(), /Expected head/);
   assert.equal(f.state.branch, 'concurrent-commit');
+  assert.deepEqual(f.state.contents, before);
+});
+
+test('a concurrent rewind does not restore withdrawn commits', async () => {
+  const f = fixture();
+  f.state.branch = base;
+  f.state.contents = structuredClone(f.contents[base]);
+  const before = structuredClone(f.state.contents);
+  await assert.rejects(f.run(), /Expected head/);
+  assert.equal(f.state.branch, base);
   assert.deepEqual(f.state.contents, before);
 });
