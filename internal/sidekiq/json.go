@@ -42,12 +42,9 @@ func detectTimestampFormat(payload map[string]any, version Version) timestampFor
 		return timestampSecondsFloat
 	}
 
-	switch version {
-	case Version7:
-		return timestampSecondsFloat
-	case Version8, VersionUnknown:
-		return timestampMilliseconds
-	default:
+	if version == Version8 {
 		return timestampMilliseconds
 	}
+	// Float seconds are compatible with both Sidekiq 7 and 8 when the version is unknown.
+	return timestampSecondsFloat
 }

@@ -853,6 +853,97 @@ func TestAddScheduledJobToQueue_RemovesAt(t *testing.T) {
 	}
 }
 
+func TestEnqueueSortedEntryTimestampTypes(t *testing.T) {
+	for name, source := range map[string]struct {
+		kind SortedSetKind
+		key  string
+	}{
+		"scheduled": {kind: SortedSetScheduled, key: "schedule"},
+		"retry":     {kind: SortedSetRetry, key: "retry"},
+		"dead":      {kind: SortedSetDead, key: "dead"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			for name, tt := range map[string]struct {
+				nanoseconds int64
+				createdAt   string
+				enqueuedAt  string
+				noMetrics   bool
+			}{
+				"integral seconds": {createdAt: "1690000000.0", enqueuedAt: "1700000000.0"},
+				"fractional seconds": {
+					nanoseconds: 125000000, createdAt: "1690000000.0", enqueuedAt: "1700000000.125",
+				},
+				"round below next second": {
+					nanoseconds: 999999200, createdAt: "1690000000.0", enqueuedAt: "1700000000.999999",
+				},
+				"round into next second": {
+					nanoseconds: 999999800, createdAt: "1690000000.0", enqueuedAt: "1700000001.0",
+				},
+				"milliseconds": {
+					nanoseconds: 125000000, createdAt: "1690000000000", enqueuedAt: "1700000000125",
+				},
+				"missing timestamps with Sidekiq 8 metrics": {
+					nanoseconds: 125000000, enqueuedAt: "1700000000125",
+				},
+				"missing timestamps without metrics integral": {
+					enqueuedAt: "1700000000.0", noMetrics: true,
+				},
+				"missing timestamps without metrics fractional": {
+					nanoseconds: 125000000, enqueuedAt: "1700000000.125", noMetrics: true,
+				},
+			} {
+				t.Run(name, func(t *testing.T) {
+					mr, client := setupTestRedis(t)
+					ctx := t.Context()
+					wantVersion := VersionUnknown
+					if !tt.noMetrics {
+						if err := mr.Set("j|231114|22:13", "metrics"); err != nil {
+							t.Fatal(err)
+						}
+						wantVersion = Version8
+					}
+					originalNow := nowFuncSidekiq
+					nowFuncSidekiq = func() time.Time { return time.Unix(1700000000, tt.nanoseconds) }
+					t.Cleanup(func() { nowFuncSidekiq = originalNow })
+					raw := `{"jid":"legacy","class":"ExampleJob","queue":"default","args":[9007199254740993],"retry_count":2`
+					if tt.createdAt != "" {
+						raw += `,"created_at":` + tt.createdAt
+					}
+					raw += `}`
+					if _, err := mr.ZAdd(source.key, testScoreA, raw); err != nil {
+						t.Fatal(err)
+					}
+					if err := client.EnqueueSortedEntry(ctx, source.kind, NewSortedEntry(raw, testScoreA)); err != nil {
+						t.Fatal(err)
+					}
+					if got := client.DetectVersion(ctx); got != wantVersion {
+						t.Fatalf("detected version = %v, want %v", got, wantVersion)
+					}
+					if client.redis.ZCard(ctx, source.key).Val() != 0 || client.redis.LLen(ctx, "queue:default").Val() != 1 {
+						t.Fatal("job was not moved exactly once")
+					}
+					var payload map[string]any
+					if err := safeParseJSON([]byte(client.redis.LIndex(ctx, "queue:default", 0).Val()), &payload); err != nil {
+						t.Fatal(err)
+					}
+					wantCreatedAt := tt.createdAt
+					if wantCreatedAt == "" {
+						wantCreatedAt = tt.enqueuedAt
+					}
+					for field, want := range map[string]string{"created_at": wantCreatedAt, "enqueued_at": tt.enqueuedAt} {
+						if payload[field] != json.Number(want) {
+							t.Errorf("%s = %v, want JSON number %s", field, payload[field], want)
+						}
+					}
+					if payload["args"].([]any)[0] != json.Number("9007199254740993") {
+						t.Fatalf("job arguments changed: %v", payload["args"])
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestRetryNowDeadJob_MissingQueue(t *testing.T) {
 	mr, client := setupTestRedis(t)
 	ctx := context.Background()

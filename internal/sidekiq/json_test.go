@@ -117,7 +117,7 @@ func TestDetectTimestampFormat(t *testing.T) {
 			name:    "fallback unknown",
 			payload: map[string]any{},
 			version: VersionUnknown,
-			want:    timestampMilliseconds,
+			want:    timestampSecondsFloat,
 		},
 	}
 

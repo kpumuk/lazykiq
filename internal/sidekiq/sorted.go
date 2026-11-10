@@ -586,7 +586,12 @@ func nowTimestamp(format timestampFormat) json.Number {
 	}
 	seconds := float64(now.UnixNano()) / float64(time.Second)
 	seconds = math.Round(seconds*1e6) / 1e6
-	return json.Number(strconv.FormatFloat(seconds, 'f', -1, 64))
+	value := strconv.FormatFloat(seconds, 'f', -1, 64)
+	// Sidekiq 8 interprets JSON integers as milliseconds, even for legacy jobs.
+	if !strings.Contains(value, ".") {
+		value += ".0"
+	}
+	return json.Number(value)
 }
 
 func decrementRetryCountField(payload map[string]any) {
