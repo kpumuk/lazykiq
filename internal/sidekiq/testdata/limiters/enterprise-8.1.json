@@ -1,0 +1,204 @@
+{
+  "runtime": "Sidekiq Enterprise 8.1.0",
+  "timezone": "UTC",
+  "observed_at": "2026-11-04T02:35:51.014025Z",
+  "records": [
+    {
+      "key": "lmtr-b-fixture_bucket_day",
+      "type": "hash",
+      "value": {
+        "name": "fixture_bucket_day",
+        "size": "10",
+        "interval": "day"
+      },
+      "ttl_ms": 597843
+    },
+    {
+      "key": "lmtr-b-fixture_bucket_hour",
+      "type": "hash",
+      "value": {
+        "name": "fixture_bucket_hour",
+        "size": "10",
+        "interval": "hour"
+      },
+      "ttl_ms": 597841
+    },
+    {
+      "key": "lmtr-b-fixture_bucket_minute",
+      "type": "hash",
+      "value": {
+        "name": "fixture_bucket_minute",
+        "size": "10",
+        "interval": "minute"
+      },
+      "ttl_ms": 597838
+    },
+    {
+      "key": "lmtr-b-fixture_bucket_second",
+      "type": "hash",
+      "value": {
+        "name": "fixture_bucket_second",
+        "size": "10",
+        "interval": "second"
+      },
+      "ttl_ms": 597837
+    },
+    {
+      "key": "lmtr-c-fixture_concurrent",
+      "type": "hash",
+      "value": {
+        "name": "fixture_concurrent",
+        "held": "3",
+        "held_ms": "9",
+        "immediate": "3"
+      },
+      "ttl_ms": 597824
+    },
+    {
+      "key": "lmtr-c-fixture_concurrent_metrics",
+      "type": "hash",
+      "value": {
+        "name": "fixture_concurrent_metrics",
+        "reclaimed": "1",
+        "held": "4",
+        "held_ms": "121",
+        "immediate": "3",
+        "overtime": "2",
+        "wait_ms": "41",
+        "waited": "1"
+      },
+      "ttl_ms": 597927
+    },
+    {
+      "key": "lmtr-k-fixture_leaky",
+      "type": "hash",
+      "value": {
+        "size": "2",
+        "interval": "20",
+        "drops": "2",
+        "last": "1793759748.843933",
+        "hit": "2",
+        "miss": "1"
+      },
+      "ttl_ms": 597841
+    },
+    {
+      "key": "lmtr-k-fixture_leaky_waited",
+      "type": "hash",
+      "value": {
+        "size": "1",
+        "interval": "1",
+        "drops": "1",
+        "last": "1793759749.972214",
+        "hit": "2",
+        "miss": "1",
+        "waited": "0.99964594841002996"
+      },
+      "ttl_ms": 598979
+    },
+    {
+      "key": "lmtr-p-fixture_points",
+      "type": "hash",
+      "value": {
+        "size": "1000",
+        "interval": "20",
+        "last": "1793759748.845134",
+        "points": "850",
+        "hit": "1",
+        "miss": "1"
+      },
+      "ttl_ms": 597841
+    },
+    {
+      "key": "lmtr-p-fixture_points_waited",
+      "type": "hash",
+      "value": {
+        "size": "100",
+        "interval": "1",
+        "last": "1793759750.993922",
+        "points": "0",
+        "hit": "2",
+        "miss": "1",
+        "waited": "1"
+      },
+      "ttl_ms": 599990
+    },
+    {
+      "key": "lmtr-w-fixture_window_numeric",
+      "type": "hash",
+      "value": {
+        "name": "fixture_window_numeric",
+        "size": "8",
+        "interval": "30"
+      },
+      "ttl_ms": 597836
+    },
+    {
+      "key": "lmtr-w-fixture_window_symbol",
+      "type": "hash",
+      "value": {
+        "name": "fixture_window_symbol",
+        "size": "8",
+        "interval": "1"
+      },
+      "ttl_ms": 597835
+    },
+    {
+      "key": "lmtr-wdata-fixture_window_numeric-30",
+      "type": "string",
+      "value": "2",
+      "ttl_ms": 27835
+    },
+    {
+      "key": "{lmtr-b-fixture_bucket_day}-2026-11-04",
+      "type": "string",
+      "value": "3",
+      "ttl_ms": 2591997832
+    },
+    {
+      "key": "{lmtr-b-fixture_bucket_hour}-2026-11-04:02",
+      "type": "string",
+      "value": "3",
+      "ttl_ms": 86397830
+    },
+    {
+      "key": "{lmtr-b-fixture_bucket_minute}-02:35",
+      "type": "string",
+      "value": "3",
+      "ttl_ms": 3597829
+    },
+    {
+      "key": "{lmtr-b-fixture_bucket_second}-35:48",
+      "type": "string",
+      "value": "3",
+      "ttl_ms": 57827
+    },
+    {
+      "key": "{lmtr-c-fixture_concurrent_metrics}-free",
+      "type": "list",
+      "value": [
+        "11793759748.894575"
+      ],
+      "ttl_ms": 597959
+    },
+    {
+      "key": "{lmtr-c-fixture_concurrent}-free",
+      "type": "list",
+      "value": [
+        "21793759748.823197"
+      ],
+      "ttl_ms": 597822
+    },
+    {
+      "key": "{lmtr-c-fixture_concurrent}-used",
+      "type": "zset",
+      "value": [
+        [
+          "11793759748.823197",
+          1793759778.836122
+        ]
+      ],
+      "ttl_ms": -1
+    }
+  ]
+}

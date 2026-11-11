@@ -60,6 +60,9 @@ func newRootCommand(version, commit, date, builtBy string) *cobra.Command {
 
 	rootCmd.Flags().StringSliceVar(&enabledFeatures, "enable", nil, "enable optional features (pro, ent)")
 	rootCmd.Flags().String("periodic-timezone", "UTC", "server timezone for periodic jobs without an explicit zone")
+	rootCmd.Flags().String("limiter-redis", "", "optional Enterprise limiter Redis URL (defaults to job Redis)")
+	rootCmd.Flags().Bool("limiter-cluster", false, "use Redis Cluster for --limiter-redis (additional seeds: ?addr=host:port)")
+	rootCmd.Flags().String("limiter-timezone", "UTC", "Ruby process timezone used in bucket limiter keys")
 
 	rootCmd.Flags().String(
 		"cpuprofile",
@@ -102,6 +105,8 @@ func newRootCommand(version, commit, date, builtBy string) *cobra.Command {
 		"enable":            completeFeatures,
 		"redis":             cobra.NoFileCompletions,
 		"periodic-timezone": cobra.NoFileCompletions,
+		"limiter-redis":     cobra.NoFileCompletions,
+		"limiter-timezone":  cobra.NoFileCompletions,
 	} {
 		if err := rootCmd.RegisterFlagCompletionFunc(flag, complete); err != nil {
 			panic(err)
@@ -129,7 +134,11 @@ func newRootCommand(version, commit, date, builtBy string) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		client, err := sidekiq.NewClient(redisURL, sidekiq.WithFeatures(features), sidekiq.WithPeriodicTimezone(periodicTimezone))
+		limiterURL, _ := cmd.Flags().GetString("limiter-redis")
+		limiterCluster, _ := cmd.Flags().GetBool("limiter-cluster")
+		limiterTimezone, _ := cmd.Flags().GetString("limiter-timezone")
+		client, err := sidekiq.NewClient(redisURL, sidekiq.WithFeatures(features), sidekiq.WithPeriodicTimezone(periodicTimezone),
+			sidekiq.WithLimiterConnection(sidekiq.LimiterConnection{URL: limiterURL, Cluster: limiterCluster, Timezone: limiterTimezone}))
 		if err != nil {
 			return fmt.Errorf("create redis client: %w", err)
 		}

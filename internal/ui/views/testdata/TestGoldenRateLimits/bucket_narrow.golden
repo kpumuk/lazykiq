@@ -1,0 +1,16 @@
+╭─Bucket─────────────────────────────────────╖ · tab: counters╓─╮
+│ Property / metric        Value                                │
+│ ────────────────────────────────────────────────────────────  │
+│ Name                     stripe                               │
+│ Redis key                lmtr-b-stripe                        │
+│ Type                     Bucket                               │
+│ Capacity / rate          100 / minute                         │
+│ Configured size          100 operations                       │
+│ Configured interval      minute                               │
+│ Hit / miss totals        Not tracked for this type            │
+│ Counter includes         All attempts, including over-limit   │
+│ Limiter expires in       10m0s                                │
+│ Refreshed at             2026-11-03T21:30:00Z                 │
+│                                                               │
+│                                                               │
+╰───────────────────────────────────────────────────────────────╯

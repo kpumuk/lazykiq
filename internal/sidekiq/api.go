@@ -98,6 +98,18 @@ type API interface {
 
 	// MoveAllSortedEntriesToDead moves all supported sorted-set jobs to the dead set.
 	MoveAllSortedEntriesToDead(ctx context.Context, kind SortedSetKind) error
+
+	// ScanLimiters discovers one bounded page across all limiter Redis primaries.
+	ScanLimiters(context.Context, LimiterCursor, string) (LimiterPage, error)
+
+	// GetLimiter reads a current record and available bucket counters without writes.
+	GetLimiter(context.Context, string) (*Limiter, error)
+
+	// RefreshLimiters rereads the supplied keys without restarting discovery.
+	RefreshLimiters(context.Context, []string) ([]Limiter, error)
+
+	// DisplayLimiterRedis identifies the inspection connection without credentials.
+	DisplayLimiterRedis() string
 }
 
 // Ensure Client implements API at compile time.

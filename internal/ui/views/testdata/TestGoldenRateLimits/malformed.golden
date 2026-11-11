@@ -1,0 +1,20 @@
+╭─Window───────────────────────────────────────────────────────────────────────────────────────────╮
+│ Property / metric        Value                                                                   │
+│ ───────────────────────────────────────────────────────────────────────────────────────────────  │
+│ Name                     search                                                                  │
+│ Redis key                lmtr-w-search                                                           │
+│ Type                     Window                                                                  │
+│ Capacity / rate          10 / 30 s                                                               │
+│ Warning                  Size unavailable or invalid                                             │
+│ Configured size          10 operations                                                           │
+│ Configured interval      30 s                                                                    │
+│ Hit / miss totals        Not tracked for this type                                               │
+│ Attempts this window     Unavailable                                                             │
+│ Window expires in        Unavailable                                                             │
+│ Counter includes         All attempts, including over-limit attempts.                            │
+│ Limiter expires in       10m0s                                                                   │
+│ Refreshed at             2026-11-03T21:30:00Z                                                    │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
