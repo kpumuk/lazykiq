@@ -56,6 +56,8 @@ Tree view shows similar information, but groups active jobs by the process which
 
 Process view lists all Sidekiq processes, and allows to select one for job filtering.
 
+Thread capacity reflects Sidekiq's current concurrency, including adaptive concurrency. Older Sidekiq versions remain supported.
+
 {{< lightbox src="assets/processes.png" alt="Processes screen" >}}
 
 **Key bindings:**

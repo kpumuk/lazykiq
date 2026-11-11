@@ -25,7 +25,7 @@ type Process struct {
 	PID         int                // Parsed from identity (e.g., 14)
 	Tag         string             // From info.tag (e.g., "myapp")
 	Version     string             // From info.version (e.g., "7.2.1")
-	Concurrency int                // From info.concurrency
+	Concurrency int                // From concurrency field, falling back to info.concurrency
 	Busy        int                // From busy field (converted to int)
 	Beat        time.Time          // From beat field (heartbeat timestamp)
 	Quiet       bool               // From quiet field
@@ -150,7 +150,7 @@ func (c *Client) getProcessData(ctx context.Context, filter string, includeWork 
 	// Step 2: Pipeline all process metadata fetches
 	processResults, err := c.redis.Pipelined(ctx, func(pipe redis.Pipeliner) error {
 		for _, identity := range identities {
-			pipe.HMGet(ctx, identity, "info", "busy", "beat", "quiet", "rss", "rtt_us")
+			pipe.HMGet(ctx, identity, "info", "busy", "beat", "quiet", "rss", "rtt_us", "concurrency")
 		}
 		return nil
 	})
@@ -245,7 +245,7 @@ func (p *Process) Refresh(ctx context.Context) error {
 		return errors.New("process client is nil")
 	}
 
-	fields, err := p.client.redis.HMGet(ctx, p.Identity, "info", "busy", "beat", "quiet", "rss", "rtt_us").Result()
+	fields, err := p.client.redis.HMGet(ctx, p.Identity, "info", "busy", "beat", "quiet", "rss", "rtt_us", "concurrency").Result()
 	if err != nil && !errors.Is(err, redis.Nil) {
 		return err
 	}
@@ -327,6 +327,9 @@ func (p *Process) refreshFromFields(fields []any) {
 	p.RTTUS = 0
 
 	parseProcessInfo(fieldAt(fields, 0), p)
+	if concurrency, ok := parseOptionalInt(fieldAt(fields, 6)); ok {
+		p.Concurrency = concurrency
+	}
 	if p.Hostname == "" || p.PID == 0 {
 		parts := strings.Split(p.Identity, ":")
 		if len(parts) >= 2 {
