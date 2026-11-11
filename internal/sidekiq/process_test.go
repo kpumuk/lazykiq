@@ -537,6 +537,74 @@ func TestProcessRefresh(t *testing.T) {
 	}
 }
 
+func TestProcessConcurrency(t *testing.T) {
+	legacyInfo := `{"hostname":"host","pid":123,"concurrency":99,"capsules":{"default":{"concurrency":5}}}`
+	heartbeatInfo := `{"hostname":"host","pid":123,"capsules":{"default":{"concurrency":5}}}`
+	for name, tc := range map[string]struct {
+		info        string
+		concurrency string
+		want        int
+	}{
+		"legacy info": {
+			info: legacyInfo,
+			want: 99,
+		},
+		"heartbeat without legacy total": {
+			info:        heartbeatInfo,
+			concurrency: "7",
+			want:        7,
+		},
+		"heartbeat overrides legacy total and capsules": {
+			info:        legacyInfo,
+			concurrency: "7",
+			want:        7,
+		},
+		"zero heartbeat overrides legacy total": {
+			info:        legacyInfo,
+			concurrency: "0",
+			want:        0,
+		},
+		"invalid heartbeat falls back to legacy total": {
+			info:        legacyInfo,
+			concurrency: "invalid",
+			want:        99,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			mr, client := setupTestRedis(t)
+			ctx := testContext(t)
+			const identity = "host:123:abc"
+			_, _ = mr.SetAdd("processes", identity)
+			mr.HSet(identity, "info", tc.info)
+			if tc.concurrency != "" {
+				mr.HSet(identity, "concurrency", tc.concurrency)
+			}
+
+			processes, err := client.GetProcessesData(ctx)
+			if err != nil || len(processes) != 1 {
+				t.Fatalf("GetProcessesData = %+v, %v; want one process", processes, err)
+			}
+			busy, err := client.GetBusyData(ctx, "")
+			if err != nil || len(busy.Processes) != 1 {
+				t.Fatalf("GetBusyData = %+v, %v; want one process", busy, err)
+			}
+			process := client.NewProcess(identity)
+			if err := process.Refresh(ctx); err != nil {
+				t.Fatalf("Refresh failed: %v", err)
+			}
+			for method, got := range map[string]int{
+				"GetProcessesData": processes[0].Concurrency,
+				"GetBusyData":      busy.Processes[0].Concurrency,
+				"Refresh":          process.Concurrency,
+			} {
+				if got != tc.want {
+					t.Errorf("%s Concurrency = %d, want %d", method, got, tc.want)
+				}
+			}
+		})
+	}
+}
+
 func TestProcessRefresh_IdentityParsing(t *testing.T) {
 	mr, client := setupTestRedis(t)
 
