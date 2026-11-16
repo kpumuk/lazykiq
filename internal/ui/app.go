@@ -60,6 +60,8 @@ const (
 	viewJobMetrics
 	viewPeriodic
 	viewPeriodicDetail
+	viewRateLimits
+	viewRateLimitDetail
 )
 
 const contextbarDefaultHeight = 5
@@ -154,6 +156,10 @@ func NewWithContext(parent context.Context, client sidekiq.API, version string, 
 		viewOrder = append(viewOrder, viewPeriodic)
 		viewRegistry[viewPeriodic] = views.NewPeriodic(client)
 		viewRegistry[viewPeriodicDetail] = views.NewPeriodicDetail(client)
+	}
+	if client != nil && client.GetCapabilities().SupportsRateLimits() {
+		viewRegistry[viewRateLimits] = views.NewRateLimits(client)
+		viewRegistry[viewRateLimitDetail] = views.NewRateLimitDetail(client)
 	}
 
 	for _, view := range viewRegistry {
@@ -327,7 +333,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		cmds = append(cmds, a.updateView(a.activeViewID(), msg))
-		if a.activeViewID() == viewPeriodicDetail {
+		if a.activeViewID() == viewPeriodicDetail || a.activeViewID() == viewRateLimitDetail {
 			a.stackbar.SetStack(a.stackNames())
 		}
 		if msg.Err != nil && !requestctx.IsCanceled(msg.Err) {
@@ -385,6 +391,14 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, a.pushView(viewPeriodicDetail))
 		}
 
+	case views.ShowRateLimitDetailMsg:
+		if a.activeViewID() == viewRateLimits && msg.Owner == a.viewRegistry[viewRateLimits] && msg.Current() {
+			if detail, ok := a.viewRegistry[viewRateLimitDetail].(*views.RateLimits); ok {
+				detail.SetLimiterKey(msg.Key)
+				cmds = append(cmds, a.pushView(viewRateLimitDetail))
+			}
+		}
+
 	case views.ShowQueuesListMsg:
 		cmds = append(cmds, a.pushView(viewQueuesList))
 
@@ -420,6 +434,9 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if msg.String() == "esc" && len(a.viewStack) > 1 {
+			if activeID == viewRateLimitDetail {
+				return a, a.popAndRefresh(viewRateLimits)
+			}
 			if activeID == viewProcessesList {
 				return a, a.popAndRefresh(viewBusy)
 			}
