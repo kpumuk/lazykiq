@@ -48,6 +48,12 @@ func (a *queueActions) reset() {
 	a.generation++
 }
 
+func (a *queueActions) abandon(target string) {
+	if a.pending != nil && a.pending.target == target {
+		a.pending = nil
+	}
+}
+
 func (a *queueActions) pauseDialog(name string, paused bool, styles Styles, opener dialogs.Opener) tea.Cmd {
 	verb, title, consequence := "pause", "Pause queue", "Workers will stop fetching new jobs from this queue.\nJobs already running may finish; new jobs can still be enqueued."
 	if paused {
@@ -58,7 +64,8 @@ func (a *queueActions) pauseDialog(name string, paused bool, styles Styles, open
 		return nil
 	}
 	return opener.OpenDialog(newConfirmDialog(styles, title,
-		fmt.Sprintf("%s %s?\n\n%s", title, styles.Text.Bold(true).Render(name), consequence), action.target, styles.NeutralAction))
+		fmt.Sprintf("%s %s?\n\n%s", title, styles.Text.Bold(true).Render(name), consequence), action.target, styles.NeutralAction),
+		func() { a.abandon(action.target) })
 }
 
 func (a *queueActions) confirm(parent context.Context, msg confirmdialog.ActionMsg, client sidekiq.API) tea.Cmd {

@@ -12,7 +12,6 @@ import (
 	"github.com/kpumuk/lazykiq/internal/devtools"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
-	confirmdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/confirm"
 )
 
 type lifetimeRequest struct {
@@ -108,8 +107,10 @@ func TestAppRunCancelsRequests(t *testing.T) {
 			// Prepare a confirmed mutation and console command before Run. They
 			// remain owned by the app even while their views are hidden.
 			retries := app.viewRegistry[viewRetries]
-			retries.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
-			_, mutation := retries.Update(confirmdialog.ActionMsg{Target: "retries.delete_all", Confirmed: true})
+			_, open := retries.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
+			confirmation := open().(dialogs.OpenDialogMsg).Model
+			_, confirm := confirmation.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
+			_, mutation := retries.Update(confirm().(dialogs.CloseDialogMsg).Action)
 			if mutation == nil {
 				t.Fatal("missing confirmed mutation command")
 			}

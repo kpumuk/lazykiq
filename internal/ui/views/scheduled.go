@@ -129,7 +129,7 @@ func (s *Scheduled) Update(msg tea.Msg) (View, tea.Cmd) {
 			return s, nil
 		}
 
-		if s.dangerousActionsEnabled {
+		if s.dangerousActionsEnabled && s.pendingConfirm.target == "" {
 			switch msg.String() {
 			case "D":
 				if entry, ok := s.selectedSortedEntry(); ok {
@@ -274,6 +274,7 @@ func (s *Scheduled) Dispose() {
 
 // CancelRequests stops in-flight fetches when the view is hidden.
 func (s *Scheduled) CancelRequests() {
+	s.pendingConfirm.Clear(scheduledJobActionNone)
 	s.cancelRequests()
 }
 
@@ -303,6 +304,7 @@ func (s *Scheduled) fetchWindow(
 }
 
 func (s *Scheduled) reset() {
+	s.pendingConfirm.Clear(scheduledJobActionNone)
 	s.resetSortedJobs(s.updateEmptyMessage)
 }
 
@@ -342,48 +344,48 @@ func (s *Scheduled) buildRows(jobs []*sidekiq.SortedEntry) []table.Row {
 
 func (s *Scheduled) openDeleteConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
 	jobName := s.jobName(entry)
-	return s.OpenDialog(newConfirmDialog(
+	return s.pendingConfirm.OpenDialog(s.Opener, newConfirmDialog(
 		s.styles,
 		"Delete job",
 		fmt.Sprintf(
 			"Are you sure you want to delete the %s job?\n\nThis action is not recoverable.",
 			s.styles.Text.Bold(true).Render(jobName),
 		),
-		entry.JID(),
+		s.pendingConfirm.target,
 		s.styles.DangerAction,
 	))
 }
 
 func (s *Scheduled) openAddToQueueConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
 	jobName := s.jobName(entry)
-	return s.OpenDialog(newConfirmDialog(
+	return s.pendingConfirm.OpenDialog(s.Opener, newConfirmDialog(
 		s.styles,
 		"Add to queue",
 		fmt.Sprintf(
 			"Add the %s job to the queue now?\n\nThis will enqueue it immediately.",
 			s.styles.Text.Bold(true).Render(jobName),
 		),
-		entry.JID(),
+		s.pendingConfirm.target,
 		s.styles.DangerAction,
 	))
 }
 
 func (s *Scheduled) openDeleteAllConfirm() tea.Cmd {
-	return s.OpenDialog(newConfirmDialog(
+	return s.pendingConfirm.OpenDialog(s.Opener, newConfirmDialog(
 		s.styles,
 		"Delete all scheduled",
 		"Are you sure you want to delete all scheduled jobs?\n\nThis action is not recoverable.",
-		"scheduled.delete_all",
+		s.pendingConfirm.target,
 		s.styles.DangerAction,
 	))
 }
 
 func (s *Scheduled) openAddAllToQueueConfirm() tea.Cmd {
-	return s.OpenDialog(newConfirmDialog(
+	return s.pendingConfirm.OpenDialog(s.Opener, newConfirmDialog(
 		s.styles,
 		"Add all to queue",
 		"Add all scheduled jobs to the queue now?\n\nThis will enqueue them immediately.",
-		"scheduled.add_all",
+		s.pendingConfirm.target,
 		s.styles.DangerAction,
 	))
 }

@@ -185,7 +185,7 @@ func (q *QueuesList) Update(msg tea.Msg) (View, tea.Cmd) {
 					),
 					action.target,
 					q.styles.DangerAction,
-				))
+				), func() { q.actions.abandon(action.target) })
 			}
 			return q, nil
 		}

@@ -33,8 +33,25 @@ type TargetedMsg interface {
 
 // OpenDialogMsg is sent to open a new dialog.
 type OpenDialogMsg struct {
-	Model DialogModel
-	Owner any
+	Model   DialogModel
+	Owner   any
+	request *openRequest
+}
+
+type openRequest struct {
+	handled    bool
+	onRejected func()
+}
+
+// Reject releases preparation for an abandoned open, at most once.
+// An accepted open cannot be abandoned by a duplicate message.
+func (m OpenDialogMsg) Reject() {
+	if m.request != nil && !m.request.handled {
+		m.request.handled = true
+		if m.request.onRejected != nil {
+			m.request.onRejected()
+		}
+	}
 }
 
 // Session identifies one activation of a dialog and its owner.
@@ -201,19 +218,27 @@ func (d dialogCmp) HasDialogs() bool {
 }
 
 func (d dialogCmp) handleOpen(msg OpenDialogMsg) (DialogCmp, tea.Cmd) {
+	if msg.request != nil && msg.request.handled {
+		return d, nil
+	}
 	if d.HasDialogs() {
 		dialog := d.dialogs[len(d.dialogs)-1]
 		if dialog.ID() == msg.Model.ID() {
+			msg.Reject()
 			return d, nil // already open on top
 		}
 	}
 
 	// If the dialog is already in the stack, make it the last item and reuse state.
 	if idx, ok := d.idMap[msg.Model.ID()]; ok {
+		msg.Reject()
 		existing := d.dialogs[idx]
 		msg.Model = existing
 		msg.Owner = d.sessions[existing.ID()].Owner
 		d.dialogs = slices.Delete(d.dialogs, idx, idx+1)
+	}
+	if msg.request != nil {
+		msg.request.handled = true
 	}
 
 	d.dialogs = append(d.dialogs, msg.Model)

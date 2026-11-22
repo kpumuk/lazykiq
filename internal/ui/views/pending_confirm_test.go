@@ -122,6 +122,10 @@ func TestPendingConfirm(t *testing.T) {
 			if tc.setup != nil {
 				tc.setup(&pending)
 			}
+			target := pending.target
+			if tc.msg.Target == entry.JID() {
+				tc.msg.Target = target
+			}
 
 			action, gotEntry, ok := pending.Confirm(tc.msg, tc.enabled, testActionNone)
 			if ok != tc.wantOK {
@@ -135,6 +139,9 @@ func TestPendingConfirm(t *testing.T) {
 			}
 
 			if tc.second != nil {
+				if tc.second.msg.Target == entry.JID() {
+					tc.second.msg.Target = target
+				}
 				action2, gotEntry2, ok2 := pending.Confirm(tc.second.msg, tc.second.enabled, testActionNone)
 				if ok2 != tc.second.wantOK {
 					t.Fatalf("second ok=%v, want %v", ok2, tc.second.wantOK)
