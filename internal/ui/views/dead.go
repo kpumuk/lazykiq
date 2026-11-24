@@ -129,7 +129,7 @@ func (d *Dead) Update(msg tea.Msg) (View, tea.Cmd) {
 			return d, nil
 		}
 
-		if d.dangerousActionsEnabled {
+		if d.dangerousActionsEnabled && d.pendingConfirm.target == "" {
 			switch msg.String() {
 			case "D":
 				if entry, ok := d.selectedSortedEntry(); ok {
@@ -274,6 +274,7 @@ func (d *Dead) Dispose() {
 
 // CancelRequests stops in-flight fetches when the view is hidden.
 func (d *Dead) CancelRequests() {
+	d.pendingConfirm.Clear(deadJobActionNone)
 	d.cancelRequests()
 }
 
@@ -303,6 +304,7 @@ func (d *Dead) fetchWindow(
 }
 
 func (d *Dead) reset() {
+	d.pendingConfirm.Clear(deadJobActionNone)
 	d.resetSortedJobs(d.updateEmptyMessage)
 }
 
@@ -345,48 +347,48 @@ func (d *Dead) buildRows(jobs []*sidekiq.SortedEntry) []table.Row {
 
 func (d *Dead) openDeleteConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
 	jobName := d.jobName(entry)
-	return d.OpenDialog(newConfirmDialog(
+	return d.pendingConfirm.OpenDialog(d.Opener, newConfirmDialog(
 		d.styles,
 		"Delete job",
 		fmt.Sprintf(
 			"Are you sure you want to delete the %s job?\n\nThis action is not recoverable.",
 			d.styles.Text.Bold(true).Render(jobName),
 		),
-		entry.JID(),
+		d.pendingConfirm.target,
 		d.styles.DangerAction,
 	))
 }
 
 func (d *Dead) openRetryNowConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
 	jobName := d.jobName(entry)
-	return d.OpenDialog(newConfirmDialog(
+	return d.pendingConfirm.OpenDialog(d.Opener, newConfirmDialog(
 		d.styles,
 		"Retry job",
 		fmt.Sprintf(
 			"Retry the %s job now?\n\nThis will enqueue it immediately.",
 			d.styles.Text.Bold(true).Render(jobName),
 		),
-		entry.JID(),
+		d.pendingConfirm.target,
 		d.styles.DangerAction,
 	))
 }
 
 func (d *Dead) openDeleteAllConfirm() tea.Cmd {
-	return d.OpenDialog(newConfirmDialog(
+	return d.pendingConfirm.OpenDialog(d.Opener, newConfirmDialog(
 		d.styles,
 		"Delete all dead",
 		"Are you sure you want to delete all dead jobs?\n\nThis action is not recoverable.",
-		"dead.delete_all",
+		d.pendingConfirm.target,
 		d.styles.DangerAction,
 	))
 }
 
 func (d *Dead) openRetryAllConfirm() tea.Cmd {
-	return d.OpenDialog(newConfirmDialog(
+	return d.pendingConfirm.OpenDialog(d.Opener, newConfirmDialog(
 		d.styles,
 		"Retry all dead",
 		"Retry all dead jobs now?\n\nThis will enqueue them immediately.",
-		"dead.retry_all",
+		d.pendingConfirm.target,
 		d.styles.DangerAction,
 	))
 }

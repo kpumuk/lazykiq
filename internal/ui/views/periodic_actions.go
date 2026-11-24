@@ -48,7 +48,11 @@ func (a *periodicActions) dialog(job sidekiq.PeriodicJob, enqueue bool, styles S
 	a.pending = &action
 	return opener.OpenDialog(newConfirmDialog(styles, title,
 		fmt.Sprintf("%s %s?\n\nSchedule: %s\nQueue: %s\n\n%s", title, styles.Text.Bold(true).Render(job.Class), job.Schedule, job.Queue(), consequence),
-		action.target, styles.DangerAction))
+		action.target, styles.DangerAction), func() {
+		if a.pending != nil && a.pending.target == action.target {
+			a.pending = nil
+		}
+	})
 }
 
 func (a *periodicActions) confirm(parent context.Context, msg confirmdialog.ActionMsg, client sidekiq.API) tea.Cmd {

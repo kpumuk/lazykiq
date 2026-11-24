@@ -246,11 +246,13 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch owner := msg.Owner.(type) {
 		case viewIntentOwner:
 			if !a.intentOwnerCurrent(owner) {
+				msg.Reject()
 				return a, nil
 			}
 			msg.Owner = owner.owner
 		case dialogOwner:
 			if !a.dialogOwnerCurrent(owner) {
+				msg.Reject()
 				return a, nil
 			}
 		default:

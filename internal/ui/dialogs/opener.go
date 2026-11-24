@@ -16,8 +16,12 @@ type Opener struct {
 // SetDialogOwner sets the owner for subsequent dialog commands.
 func (o *Opener) SetDialogOwner(owner any) { o.owner = owner }
 
-// OpenDialog returns a command bound to the current owner, even if it runs late.
-func (o Opener) OpenDialog(model DialogModel) tea.Cmd {
+// OpenDialog captures ownership and optional cleanup for a rejected open.
+// Cleanup runs in the event loop, never from the asynchronous command.
+func (o Opener) OpenDialog(model DialogModel, onRejected ...func()) tea.Cmd {
 	msg := OpenDialogMsg{Model: model, Owner: o.owner}
+	if len(onRejected) > 0 {
+		msg.request = &openRequest{onRejected: onRejected[0]}
+	}
 	return func() tea.Msg { return msg }
 }

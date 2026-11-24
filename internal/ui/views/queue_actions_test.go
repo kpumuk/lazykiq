@@ -340,9 +340,7 @@ func TestConfirmationEscapeCancelsBeforeReopening(t *testing.T) {
 				var pending pendingConfirm[retriesJobAction]
 				model.reopen = func() tea.Cmd {
 					pending.Set(retriesJobActionDelete, nil, "same-job-jid")
-					return func() tea.Msg {
-						return dialogs.OpenDialogMsg{Model: confirmdialog.New(confirmdialog.WithTarget("same-job-jid"))}
-					}
+					return pending.OpenDialog(dialogs.Opener{}, confirmdialog.New(confirmdialog.WithTarget(pending.target)))
 				}
 				model.onAction = func(msg confirmdialog.ActionMsg) tea.Cmd {
 					_, _, accepted := pending.Confirm(msg, true, retriesJobActionNone)
