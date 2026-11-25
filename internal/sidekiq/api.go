@@ -23,9 +23,6 @@ type API interface {
 	// DisplayRedisURL returns a sanitized URL safe for display.
 	DisplayRedisURL() string
 
-	// DetectVersion detects which Sidekiq version is being used based on key format.
-	DetectVersion(ctx context.Context) Version
-
 	// MetricsPeriodOrder returns the appropriate period order based on detected Sidekiq version.
 	MetricsPeriodOrder(ctx context.Context) []string
 
@@ -53,9 +50,6 @@ type API interface {
 	// NewProcess creates a new Process instance for the given identity.
 	NewProcess(identity string) *Process
 
-	// GetProcesses fetches all process identities from Redis, sorted alphabetically.
-	GetProcesses(ctx context.Context) ([]*Process, error)
-
 	// GetProcessesData fetches process metadata and status without active jobs.
 	GetProcessesData(ctx context.Context) ([]Process, error)
 
@@ -65,9 +59,6 @@ type API interface {
 
 	// GetSortedEntries fetches sorted-set jobs with pagination.
 	GetSortedEntries(ctx context.Context, kind SortedSetKind, start, count int) ([]*SortedEntry, int64, error)
-
-	// ScanSortedEntries scans sorted-set jobs using a match pattern (no paging).
-	ScanSortedEntries(ctx context.Context, kind SortedSetKind, match string) ([]*SortedEntry, error)
 
 	// ScanSortedEntriesWindow scans sorted-set jobs using a match pattern and returns one window.
 	ScanSortedEntriesWindow(ctx context.Context, kind SortedSetKind, match string, start, count int) (SortedEntriesWindow, error)

@@ -101,23 +101,6 @@ func (c *Client) NewProcess(identity string) *Process {
 	}
 }
 
-// GetProcesses fetches all process identities from Redis, sorted alphabetically.
-func (c *Client) GetProcesses(ctx context.Context) ([]*Process, error) {
-	identities, err := c.redis.SMembers(ctx, "processes").Result()
-	if err != nil && !errors.Is(err, redis.Nil) {
-		return nil, err
-	}
-
-	sort.Strings(identities)
-
-	processes := make([]*Process, len(identities))
-	for i, identity := range identities {
-		processes[i] = c.NewProcess(identity)
-	}
-
-	return processes, nil
-}
-
 // GetProcessesData fetches process metadata and status without reading active work.
 // Processes are sorted by identity; stopped or invalid processes are skipped.
 func (c *Client) GetProcessesData(ctx context.Context) ([]Process, error) {

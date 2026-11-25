@@ -309,10 +309,11 @@ func TestScanDeadJobs(t *testing.T) {
 	_, _ = mr.ZAdd("dead", testScoreB, job2)
 	_, _ = mr.ZAdd("dead", testScoreC, job3)
 
-	entries, err := client.ScanSortedEntries(ctx, SortedSetDead, "abc")
+	window, err := client.ScanSortedEntriesWindow(ctx, SortedSetDead, "abc", 0, -1)
 	if err != nil {
 		t.Fatalf("ScanDeadJobs failed: %v", err)
 	}
+	entries := window.Entries
 
 	if len(entries) != 2 {
 		t.Fatalf("len(entries) = %d, want 2 (matching 'abc')", len(entries))
@@ -336,10 +337,11 @@ func TestScanDeadJobs_ExactMatch(t *testing.T) {
 	_, _ = mr.ZAdd("dead", testScoreA, job1)
 	_, _ = mr.ZAdd("dead", testScoreB, job2)
 
-	entries, err := client.ScanSortedEntries(ctx, SortedSetDead, "test123")
+	window, err := client.ScanSortedEntriesWindow(ctx, SortedSetDead, "test123", 0, -1)
 	if err != nil {
 		t.Fatalf("ScanDeadJobs failed: %v", err)
 	}
+	entries := window.Entries
 
 	if len(entries) != 1 {
 		t.Fatalf("len(entries) = %d, want 1 (exact match)", len(entries))
@@ -362,10 +364,11 @@ func TestScanDeadJobs_Wildcard(t *testing.T) {
 	_, _ = mr.ZAdd("dead", testScoreB, job2)
 	_, _ = mr.ZAdd("dead", testScoreC, job3)
 
-	entries, err := client.ScanSortedEntries(ctx, SortedSetDead, "*prefix*")
+	window, err := client.ScanSortedEntriesWindow(ctx, SortedSetDead, "*prefix*", 0, -1)
 	if err != nil {
 		t.Fatalf("ScanDeadJobs failed: %v", err)
 	}
+	entries := window.Entries
 
 	if len(entries) != 2 {
 		t.Fatalf("len(entries) = %d, want 2 (wildcard pattern)", len(entries))
@@ -423,10 +426,11 @@ func TestScanRetryJobs(t *testing.T) {
 	_, _ = mr.ZAdd("retry", testScoreA, job1)
 	_, _ = mr.ZAdd("retry", testScoreB, job3)
 
-	entries, err := client.ScanSortedEntries(ctx, SortedSetRetry, "retry")
+	window, err := client.ScanSortedEntriesWindow(ctx, SortedSetRetry, "retry", 0, -1)
 	if err != nil {
 		t.Fatalf("ScanRetryJobs failed: %v", err)
 	}
+	entries := window.Entries
 
 	if len(entries) != 2 {
 		t.Fatalf("len(entries) = %d, want 2 (matching 'retry')", len(entries))
@@ -491,10 +495,11 @@ func TestScanScheduledJobs(t *testing.T) {
 	_, _ = mr.ZAdd("schedule", testScoreC, job3)
 	_, _ = mr.ZAdd("schedule", testScoreA, job1)
 
-	entries, err := client.ScanSortedEntries(ctx, SortedSetScheduled, "sched")
+	window, err := client.ScanSortedEntriesWindow(ctx, SortedSetScheduled, "sched", 0, -1)
 	if err != nil {
 		t.Fatalf("ScanScheduledJobs failed: %v", err)
 	}
+	entries := window.Entries
 
 	if len(entries) != 2 {
 		t.Fatalf("len(entries) = %d, want 2 (matching 'sched')", len(entries))
@@ -512,10 +517,11 @@ func TestScanJobs_Empty(t *testing.T) {
 	_, client := setupTestRedis(t)
 	ctx := context.Background()
 
-	entries, err := client.ScanSortedEntries(ctx, SortedSetDead, "nonexistent")
+	window, err := client.ScanSortedEntriesWindow(ctx, SortedSetDead, "nonexistent", 0, -1)
 	if err != nil {
 		t.Fatalf("ScanDeadJobs failed: %v", err)
 	}
+	entries := window.Entries
 
 	if len(entries) != 0 {
 		t.Errorf("len(entries) = %d, want 0 (no matches)", len(entries))
@@ -532,10 +538,11 @@ func TestScanJobs_NoPattern(t *testing.T) {
 	_, _ = mr.ZAdd("dead", testScoreA, job1)
 	_, _ = mr.ZAdd("dead", testScoreB, job2)
 
-	entries, err := client.ScanSortedEntries(ctx, SortedSetDead, "")
+	window, err := client.ScanSortedEntriesWindow(ctx, SortedSetDead, "", 0, -1)
 	if err != nil {
 		t.Fatalf("ScanDeadJobs failed: %v", err)
 	}
+	entries := window.Entries
 
 	if len(entries) != 2 {
 		t.Errorf("len(entries) = %d, want 2 (empty pattern matches all)", len(entries))
