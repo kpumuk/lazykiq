@@ -6,11 +6,22 @@ import (
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
 )
 
+func sortedJobsAction(t *testing.T, view *SortedJobs, key string) *sortedJobAction {
+	t.Helper()
+	for i := range view.spec.actions {
+		if view.spec.actions[i].key == key {
+			return &view.spec.actions[i]
+		}
+	}
+	t.Fatalf("%s has no %q action", view.Name(), key)
+	return nil
+}
+
 func TestRetriesKillMissingJob(t *testing.T) {
 	mr, client := queueTestClient(t)
 	view := NewRetries(client)
 	entry := sidekiq.NewSortedEntry(`{"jid":"gone","class":"Good","queue":"default"}`, 1)
-	msg := view.killJobCmd(entry)()
+	msg := view.actionCmd(sortedJobsAction(t, view, "K"), entry)()
 	failure, ok := msg.(ConnectionErrorMsg)
 	if !ok || failure.Err == nil || failure.Err.Error() != "job not found" {
 		t.Fatalf("kill result = %#v, want job not found error", msg)
