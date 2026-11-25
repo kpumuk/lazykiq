@@ -34,17 +34,17 @@ func TestMutationLifetimes(t *testing.T) {
 		"retry delete": func(c *sidekiq.Client, ctx context.Context) (RequestCanceler, tea.Cmd) {
 			v := NewRetries(c)
 			v.SetContext(ctx)
-			return v, v.deleteAllCmd()
+			return v, v.actionCmd(sortedJobsAction(t, v, "ctrl+d"), nil)
 		},
 		"dead delete": func(c *sidekiq.Client, ctx context.Context) (RequestCanceler, tea.Cmd) {
 			v := NewDead(c)
 			v.SetContext(ctx)
-			return v, v.deleteAllCmd()
+			return v, v.actionCmd(sortedJobsAction(t, v, "ctrl+d"), nil)
 		},
 		"scheduled delete": func(c *sidekiq.Client, ctx context.Context) (RequestCanceler, tea.Cmd) {
 			v := NewScheduled(c)
 			v.SetContext(ctx)
-			return v, v.deleteAllCmd()
+			return v, v.actionCmd(sortedJobsAction(t, v, "ctrl+d"), nil)
 		},
 		"process pause": func(c *sidekiq.Client, ctx context.Context) (RequestCanceler, tea.Cmd) {
 			v := NewProcessesList(c)

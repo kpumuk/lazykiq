@@ -1,311 +1,58 @@
 package views
 
 import (
-	"context"
-	"fmt"
 	"time"
 
-	"charm.land/bubbles/v2/key"
-	"charm.land/bubbles/v2/spinner"
-	tea "charm.land/bubbletea/v2"
-
-	"github.com/kpumuk/lazykiq/internal/devtools"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
-	"github.com/kpumuk/lazykiq/internal/ui/components/lazytable"
 	"github.com/kpumuk/lazykiq/internal/ui/components/table"
-	confirmdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/confirm"
-	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
 	"github.com/kpumuk/lazykiq/internal/ui/display"
 )
 
-const (
-	deadWindowPages      = 3
-	deadFallbackPageSize = 25
-)
-
-type deadJobAction int
-
-const (
-	deadJobActionNone deadJobAction = iota
-	deadJobActionDelete
-	deadJobActionRetry
-	deadJobActionDeleteAll
-	deadJobActionRetryAll
-)
-
-// Dead shows dead/morgue jobs.
-type Dead struct {
-	client sidekiq.API
-	sortedJobsView
-	dangerousActionsEnabled bool
-	pendingConfirm          pendingConfirm[deadJobAction]
+// NewDead creates the view of dead (morgue) jobs.
+func NewDead(client sidekiq.API) *SortedJobs {
+	return newSortedJobs(client, &deadSpec)
 }
 
-// NewDead creates a new Dead view.
-func NewDead(client sidekiq.API) *Dead {
-	d := &Dead{
-		client: client,
-		sortedJobsView: newSortedJobsView(
-			"Dead Jobs",
-			deadJobColumns,
-			"No dead jobs",
-			deadWindowPages,
-			deadFallbackPageSize,
-		),
-	}
-	d.lazy.SetFetcherFactory(func() lazytable.Fetcher {
-		snapshot := *d
-		return snapshot.fetchWindow
-	})
-	return d
-}
-
-// Init implements View.
-func (d *Dead) Init() tea.Cmd {
-	return d.init(d.reset)
-}
-
-// Update implements View.
-func (d *Dead) Update(msg tea.Msg) (View, tea.Cmd) {
-	switch msg := msg.(type) {
-	case spinner.TickMsg:
-		var cmd tea.Cmd
-		d.lazy, cmd = d.lazy.Update(msg)
-		return d, cmd
-
-	case lazytable.DataMsg:
-		if handled, cmd := d.handleSortedEntriesData(msg); handled {
-			return d, cmd
+var deadSpec = sortedJobsSpec{
+	name:             "Dead",
+	title:            "Dead Jobs",
+	tracker:          "dead",
+	kind:             sidekiq.SortedSetDead,
+	columns:          deadJobColumns,
+	emptyMessage:     "No dead jobs",
+	windowPages:      3,
+	fallbackPageSize: 25,
+	cells: func(styles Styles, now time.Time, job *sidekiq.SortedEntry) []string {
+		return []string{
+			entryAge(now, job),
+			styles.QueueText.Render(job.Queue()),
+			job.DisplayClass(),
+			display.ArgsPreview(job.DisplayArgs()),
+			errorDisplay(job),
 		}
-		return d, nil
-
-	case RefreshMsg:
-		return d, d.refreshWindow()
-
-	case filterdialog.ActionMsg:
-		return d, d.handleFilterAction(msg, d.updateEmptyMessage)
-
-	case confirmdialog.ActionMsg:
-		action, entry, ok := d.pendingConfirm.Confirm(msg, d.dangerousActionsEnabled, deadJobActionNone)
-		if !ok {
-			return d, nil
+	},
+	contextItems: func(now time.Time, first, last *sidekiq.SortedEntry) []ContextItem {
+		return []ContextItem{
+			{Label: "Last failed", Value: entryAge(now, last)},
+			{Label: "Oldest failed", Value: entryAge(now, first)},
 		}
-		switch action {
-		case deadJobActionNone:
-			return d, nil
-		case deadJobActionDelete:
-			if entry == nil {
-				return d, nil
-			}
-			return d, d.deleteJobCmd(entry)
-		case deadJobActionRetry:
-			if entry == nil {
-				return d, nil
-			}
-			return d, d.retryNowJobCmd(entry)
-		case deadJobActionDeleteAll:
-			return d, d.deleteAllCmd()
-		case deadJobActionRetryAll:
-			return d, d.retryAllCmd()
-		}
-
-	case tea.KeyPressMsg:
-		if handled, cmd := d.handleKeyPress(msg, d.updateEmptyMessage); handled {
-			return d, cmd
-		}
-
-		switch msg.String() {
-		case "c":
-			if entry, ok := d.selectedSortedEntry(); ok {
-				return d, copyTextCmd(entry.JID())
-			}
-			return d, nil
-		case "enter":
-			// Show detail for selected job
-			if idx := d.lazy.Table().Cursor(); idx >= 0 && idx < len(d.jobs) {
-				job := d.jobs[idx].JobRecord
-				return d, d.EmitIntent(ShowJobDetailMsg{Job: job})
-			}
-			return d, nil
-		}
-
-		if d.dangerousActionsEnabled && d.pendingConfirm.target == "" {
-			switch msg.String() {
-			case "D":
-				if entry, ok := d.selectedSortedEntry(); ok {
-					d.pendingConfirm.SetForEntry(deadJobActionDelete, entry)
-					return d, d.openDeleteConfirm(entry)
-				}
-				return d, nil
-			case "R":
-				if entry, ok := d.selectedSortedEntry(); ok {
-					d.pendingConfirm.SetForEntry(deadJobActionRetry, entry)
-					return d, d.openRetryNowConfirm(entry)
-				}
-				return d, nil
-			case "ctrl+d":
-				d.pendingConfirm.Set(deadJobActionDeleteAll, nil, "dead.delete_all")
-				return d, d.openDeleteAllConfirm()
-			case "ctrl+r":
-				d.pendingConfirm.Set(deadJobActionRetryAll, nil, "dead.retry_all")
-				return d, d.openRetryAllConfirm()
-			}
-		}
-
-		return d, d.updateKeyPress(msg)
-	}
-
-	return d, nil
-}
-
-// View implements View.
-func (d *Dead) View() string {
-	if !d.ready {
-		return d.renderLoadingMessage()
-	}
-
-	return d.renderSortedJobsBox("Dead Jobs")
-}
-
-// Name implements View.
-func (d *Dead) Name() string {
-	return "Dead"
-}
-
-// ShortHelp implements View.
-func (d *Dead) ShortHelp() []key.Binding {
-	return nil
-}
-
-// ContextItems implements ContextProvider.
-func (d *Dead) ContextItems() []ContextItem {
-	now := time.Now()
-	lastFailed := "-"
-	oldestFailed := "-"
-	if d.lastEntry != nil {
-		lastFailed = display.Duration(int64(now.Sub(d.lastEntry.At()).Seconds()))
-	}
-	if d.firstEntry != nil {
-		oldestFailed = display.Duration(int64(now.Sub(d.firstEntry.At()).Seconds()))
-	}
-
-	items := []ContextItem{
-		{Label: "Last failed", Value: lastFailed},
-		{Label: "Oldest failed", Value: oldestFailed},
-		{Label: "Total items", Value: display.Number(d.lazy.Total())},
-	}
-	return items
-}
-
-// HintBindings implements HintProvider.
-func (d *Dead) HintBindings() []key.Binding {
-	return []key.Binding{
-		helpBinding([]string{"/"}, "/", "filter"),
-		helpBinding([]string{"ctrl+u"}, "ctrl+u", "reset filter"),
-		helpBinding([]string{"[", "]"}, "[ ⋰ ]", "page up/down"),
-		helpBinding([]string{"enter"}, "enter", "job detail"),
-	}
-}
-
-// MutationBindings implements MutationHintProvider.
-func (d *Dead) MutationBindings() []key.Binding {
-	if !d.dangerousActionsEnabled {
-		return nil
-	}
-	return []key.Binding{
-		helpBinding([]string{"D"}, "shift+d", "delete job"),
-		helpBinding([]string{"R"}, "shift+r", "retry now"),
-		helpBinding([]string{"ctrl+d"}, "ctrl+d", "delete all"),
-		helpBinding([]string{"ctrl+r"}, "ctrl+r", "retry all"),
-	}
-}
-
-// HelpSections implements HelpProvider.
-func (d *Dead) HelpSections() []HelpSection {
-	sections := []HelpSection{
+	},
+	actions: []sortedJobAction{
+		sortedDeleteJobAction,
+		sortedRetryJobAction,
 		{
-			Title: "Dead",
-			Bindings: []key.Binding{
-				helpBinding([]string{"/"}, "/", "filter"),
-				helpBinding([]string{"ctrl+u"}, "ctrl+u", "clear filter"),
-				helpBinding([]string{"["}, "[", "page up"),
-				helpBinding([]string{"]"}, "]", "page down"),
-				helpBinding([]string{"g"}, "g", "jump to start"),
-				helpBinding([]string{"G"}, "shift+g", "jump to end"),
-				helpBinding([]string{"c"}, "c", "copy jid"),
-				helpBinding([]string{"enter"}, "enter", "job detail"),
-			},
+			key: "ctrl+d", helpKey: "ctrl+d", help: "delete all", op: "deleteAllCmd",
+			title:   "Delete all dead",
+			message: "Are you sure you want to delete all dead jobs?\n\nThis action is not recoverable.",
+			runAll:  sidekiq.API.DeleteAllSortedEntries,
 		},
-	}
-	if d.dangerousActionsEnabled {
-		sections = append(sections, HelpSection{
-			Title: "Dangerous Actions",
-			Bindings: []key.Binding{
-				helpBinding([]string{"D"}, "shift+d", "delete job"),
-				helpBinding([]string{"R"}, "shift+r", "retry now"),
-				helpBinding([]string{"ctrl+d"}, "ctrl+d", "delete all"),
-				helpBinding([]string{"ctrl+r"}, "ctrl+r", "retry all"),
-			},
-		})
-	}
-	return sections
-}
-
-// TableHelp implements TableHelpProvider.
-func (d *Dead) TableHelp() []key.Binding {
-	return d.tableHelp()
-}
-
-// SetSize implements View.
-func (d *Dead) SetSize(width, height int) View {
-	d.setSize(width, height)
-	return d
-}
-
-// SetDangerousActionsEnabled toggles mutational actions for the view.
-func (d *Dead) SetDangerousActionsEnabled(enabled bool) {
-	d.dangerousActionsEnabled = enabled
-}
-
-// Dispose clears cached data when the view is removed from the stack.
-func (d *Dead) Dispose() {
-	d.dispose(d.reset)
-}
-
-// CancelRequests stops in-flight fetches when the view is hidden.
-func (d *Dead) CancelRequests() {
-	d.pendingConfirm.Clear(deadJobActionNone)
-	d.cancelRequests()
-}
-
-// SetStyles implements View.
-func (d *Dead) SetStyles(styles Styles) View {
-	d.setStyles(styles)
-	return d
-}
-
-func (d *Dead) fetchWindow(
-	ctx context.Context,
-	windowStart int,
-	windowSize int,
-	_ lazytable.CursorIntent,
-) (lazytable.FetchResult, error) {
-	return fetchSortedEntriesWindow(ctx, sortedEntriesFetchConfig{
-		tracker:          "dead.fetchWindow",
-		client:           d.client,
-		kind:             sidekiq.SortedSetDead,
-		filter:           d.filter,
-		windowStart:      windowStart,
-		windowSize:       windowSize,
-		fallbackPageSize: deadFallbackPageSize,
-		windowPages:      deadWindowPages,
-		buildRows:        d.buildRows,
-	})
-}
-
-func (d *Dead) reset() {
-	d.pendingConfirm.Clear(deadJobActionNone)
-	d.resetSortedJobs(d.updateEmptyMessage)
+		{
+			key: "ctrl+r", helpKey: "ctrl+r", help: "retry all", op: "retryAllCmd",
+			title:   "Retry all dead",
+			message: "Retry all dead jobs now?\n\nThis will enqueue them immediately.",
+			runAll:  sidekiq.API.EnqueueAllSortedEntries,
+		},
+	},
 }
 
 // Table columns for dead job list.
@@ -316,122 +63,3 @@ var deadJobColumns = []table.Column{
 	{Title: "Arguments", Width: 40},
 	{Title: "Error", Width: 60},
 }
-
-func (d *Dead) updateEmptyMessage() {
-	msg := "No dead jobs"
-	if d.filter != "" {
-		msg = "No matches"
-	}
-	d.lazy.SetEmptyMessage(msg)
-}
-
-func (d *Dead) buildRows(jobs []*sidekiq.SortedEntry) []table.Row {
-	rows := make([]table.Row, 0, len(jobs))
-	now := time.Now()
-	for _, job := range jobs {
-		lastRetry := display.Duration(int64(now.Sub(job.At()).Seconds()))
-
-		rows = append(rows, table.Row{
-			ID: job.JID(),
-			Cells: []string{
-				lastRetry,
-				d.styles.QueueText.Render(job.Queue()),
-				job.DisplayClass(),
-				display.ArgsPreview(job.DisplayArgs()),
-				errorDisplay(job),
-			},
-		})
-	}
-	return rows
-}
-
-func (d *Dead) openDeleteConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
-	jobName := d.jobName(entry)
-	return d.pendingConfirm.OpenDialog(d.Opener, newConfirmDialog(
-		d.styles,
-		"Delete job",
-		fmt.Sprintf(
-			"Are you sure you want to delete the %s job?\n\nThis action is not recoverable.",
-			d.styles.Text.Bold(true).Render(jobName),
-		),
-		d.pendingConfirm.target,
-		d.styles.DangerAction,
-	))
-}
-
-func (d *Dead) openRetryNowConfirm(entry *sidekiq.SortedEntry) tea.Cmd {
-	jobName := d.jobName(entry)
-	return d.pendingConfirm.OpenDialog(d.Opener, newConfirmDialog(
-		d.styles,
-		"Retry job",
-		fmt.Sprintf(
-			"Retry the %s job now?\n\nThis will enqueue it immediately.",
-			d.styles.Text.Bold(true).Render(jobName),
-		),
-		d.pendingConfirm.target,
-		d.styles.DangerAction,
-	))
-}
-
-func (d *Dead) openDeleteAllConfirm() tea.Cmd {
-	return d.pendingConfirm.OpenDialog(d.Opener, newConfirmDialog(
-		d.styles,
-		"Delete all dead",
-		"Are you sure you want to delete all dead jobs?\n\nThis action is not recoverable.",
-		d.pendingConfirm.target,
-		d.styles.DangerAction,
-	))
-}
-
-func (d *Dead) openRetryAllConfirm() tea.Cmd {
-	return d.pendingConfirm.OpenDialog(d.Opener, newConfirmDialog(
-		d.styles,
-		"Retry all dead",
-		"Retry all dead jobs now?\n\nThis will enqueue them immediately.",
-		d.pendingConfirm.target,
-		d.styles.DangerAction,
-	))
-}
-
-func (d *Dead) deleteJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
-	ctx := devtools.WithTracker(d.Context(), "dead.deleteJobCmd")
-	return func() tea.Msg {
-		if err := d.client.DeleteSortedEntry(ctx, sidekiq.SortedSetDead, entry); err != nil {
-			return ConnectionErrorMsg{Err: err}
-		}
-		return RefreshMsg{}
-	}
-}
-
-func (d *Dead) deleteAllCmd() tea.Cmd {
-	ctx := devtools.WithTracker(d.Context(), "dead.deleteAllCmd")
-	return func() tea.Msg {
-		if err := d.client.DeleteAllSortedEntries(ctx, sidekiq.SortedSetDead); err != nil {
-			return ConnectionErrorMsg{Err: err}
-		}
-		return RefreshMsg{}
-	}
-}
-
-func (d *Dead) retryNowJobCmd(entry *sidekiq.SortedEntry) tea.Cmd {
-	ctx := devtools.WithTracker(d.Context(), "dead.retryNowJobCmd")
-	return func() tea.Msg {
-		if err := d.client.EnqueueSortedEntry(ctx, sidekiq.SortedSetDead, entry); err != nil {
-			return ConnectionErrorMsg{Err: err}
-		}
-		return RefreshMsg{}
-	}
-}
-
-func (d *Dead) retryAllCmd() tea.Cmd {
-	ctx := devtools.WithTracker(d.Context(), "dead.retryAllCmd")
-	return func() tea.Msg {
-		if err := d.client.EnqueueAllSortedEntries(ctx, sidekiq.SortedSetDead); err != nil {
-			return ConnectionErrorMsg{Err: err}
-		}
-		return RefreshMsg{}
-	}
-}
-
-// renderJobsBox renders the bordered box containing the jobs table.
-// renderJobDetail renders the job detail view.

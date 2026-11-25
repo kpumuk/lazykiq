@@ -337,13 +337,13 @@ func TestConfirmationEscapeCancelsBeforeReopening(t *testing.T) {
 				model.reopen = func() tea.Cmd { _, command := view.Update(queuePauseKey()); return command }
 				model.onAction = func(msg confirmdialog.ActionMsg) tea.Cmd { _, command := view.Update(msg); return command }
 			} else {
-				var pending pendingConfirm[retriesJobAction]
+				var pending pendingConfirm[*sortedJobAction]
 				model.reopen = func() tea.Cmd {
-					pending.Set(retriesJobActionDelete, nil, "same-job-jid")
+					pending.Set(&sortedDeleteJobAction, nil, "same-job-jid")
 					return pending.OpenDialog(dialogs.Opener{}, confirmdialog.New(confirmdialog.WithTarget(pending.target)))
 				}
 				model.onAction = func(msg confirmdialog.ActionMsg) tea.Cmd {
-					_, _, accepted := pending.Confirm(msg, true, retriesJobActionNone)
+					_, _, accepted := pending.Confirm(msg, true, nil)
 					if accepted {
 						return func() tea.Msg { return nil }
 					}

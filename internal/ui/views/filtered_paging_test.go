@@ -35,7 +35,7 @@ func TestFilteredViews_PageAliasStillPages(t *testing.T) {
 			return harness{
 				view: view,
 				cursor: func(v View) int {
-					return v.(*Dead).lazy.Table().Cursor()
+					return v.(*SortedJobs).lazy.Table().Cursor()
 				},
 			}
 		},
@@ -46,7 +46,7 @@ func TestFilteredViews_PageAliasStillPages(t *testing.T) {
 			return harness{
 				view: view,
 				cursor: func(v View) int {
-					return v.(*Retries).lazy.Table().Cursor()
+					return v.(*SortedJobs).lazy.Table().Cursor()
 				},
 			}
 		},
@@ -57,7 +57,7 @@ func TestFilteredViews_PageAliasStillPages(t *testing.T) {
 			return harness{
 				view: view,
 				cursor: func(v View) int {
-					return v.(*Scheduled).lazy.Table().Cursor()
+					return v.(*SortedJobs).lazy.Table().Cursor()
 				},
 			}
 		},

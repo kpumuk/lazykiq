@@ -25,7 +25,7 @@ type detailNavigationHarness struct {
 
 func detailNavigationViews() map[string]func() detailNavigationHarness {
 	jobMessage := func(job *sidekiq.JobRecord) tea.Msg { return ShowJobDetailMsg{Job: job} }
-	sorted := func(view detailNavigationView, list *sortedJobsView) detailNavigationHarness {
+	sorted := func(view detailNavigationView, list *SortedJobs) detailNavigationHarness {
 		return detailNavigationHarness{
 			view: view,
 			setJobs: func(jobs []*sidekiq.JobRecord) {
@@ -79,15 +79,15 @@ func detailNavigationViews() map[string]func() detailNavigationHarness {
 		},
 		"retries": func() detailNavigationHarness {
 			view := NewRetries(nil)
-			return sorted(view, &view.sortedJobsView)
+			return sorted(view, view)
 		},
 		"scheduled": func() detailNavigationHarness {
 			view := NewScheduled(nil)
-			return sorted(view, &view.sortedJobsView)
+			return sorted(view, view)
 		},
 		"dead": func() detailNavigationHarness {
 			view := NewDead(nil)
-			return sorted(view, &view.sortedJobsView)
+			return sorted(view, view)
 		},
 	}
 }
