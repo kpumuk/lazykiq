@@ -599,6 +599,39 @@ func TestDeleteRetryJob_RemovesOnly(t *testing.T) {
 	}
 }
 
+func TestDeleteSortedEntry_Presence(t *testing.T) {
+	const job = `{"jid":"delete_me","class":"MyJob","queue":"default"}`
+	tests := map[string]struct {
+		stored  bool
+		wantErr string
+	}{
+		"present entry is removed": {stored: true},
+		// A poller may move the job to its queue before the user confirms.
+		"missing entry reports job not found": {wantErr: "job not found"},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			mr, client := setupTestRedis(t)
+			ctx := context.Background()
+			_, _ = mr.ZAdd("retry", testScoreB, `{"jid":"other","class":"MyJob","queue":"default"}`)
+			if tt.stored {
+				_, _ = mr.ZAdd("retry", testScoreA, job)
+			}
+
+			err := client.DeleteSortedEntry(ctx, SortedSetRetry, NewSortedEntry(job, testScoreA))
+			if tt.wantErr == "" && err != nil {
+				t.Fatalf("delete error = %v, want nil", err)
+			}
+			if tt.wantErr != "" && (err == nil || err.Error() != tt.wantErr) {
+				t.Fatalf("delete error = %v, want %s", err, tt.wantErr)
+			}
+			if members, _ := client.redis.ZRange(ctx, "retry", 0, -1).Result(); len(members) != 1 || strings.Contains(members[0], "delete_me") {
+				t.Fatalf("retry members = %v, want only the other job", members)
+			}
+		})
+	}
+}
+
 func TestKillRetryJob_MovesToDead(t *testing.T) {
 	mr, client := setupTestRedis(t)
 	ctx := context.Background()

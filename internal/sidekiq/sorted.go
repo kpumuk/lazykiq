@@ -410,9 +410,12 @@ func (c *Client) deleteSortedEntry(ctx context.Context, key string, entry *Sorte
 		return errors.New("sorted entry payload is empty")
 	}
 
-	_, err := c.redis.ZRem(ctx, key, value).Result()
+	removed, err := c.redis.ZRem(ctx, key, value).Result()
 	if err != nil && !errors.Is(err, redis.Nil) {
 		return err
+	}
+	if removed == 0 {
+		return errors.New("job not found")
 	}
 	return nil
 }
