@@ -18,6 +18,12 @@ Download the latest release for your platform from the
 Lazykiq uses Unicode box-drawing and chart glyphs in the UI; a modern UTF-8 terminal font is recommended.
 {{< /callout >}}
 
+{{< callout context="note" title="Copying" icon="outline/info-circle" >}}
+Copy (`c`) uses the native clipboard tool when one is present (`pbcopy`, `xclip`, `xsel`, `wl-copy`),
+and otherwise the terminal's OSC 52 support, which also works over SSH.
+Inside tmux, enable OSC 52 with `set -g set-clipboard on`.
+{{< /callout >}}
+
 ## Homebrew Tap
 
 ```bash
