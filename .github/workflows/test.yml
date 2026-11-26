@@ -28,6 +28,11 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: ./go.mod
+      - name: Install Redis
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends redis-server
+          redis-server --version
       - name: Build
         run: go build ./...
       - name: Test
