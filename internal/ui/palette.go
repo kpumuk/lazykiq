@@ -24,6 +24,9 @@ func (a App) paletteItems() []palettedialog.Item {
 		}
 		items = append(items, palettedialog.Item{Label: label, ID: int(id)})
 	}
+	if _, enabled := a.viewRegistry[viewRateLimits]; enabled {
+		items = append(items, palettedialog.Item{Label: "Rate Limits", ID: int(viewRateLimits)})
+	}
 	return append(items,
 		palettedialog.Item{Label: "Busy: flat jobs", ID: paletteBusyFlat},
 		palettedialog.Item{Label: "Busy: tree by process", ID: paletteBusyTree},

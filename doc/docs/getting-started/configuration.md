@@ -22,6 +22,9 @@ FLAGS
   --danger       enable dangerous operations
   --development  enable development diagnostics
   --enable       enable optional features (pro, ent)
+  --limiter-redis  Redis URL for rate limiters (defaults to --redis)
+  --limiter-cluster  use Redis Cluster for the limiter connection
+  --limiter-timezone  time zone for rate limiter history (UTC)
   --periodic-timezone  server timezone for periodic jobs without an explicit zone (UTC)
   -h --help      help for lazykiq
   --redis        redis URL (redis://localhost:6379/0)
@@ -82,6 +85,38 @@ defaults to UTC because Enterprise does not store the server timezone in Redis.
 
 ```bash
 lazykiq --enable=ent --periodic-timezone=America/Toronto
+```
+
+To check limiter usage and statistics, press `Ctrl+t` and choose
+[Rate Limits]({{< relref "../screens/rate-limits.md" >}}).
+
+## Rate limits
+
+Rate Limits uses the same Redis connection as the other screens by default.
+If your application keeps its limiters in a different Redis server or database,
+set `--limiter-redis` to that connection:
+
+```bash
+lazykiq --enable=ent --redis=redis://sidekiq.internal:6379/0 \
+  --limiter-redis=redis://limiter.internal:6379/2
+```
+
+Use `rediss://` for a TLS connection. For Redis Cluster, also pass
+`--limiter-cluster`. Cluster connections use database zero. Add `addr` to the URL
+to provide another cluster address:
+
+```bash
+lazykiq --enable=ent --limiter-cluster \
+  --limiter-redis='rediss://limiter.internal:6379/0?addr=limiter2.internal:6379'
+```
+
+For bucket history, set `--limiter-timezone` to the timezone of the processes
+using your limiters. Use their `TZ` setting if they have one; otherwise use
+their system timezone. The default is UTC. This may differ from the timezone
+of the computer running Lazykiq:
+
+```bash
+lazykiq --enable=ent --limiter-timezone=America/Toronto
 ```
 
 ## Dangerous actions

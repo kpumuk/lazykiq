@@ -1,0 +1,12 @@
+╭─Rate Limits──────────╖Page 1 · 5 records · ] more╓─╮
+│ Name                         Type           Capac  │
+│ ─────────────────────────────────────────────────  │
+│ payments                     Concurrent     8 slo  │
+│ search                       Window         10 /   │
+│ stripe                       Bucket         100 /  │
+│ shopify                      Leaky bucket   40 op  │
+│ graphql                      Points         1000   │
+│                                                    │
+│                                                    │
+│                                                    │
+╰────────────────────────────────────────────────────╯

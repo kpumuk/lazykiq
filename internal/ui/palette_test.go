@@ -29,7 +29,11 @@ func TestPaletteDestinations(t *testing.T) {
 			client := periodicAppClient{API: &ownershipClient{}, features: capabilities}
 			app := New(client, "", false, nil)
 			items := app.paletteItems()
-			if len(items) != len(app.viewOrder)+4 {
+			extra := 4
+			if enabled {
+				extra++
+			}
+			if len(items) != len(app.viewOrder)+extra {
 				t.Fatal("missing destinations")
 			}
 			for _, id := range app.viewOrder {
