@@ -123,6 +123,7 @@ type jobDetailLine struct {
 
 // JobDetail shows a full job detail panel.
 type JobDetail struct {
+	frameFooter
 	KeyMap KeyMap
 	styles jobDetailStyles
 	width  int
@@ -247,6 +248,7 @@ func (j *JobDetail) View() string {
 			}),
 			messagebox.WithTitle("Job Detail"),
 			messagebox.WithMessage("No job selected"),
+			messagebox.WithFooter(j.footer),
 			messagebox.WithSize(j.width, j.height),
 		).View()
 	}
@@ -603,6 +605,11 @@ func (j *JobDetail) jobJSON() string {
 
 // renderLeftPanel renders the properties panel.
 func (j *JobDetail) renderLeftPanel() string {
+	// Side by side, the wider JSON panel carries the footer.
+	leftFooter := ""
+	if j.singlePane() {
+		leftFooter = j.footer
+	}
 	j.prepareLeftPanel()
 	valueIndent := strings.Repeat(" ", jobDetailValueIndent)
 
@@ -636,6 +643,7 @@ func (j *JobDetail) renderLeftPanel() string {
 			},
 		}),
 		frame.WithTitle("Job Details"),
+		frame.WithFooter(leftFooter),
 		frame.WithTitlePadding(0),
 		frame.WithContent(strings.Join(contentLines, "\n")),
 		frame.WithPadding(jobDetailPanelPadding),
@@ -685,6 +693,7 @@ func (j *JobDetail) renderRightPanel() string {
 			},
 		}),
 		frame.WithTitle("Job Data (JSON)"),
+		frame.WithFooter(j.footer),
 		frame.WithTitlePadding(0),
 		frame.WithMeta(meta),
 		frame.WithMetaPadding(0),

@@ -31,6 +31,7 @@ type Model struct {
 	styles  Styles
 	title   string
 	message string
+	footer  string
 	width   int
 	height  int
 }
@@ -73,6 +74,13 @@ func WithMessage(msg string) Option {
 	}
 }
 
+// WithFooter sets a styled label inset into the bottom border.
+func WithFooter(footer string) Option {
+	return func(m *Model) {
+		m.footer = footer
+	}
+}
+
 // WithSize sets the width and height.
 func WithSize(w, h int) Option {
 	return func(m *Model) {
@@ -94,6 +102,11 @@ func (m *Model) SetTitle(title string) {
 // SetMessage sets the message.
 func (m *Model) SetMessage(msg string) {
 	m.message = msg
+}
+
+// SetFooter sets a styled label inset into the bottom border.
+func (m *Model) SetFooter(footer string) {
+	m.footer = footer
 }
 
 // SetSize sets the width and height.
@@ -166,6 +179,7 @@ func (m Model) View() string {
 		frame.WithTitle(m.title),
 		frame.WithTitlePadding(1),
 		frame.WithContent(strings.Join(lines, "\n")),
+		frame.WithFooter(m.footer),
 		frame.WithSize(m.width, m.height),
 	)
 

@@ -1,0 +1,10 @@
+ Processed: 0   Failed: 0   Busy: 0   Enqueued: 0   Retries: 0   Scheduled: 0   
+                                                           /       filter       
+                                                           ctrl+u  reset filter 
+╭─Active Jobs──────────────────────────────╖PRC: 0 • THR: 0/0 (0%) • RSS: 0 B╓─╮
+│ Process        TID    JID                      Queue           Age Class     │
+│ ───────────────────────────────────────────────────────────────────────────  │
+│ No active jobs                                                               │
+╰─ Retry job failed for JID 93d8499cebcad76ee9006db7: job not found 界 ────────╯
+  Dashboard                                                                     
+  1 Dashboard  2 Busy  3 Queues  4 Retries  5 Scheduled  6 Dead  7 Errors  8 Me 

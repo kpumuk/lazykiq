@@ -277,8 +277,8 @@ func TestProcessesListEmbeddedActions(t *testing.T) {
 			mr.HSet(identity, "info", `{"hostname":"worker","pid":123,"embedded":true}`)
 			_, yes := open.Model.Update(tea.KeyPressMsg{Text: "y", Code: 'y'})
 			_, action := view.Update(collectConfirmAction(t, yes))
-			msg, ok := action().(ConnectionErrorMsg)
-			if !ok || msg.Err == nil || !strings.Contains(msg.Err.Error(), "embedded") {
+			msg, ok := action().(ActionErrorMsg)
+			if !ok || msg.Err == nil || !strings.Contains(msg.Err.Error(), "embedded") || !strings.Contains(msg.Err.Error(), " process "+identity+" failed: ") {
 				t.Fatalf("stale confirmation returned %+v, want embedded process error", msg)
 			}
 			if mr.Exists(identity + "-signals") {

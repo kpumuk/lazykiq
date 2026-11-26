@@ -110,6 +110,21 @@ func TestGoldenFrameWithMeta(t *testing.T) {
 	golden.RequireEqual(t, []byte(output))
 }
 
+func TestGoldenFrameWithFooter(t *testing.T) {
+	footer := lipgloss.NewStyle().Bold(true).Render("Retry job failed for JID 93d8499c: job not found 界")
+	for name, width := range map[string]int{"normal": 60, "narrow": 24, "tiny": 6, "too small": 4} {
+		t.Run(name, func(t *testing.T) {
+			box := New(WithSize(width, 4), WithTitle("Retries"), WithContent("row"), WithFooter(footer))
+			lines := strings.Split(ansi.Strip(box.View()), "\n")
+			bottom := lines[len(lines)-1]
+			if ansi.StringWidth(bottom) != width || !strings.HasPrefix(bottom, "╰") || !strings.HasSuffix(bottom, "─╯") {
+				t.Fatalf("bottom border = %q, want width %d with intact corners", bottom, width)
+			}
+			golden.RequireEqual(t, []byte(strings.Join(lines, "\n")))
+		})
+	}
+}
+
 func TestGoldenFrameWithFilter(t *testing.T) {
 	box := New(
 		WithSize(26, 4),

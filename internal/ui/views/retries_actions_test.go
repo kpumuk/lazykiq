@@ -22,8 +22,8 @@ func TestRetriesKillMissingJob(t *testing.T) {
 	view := NewRetries(client)
 	entry := sidekiq.NewSortedEntry(`{"jid":"gone","class":"Good","queue":"default"}`, 1)
 	msg := view.actionCmd(sortedJobsAction(t, view, "K"), entry)()
-	failure, ok := msg.(ConnectionErrorMsg)
-	if !ok || failure.Err == nil || failure.Err.Error() != "job not found" {
+	failure, ok := msg.(ActionErrorMsg)
+	if !ok || failure.Err == nil || failure.Err.Error() != "Kill job failed for JID gone: job not found" {
 		t.Fatalf("kill result = %#v, want job not found error", msg)
 	}
 	if mr.Exists("dead") {

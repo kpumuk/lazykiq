@@ -41,6 +41,7 @@ type Model struct {
 	styles       Styles
 	title        Title
 	meta         string
+	footer       string
 	content      string
 	width        int
 	height       int
@@ -105,6 +106,13 @@ func WithFrameTitle(title Title) Option {
 func WithMeta(meta string) Option {
 	return func(m *Model) {
 		m.meta = meta
+	}
+}
+
+// WithFooter sets a styled label inset into the bottom border.
+func WithFooter(footer string) Option {
+	return func(m *Model) {
+		m.footer = footer
 	}
 }
 
@@ -190,6 +198,11 @@ func (m *Model) SetFrameTitle(title Title) {
 // SetMeta sets the meta content.
 func (m *Model) SetMeta(meta string) {
 	m.meta = meta
+}
+
+// SetFooter sets a styled label inset into the bottom border.
+func (m *Model) SetFooter(footer string) {
+	m.footer = footer
 }
 
 // SetContent sets the content.
@@ -332,7 +345,12 @@ func (m Model) renderBottomBorder(state StyleState, innerWidth int) string {
 	bottomLeft := state.Border.Render(m.border.BottomLeft)
 	bottomRight := state.Border.Render(m.border.BottomRight)
 	hBar := state.Border.Render(m.border.Bottom)
-	return bottomLeft + strings.Repeat(hBar, innerWidth) + bottomRight
+	// Like the title, the footer keeps one bar and a space on each side.
+	if m.footer == "" || innerWidth < 5 {
+		return bottomLeft + strings.Repeat(hBar, innerWidth) + bottomRight
+	}
+	footer := " " + ansi.Truncate(m.footer, innerWidth-4, "…") + " "
+	return bottomLeft + hBar + footer + strings.Repeat(hBar, innerWidth-1-ansi.StringWidth(footer)) + bottomRight
 }
 
 func (m Model) renderBody(state StyleState, innerWidth, contentHeight int) []string {

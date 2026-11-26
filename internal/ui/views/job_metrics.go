@@ -26,6 +26,7 @@ type jobMetricsDataMsg struct {
 
 // JobMetrics shows per-job execution metrics.
 type JobMetrics struct {
+	frameFooter
 	requestctx.Scope
 	client  sidekiq.API
 	width   int
@@ -117,7 +118,7 @@ func (j *JobMetrics) View() string {
 
 	// Check if we have data (no need for separate ready flag)
 	if j.processed == nil || len(j.processed.SortedBuckets) == 0 {
-		return renderStatusMessage(title, "Loading...", j.styles, j.width, j.height)
+		return renderStatusMessage(title, "Loading...", j.footer, j.styles, j.width, j.height)
 	}
 
 	contentWidth := max(j.width-4, 0)
@@ -145,12 +146,18 @@ func (j *JobMetrics) View() string {
 		},
 	}
 
+	// The bottom-most frame carries the footer.
+	topFooter := ""
+	if bottomHeight <= 0 {
+		topFooter = j.footer
+	}
 	topFrame := frame.New(
 		frame.WithStyles(frameStyles),
 		frame.WithTitle("Execution Time Buckets"),
 		frame.WithTitlePadding(0),
 		frame.WithMeta(meta),
 		frame.WithContent(j.renderHistogram(contentWidth, topChartHeight)),
+		frame.WithFooter(topFooter),
 		frame.WithPadding(1),
 		frame.WithSize(j.width, topHeight),
 		frame.WithMinHeight(5),
@@ -164,6 +171,7 @@ func (j *JobMetrics) View() string {
 	bottomFrame := frame.New(
 		frame.WithStyles(frameStyles),
 		frame.WithTitle("Execution Scatter"),
+		frame.WithFooter(j.footer),
 		frame.WithTitlePadding(0),
 		frame.WithContent(j.renderScatter(contentWidth, bottomChartHeight)),
 		frame.WithPadding(1),

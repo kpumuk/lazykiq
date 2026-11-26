@@ -29,6 +29,7 @@ var nowFuncErrorsSummary = time.Now
 
 // ErrorsSummary shows a summary of errors grouped by job and error class.
 type ErrorsSummary struct {
+	frameFooter
 	IntentScope
 	dialogs.Opener
 	requestctx.Scope
@@ -267,7 +268,7 @@ func (e *ErrorsSummary) shouldSkipRefresh(force bool) bool {
 }
 
 func (e *ErrorsSummary) renderMessage(msg string) string {
-	return renderStatusMessage("Errors", msg, e.styles, e.width, e.height)
+	return renderStatusMessage("Errors", msg, e.footer, e.styles, e.width, e.height)
 }
 
 func (e *ErrorsSummary) reset() {
@@ -359,6 +360,7 @@ func (e *ErrorsSummary) renderSummaryBox() string {
 		frame.WithTitlePadding(0),
 		frame.WithContent(content),
 		frame.WithPadding(1),
+		frame.WithFooter(e.footer),
 		frame.WithSize(e.width, e.height),
 		frame.WithMinHeight(5),
 		frame.WithFocused(true),

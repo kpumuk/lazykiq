@@ -358,14 +358,13 @@ func (v *SortedJobs) actionCmd(action *sortedJobAction, entry *sidekiq.SortedEnt
 	ctx := devtools.WithTracker(v.Context(), v.spec.tracker+"."+action.op)
 	client, kind := v.client, v.spec.kind
 	return func() tea.Msg {
-		var err error
 		if action.runAll != nil {
-			err = action.runAll(client, ctx, kind)
-		} else {
-			err = action.runEntry(client, ctx, kind, entry)
-		}
-		if err != nil {
-			return ConnectionErrorMsg{Err: err}
+			if err := action.runAll(client, ctx, kind); err != nil {
+				return ActionErrorMsg{Err: fmt.Errorf("%s failed: %w", action.title, err)}
+			}
+		} else if err := action.runEntry(client, ctx, kind, entry); err != nil {
+			// The full JID is what users can filter by or find in worker logs.
+			return ActionErrorMsg{Err: fmt.Errorf("%s failed for JID %s: %w", action.title, entry.JID(), err)}
 		}
 		return RefreshMsg{}
 	}

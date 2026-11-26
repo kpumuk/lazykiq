@@ -176,8 +176,8 @@ func TestQueuePauseActionFailureAndDisposal(t *testing.T) {
 	_, cmd = view.Update(queueConfirmation(&view.actions, true))
 	_ = client.Redis().Set(context.Background(), "paused", "wrong-type", 0).Err()
 	result := cmd().(QueueActionResultMsg)
-	if result.Err == nil {
-		t.Fatal("mutation error lost")
+	if result.Err == nil || !strings.HasPrefix(result.Err.Error(), "pause queue default failed: ") {
+		t.Fatalf("mutation error = %v, want it to name the action and queue", result.Err)
 	}
 	view.Update(result)
 	if view.actions.busy {

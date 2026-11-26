@@ -37,6 +37,7 @@ type DashboardRedisInfoMsg struct {
 
 // Dashboard is the main overview view.
 type Dashboard struct {
+	frameFooter
 	requestctx.Scope
 	client sidekiq.API
 	width  int
@@ -370,6 +371,7 @@ func (d *Dashboard) renderHistoryBox(height int) string {
 			},
 		}),
 		frame.WithTitle("History"),
+		frame.WithFooter(d.footer),
 		frame.WithTitlePadding(0),
 		frame.WithMeta(meta),
 		frame.WithContent(content),

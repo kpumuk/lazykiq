@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 	"testing"
 	"time"
@@ -47,6 +48,8 @@ func TestAppLayoutBounds(t *testing.T) {
 					t.Fatal("negative allocation")
 				}
 				a.connectionError = errors.New(strings.Repeat("界e\u0301👩🏽‍💻", 30))
+				m, _ = a.Update(views.ActionErrorMsg{Err: errors.New(strings.Repeat("界e\u0301👩🏽‍💻\n", 30))})
+				a = m.(App)
 				assertLayoutBounds(t, a.View().Content, size[0], size[1])
 				m, _ = a.Update(dialogs.OpenDialogMsg{Model: filterdialog.New()})
 				a = m.(App)
@@ -96,6 +99,37 @@ func TestAppLayoutCompactAndRestore(t *testing.T) {
 	}
 }
 
+func TestAppViewsAcceptFooter(t *testing.T) {
+	a := New(&ownershipClient{}, "", false, nil)
+	registry := maps.Clone(a.viewRegistry)
+	registry[viewPeriodic] = views.NewPeriodic(nil)
+	registry[viewPeriodicDetail] = views.NewPeriodicDetail(nil)
+	for id, view := range registry {
+		if _, ok := view.(views.FooterSetter); !ok {
+			t.Errorf("view %d (%s) cannot show action errors on its bottom border", id, view.Name())
+		}
+	}
+}
+
+func TestAppActionErrorOnBottomBorder(t *testing.T) {
+	for _, id := range []viewID{viewDashboard, viewBusy, viewQueueDetails, viewQueuesList, viewProcessesList, viewRetries, viewScheduled, viewDead, viewErrorsSummary, viewMetrics} {
+		for _, width := range []int{120, 60} {
+			t.Run(fmt.Sprintf("%d/%d", id, width), func(t *testing.T) {
+				a := New(&ownershipClient{}, "", false, nil)
+				a.setActiveView(id)
+				m, _ := a.Update(tea.WindowSizeMsg{Width: width, Height: 24})
+				m, _ = m.Update(views.ActionErrorMsg{Err: errors.New("Delete queue default failed: queue is not a list")})
+				a = m.(App)
+				lines := strings.Split(ansi.Strip(a.View().Content), "\n")
+				bottom := lines[len(lines)-1-a.navbar.Height()-a.stackbar.Height()]
+				if !strings.HasPrefix(bottom, "╰─ Delete queue default failed") || !strings.HasSuffix(bottom, "╯") || ansi.StringWidth(bottom) != width {
+					t.Fatalf("bottom border = %q", bottom)
+				}
+			})
+		}
+	}
+}
+
 func TestGoldenAppLayout(t *testing.T) {
 	for name, tc := range map[string]struct {
 		width, height int
@@ -103,7 +137,7 @@ func TestGoldenAppLayout(t *testing.T) {
 	}{
 		"zero": {}, "tiny": {1, 1, "loading"}, "short loading": {80, 8, "loading"}, "empty": {20, 10, "empty"},
 		"populated": {80, 10, "populated"}, "normal": {120, 24, "populated"}, "filter": {20, 10, "filter"},
-		"error": {20, 10, "error"}, "confirm": {20, 10, "confirm"}, "help": {20, 10, "help"},
+		"error": {20, 10, "error"}, "action error": {80, 10, "action error"}, "action error narrow": {20, 10, "action error"}, "action error detail": {120, 24, "action error detail"}, "confirm": {20, 10, "confirm"}, "help": {20, 10, "help"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			a := busyHeaderApp(0)
@@ -111,7 +145,7 @@ func TestGoldenAppLayout(t *testing.T) {
 			case "loading":
 				a = New(&ownershipClient{}, "", false, nil)
 				a.setActiveView(viewRetries)
-			case "populated":
+			case "populated", "action error detail":
 				a.viewRegistry[viewJobDetail].(views.JobDetailSetter).SetJob(sidekiq.NewJobRecord(`{"jid":"fixture","class":"界Worker","args":["é","👩🏽‍💻"]}`, "default"))
 				a.pushView(viewJobDetail)
 			case "error":
@@ -125,6 +159,9 @@ func TestGoldenAppLayout(t *testing.T) {
 				a = m.(App)
 			case "confirm":
 				m, _ = a.Update(dialogs.OpenDialogMsg{Model: confirmdialog.New()})
+				a = m.(App)
+			case "action error", "action error detail":
+				m, _ = a.Update(views.ActionErrorMsg{Err: errors.New("Retry job failed for JID 93d8499cebcad76ee9006db7: job not found 界")})
 				a = m.(App)
 			case "help":
 				_, cmd := a.Update(tea.KeyPressMsg{Code: '?', Text: "?"})

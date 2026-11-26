@@ -32,6 +32,7 @@ type periodicDataMsg struct {
 
 // Periodic displays recurring definitions, or a stacked definition and history.
 type Periodic struct {
+	frameFooter
 	IntentScope
 	dialogs.Opener
 	requestctx.Scope
@@ -146,26 +147,27 @@ func (p *Periodic) View() string {
 		return ""
 	}
 	if !p.ready {
-		return renderStatusMessage(p.Name(), "Loading...", p.styles, p.width, p.height)
+		return renderStatusMessage(p.Name(), "Loading...", p.footer, p.styles, p.width, p.height)
 	}
 	if !p.detail {
-		return p.renderFrame("Periodic", p.table.View(), p.width, p.height, true, p.filter)
+		return p.renderFrame("Periodic", p.table.View(), p.footer, p.width, p.height, true, p.filter)
 	}
 	if p.job == nil {
-		return renderStatusMessage("Periodic Job", "Periodic job is no longer registered", p.styles, p.width, p.height)
+		return renderStatusMessage("Periodic Job", "Periodic job is no longer registered", p.footer, p.styles, p.width, p.height)
 	}
 	leftWidth, leftHeight, rightWidth, rightHeight := p.panelSizes()
 	if p.singlePane() && p.focusHistory {
-		return p.renderFrame("Enqueue History", p.table.View(), rightWidth, rightHeight, true, "")
+		return p.renderFrame("Enqueue History", p.table.View(), p.footer, rightWidth, rightHeight, true, "")
 	}
 	lines := p.infoLines(max(leftWidth-4, 1))
 	end := min(p.infoOffset+max(leftHeight-2, 0), len(lines))
 	info := strings.Join(lines[p.infoOffset:end], "\n")
-	left := p.renderFrame("Periodic Job", info, leftWidth, leftHeight, !p.focusHistory, "")
 	if p.singlePane() {
-		return left
+		return p.renderFrame("Periodic Job", info, p.footer, leftWidth, leftHeight, true, "")
 	}
-	right := p.renderFrame("Enqueue History", p.table.View(), rightWidth, rightHeight, p.focusHistory, "")
+	// Side by side, the history panel carries the footer.
+	left := p.renderFrame("Periodic Job", info, "", leftWidth, leftHeight, !p.focusHistory, "")
+	right := p.renderFrame("Enqueue History", p.table.View(), p.footer, rightWidth, rightHeight, p.focusHistory, "")
 	return lipgloss.JoinHorizontal(lipgloss.Top, left, right)
 }
 
@@ -479,7 +481,7 @@ func (p *Periodic) infoLines(width int) []string {
 	return lines
 }
 
-func (p *Periodic) renderFrame(title, content string, width, height int, focused bool, filter string) string {
+func (p *Periodic) renderFrame(title, content, footer string, width, height int, focused bool, filter string) string {
 	if width < 4 || height < 2 {
 		return strings.TrimSuffix(strings.Repeat(strings.Repeat(" ", max(width, 0))+"\n", max(height, 0)), "\n")
 	}
@@ -488,7 +490,7 @@ func (p *Periodic) renderFrame(title, content string, width, height int, focused
 		lines[i] = display.HorizontalScroll(line, 0, width-4)
 	}
 	return frame.New(frame.WithStyles(frameStylesFromTheme(p.styles)), frame.WithTitle(title), frame.WithFilter(filter),
-		frame.WithTitlePadding(0), frame.WithPadding(1), frame.WithContent(strings.Join(lines, "\n")),
+		frame.WithTitlePadding(0), frame.WithPadding(1), frame.WithContent(strings.Join(lines, "\n")), frame.WithFooter(footer),
 		frame.WithSize(width, height), frame.WithFocused(focused)).View()
 }
 

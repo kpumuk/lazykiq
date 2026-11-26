@@ -28,6 +28,7 @@ Follow the Bubbles component pattern. Use [components/messagebox/messagebox.go](
 - Emit view-local navigation through `IntentScope.EmitIntent` before composing commands, including `ShowJobDetailMsg` and `ShowErrorDetailsMsg` for stacked detail views. Let `app.go` manage the stack.
 - The app's five-second ticker fetches stats and sends `views.RefreshMsg` to the active view. Views fetch their own data; Dashboard also has a realtime ticker.
 - `stats.UpdateMsg` updates the metrics bar and clears the connection error. Stats fetch errors and `views.ConnectionErrorMsg` can show the error overlay.
+- Report failed confirmed mutations with `views.ActionErrorMsg` (or the queue and periodic result messages), wrapping the error with the action and its target. The app passes the styled message to every view through `views.FooterSetter`; each view hands it to its bottom-most frame with `frame.WithFooter` (or `messagebox.WithFooter`), choosing one frame when frames sit side by side. It stays for at least five seconds; after that the next key press clears it, and it expires after 30 seconds. Stats refreshes do not clear it.
 - Route modal input through the dialog manager before app-level key handling. The app checks `a.dialogs.HasDialogs()`; keep filter input in the dialog flow.
 
 ## Rendering constraints

@@ -89,6 +89,9 @@ func (a *queueActions) confirm(parent context.Context, msg confirmdialog.ActionM
 		} else {
 			err = queue.SetPaused(ctx, action.verb == "pause")
 		}
+		if err != nil {
+			err = fmt.Errorf("%s queue %s failed: %w", action.verb, action.name, err)
+		}
 		return QueueActionResultMsg{owner: a, generation: generation, Err: err}
 	}
 }
