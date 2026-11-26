@@ -2,6 +2,7 @@ package sidekiq
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"testing"
 	"time"
@@ -675,8 +676,73 @@ func TestGetMetricsTopJobs_InvalidValues(t *testing.T) {
 	}
 }
 
-func TestGetMetricsJobDetail_Sidekiq8_Minutely(t *testing.T) {
-	t.Skip("Skipped: Minutely granularity uses BITFIELD_RO (histogram data) not supported by miniredis")
+func TestGetMetricsJobDetail_MinutelyHistogram(t *testing.T) {
+	// Sidekiq::Metrics::Histogram stores the 20ms counter at u16 slot #0 and the
+	// "Slow" counter at #25; Sidekiq::Metrics::Query#for_job reverses the fetched
+	// slots, so the returned histogram starts with the slowest bucket.
+	// Seeds sit one and two minutes back so both stay inside a four-minute
+	// window even if the clock crosses a minute before the fetch.
+	seeds := []struct {
+		age   time.Duration
+		slots map[int]int64
+		want  map[int]int64
+	}{
+		{age: time.Minute, slots: map[int]int64{0: 7, 3: 2, 25: 9}, want: map[int]int64{25: 7, 22: 2, 0: 9}},
+		{age: 2 * time.Minute, slots: map[int]int64{1: 4, 12: 300}, want: map[int]int64{24: 4, 13: 300}},
+	}
+
+	tests := map[string]struct {
+		version     Version
+		period      MetricsPeriod
+		wantBuckets int
+	}{
+		"sidekiq 8":                          {version: Version8, period: MetricsPeriod{Minutes: 4}, wantBuckets: 4},
+		"sidekiq 7":                          {version: Version7, period: MetricsPeriod{Minutes: 4}, wantBuckets: 4},
+		"zero period defaults to 60 minutes": {version: Version8, period: MetricsPeriod{}, wantBuckets: 60},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			client := benchmarkPrivateSortedRedis(t)
+			client.version = tc.version
+			ctx := t.Context()
+			now := time.Now().UTC()
+			for _, seed := range seeds {
+				args := make([]any, 0, len(seed.slots)*4)
+				for slot, value := range seed.slots {
+					args = append(args, "SET", "u16", fmt.Sprintf("#%d", slot), value)
+				}
+				key := metricsHistogramKeyForVersion("Worker", now.Add(-seed.age), tc.version)
+				if err := client.redis.BitField(ctx, key, args...).Err(); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			result, err := client.GetMetricsJobDetail(ctx, "Worker", tc.period)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.Granularity != MetricsGranularityMinutely {
+				t.Errorf("Granularity = %v, want minutely", result.Granularity)
+			}
+			if len(result.Buckets) != tc.wantBuckets {
+				t.Errorf("len(Buckets) = %d, want %d", len(result.Buckets), tc.wantBuckets)
+			}
+			if result.BucketCount != metricsHistogramBuckets {
+				t.Errorf("BucketCount = %d, want %d", result.BucketCount, metricsHistogramBuckets)
+			}
+			for _, seed := range seeds {
+				want := make([]int64, metricsHistogramBuckets)
+				for i, value := range seed.want {
+					want[i] = value
+				}
+				bucket := metricsBucketTime(now.Add(-seed.age), MetricsGranularityMinutely)
+				if got := result.Hist[bucket]; !slices.Equal(got, want) {
+					t.Errorf("Hist[%s] = %v, want %v", bucket, got, want)
+				}
+			}
+		})
+	}
 }
 
 func TestGetMetricsJobDetail_Sidekiq8_Hourly(t *testing.T) {
@@ -714,10 +780,6 @@ func TestGetMetricsJobDetail_Sidekiq8_Hourly(t *testing.T) {
 	}
 }
 
-func TestGetMetricsJobDetail_Sidekiq7_Minutely(t *testing.T) {
-	t.Skip("Skipped: Minutely granularity uses BITFIELD_RO (histogram data) not supported by miniredis")
-}
-
 func TestGetMetricsJobDetail_Sidekiq7_RecoversAfterCancelledDetection(t *testing.T) {
 	// BITFIELD_RO needs a real server. The helper starts a private Unix-socket
 	// Redis with persistence disabled; use a client with an empty version cache.
@@ -747,10 +809,6 @@ func TestGetMetricsJobDetail_Sidekiq7_RecoversAfterCancelledDetection(t *testing
 	if got := client.MetricsPeriodOrder(ctx); !slices.Equal(got, MetricsPeriodOrderSidekiq7) {
 		t.Errorf("recovered periods = %v, want %v", got, MetricsPeriodOrderSidekiq7)
 	}
-}
-
-func TestGetMetricsJobDetail_ZeroPeriod(t *testing.T) {
-	t.Skip("Skipped: Empty period defaults to 60 minutes (minutely) which uses BITFIELD_RO not supported by miniredis")
 }
 
 func TestGetMetricsJobDetail_NoData_Hourly(t *testing.T) {
