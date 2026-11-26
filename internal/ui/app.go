@@ -5,6 +5,8 @@ import (
 	"context"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
@@ -98,6 +100,9 @@ type App struct {
 	darkBackground          bool
 	sidekiq                 sidekiq.API
 	connectionError         error
+	actionError             string // Survives stats refreshes; see setActionError for dismissal.
+	actionErrorSeq          uint64 // Identifies the shown error so older timers cannot clear it.
+	actionErrorDismissable  bool   // Set once the minimum display time has passed.
 	dangerousActionsEnabled bool
 	devTracker              *devtools.Tracker
 	statsRequest            *requestctx.Controller
@@ -345,17 +350,25 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Handle connection errors from views
 		a.connectionError = msg.Err
+	case views.ActionErrorMsg:
+		cmds = append(cmds, a.setActionError(msg.Err))
 	case views.QueueActionResultMsg:
-		if msg.Err != nil {
-			a.connectionError = msg.Err
-		}
-		cmds = append(cmds, a.updateView(a.activeViewID(), msg))
+		cmds = append(cmds, a.setActionError(msg.Err), a.updateView(a.activeViewID(), msg))
 
 	case views.PeriodicActionResultMsg:
-		if msg.Err != nil {
-			a.connectionError = msg.Err
-		}
+		cmds = append(cmds, a.setActionError(msg.Err))
 		cmds = append(cmds, a.updateView(a.activeViewID(), msg))
+
+	case actionErrorDismissableMsg:
+		if msg.seq == a.actionErrorSeq {
+			a.actionErrorDismissable = true
+		}
+
+	case actionErrorExpiredMsg:
+		if msg.seq == a.actionErrorSeq {
+			a.actionError = ""
+			a.syncFooters()
+		}
 
 	case views.DashboardRedisInfoMsg:
 		cmds = append(cmds, a.updateView(viewDashboard, msg))
@@ -406,6 +419,12 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, a.popAndRefresh(viewBusy))
 
 	case tea.KeyPressMsg:
+		// After the minimum display time, any key acknowledges a failed action.
+		// The key still performs its usual work either way.
+		if a.actionErrorDismissable && a.actionError != "" {
+			a.actionError = ""
+			a.syncFooters()
+		}
 		if a.dialogs.HasDialogs() {
 			if key.Matches(msg, a.keys.QuitModal) {
 				return a, tea.Quit
@@ -587,6 +606,58 @@ func (a App) View() tea.View {
 	v.SetContent(fitRectangle(base, a.width, a.height))
 
 	return v
+}
+
+const (
+	// actionErrorMinVisible keeps a failed action readable while the user is
+	// already pressing keys; only later key presses dismiss it.
+	actionErrorMinVisible = 5 * time.Second
+	// actionErrorExpiry clears an unacknowledged failure on its own.
+	actionErrorExpiry = 30 * time.Second
+)
+
+type (
+	actionErrorDismissableMsg struct{ seq uint64 }
+	actionErrorExpiredMsg     struct{ seq uint64 }
+)
+
+// setActionError shows a failed mutation on the view's bottom border. Unlike
+// connection errors, stats refreshes do not clear it. It stays for at least
+// actionErrorMinVisible, then the next key press clears it, and it expires
+// after actionErrorExpiry. A new failure replaces the old one and restarts
+// both windows.
+func (a *App) setActionError(err error) tea.Cmd {
+	if err == nil || requestctx.IsCanceled(err) {
+		return nil
+	}
+	// Error strings start lowercase by Go convention; the label is a sentence.
+	message := strings.Join(strings.Fields(err.Error()), " ")
+	if r, size := utf8.DecodeRuneInString(message); size > 0 {
+		message = string(unicode.ToUpper(r)) + message[size:]
+	}
+	a.actionError = message
+	a.syncFooters()
+	a.actionErrorSeq++
+	a.actionErrorDismissable = false
+	seq := a.actionErrorSeq
+	return tea.Batch(
+		tea.Tick(actionErrorMinVisible, func(time.Time) tea.Msg { return actionErrorDismissableMsg{seq: seq} }),
+		tea.Tick(actionErrorExpiry, func(time.Time) tea.Msg { return actionErrorExpiredMsg{seq: seq} }),
+	)
+}
+
+// syncFooters gives every view the styled action error to inset into its
+// bottom border. Inactive views get it too, so navigation needs no extra sync.
+func (a *App) syncFooters() {
+	footer := ""
+	if a.actionError != "" {
+		footer = a.styles.ErrorTitle.Render(a.actionError)
+	}
+	for _, view := range a.viewRegistry {
+		if setter, ok := view.(views.FooterSetter); ok {
+			setter.SetFooter(footer)
+		}
+	}
 }
 
 func (a *App) updateDialogStack(msg tea.Msg) tea.Cmd {
@@ -1109,6 +1180,7 @@ func (a *App) applyStyles(styles theme.Styles) {
 	a.stackbar.SetStyles(stackbar.Styles{Bar: styles.StackBar, Item: styles.StackItem})
 	a.navbar.SetStyles(navbar.Styles{Bar: styles.NavBar, Key: styles.NavKey, Item: styles.NavItem, Quit: styles.NavQuit, Brand: styles.NavBrand})
 	a.errorPopup.SetStyles(errorpopup.Styles{Title: styles.ErrorTitle, Message: styles.ViewMuted, Border: styles.ErrorBorder})
+	a.syncFooters()
 	a.styleDialogs()
 }
 

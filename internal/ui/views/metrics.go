@@ -35,6 +35,7 @@ type metricsRow struct {
 
 // Metrics shows job execution metrics.
 type Metrics struct {
+	frameFooter
 	IntentScope
 	dialogs.Opener
 	requestctx.Scope
@@ -156,7 +157,7 @@ func (m *Metrics) View() string {
 	}
 
 	if !m.ready {
-		return renderStatusMessage("Metrics", "Loading...", m.styles, m.width, m.height)
+		return renderStatusMessage("Metrics", "Loading...", m.footer, m.styles, m.width, m.height)
 	}
 
 	meta := m.listMeta()
@@ -170,6 +171,7 @@ func (m *Metrics) View() string {
 		frame.WithMeta(meta),
 		frame.WithContent(content),
 		frame.WithPadding(1),
+		frame.WithFooter(m.footer),
 		frame.WithSize(m.width, m.height),
 		frame.WithMinHeight(5),
 		frame.WithFocused(true),

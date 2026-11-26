@@ -40,6 +40,7 @@ type queuesListDataMsg struct {
 
 // QueuesList shows all Sidekiq queues in a table.
 type QueuesList struct {
+	frameFooter
 	IntentScope
 	dialogs.Opener
 	requestctx.Scope
@@ -476,6 +477,7 @@ func (q *QueuesList) renderQueuesBox() string {
 		frame.WithTitlePadding(0),
 		frame.WithMeta(meta),
 		frame.WithContent(content),
+		frame.WithFooter(q.footer),
 		frame.WithPadding(1),
 		frame.WithSize(q.width, boxHeight),
 		frame.WithMinHeight(5),
@@ -485,5 +487,5 @@ func (q *QueuesList) renderQueuesBox() string {
 }
 
 func (q *QueuesList) renderMessage(msg string) string {
-	return renderStatusMessage("Select queue", msg, q.styles, q.width, q.height)
+	return renderStatusMessage("Select queue", msg, q.footer, q.styles, q.width, q.height)
 }

@@ -17,6 +17,7 @@ import (
 )
 
 type detailListView struct {
+	frameFooter
 	IntentScope
 	dialogs.Opener
 	requestctx.Scope
@@ -187,7 +188,7 @@ func (s detailListView) renderLoadingMessage() string {
 	if s.lazy.Loading() {
 		message = s.lazy.LoadingIndicator() + " " + message
 	}
-	return renderStatusMessage(s.title, message, s.styles, s.width, s.height)
+	return renderStatusMessage(s.title, message, s.footer, s.styles, s.width, s.height)
 }
 
 func (s detailListView) rowsMeta(rowCount int) string {
@@ -217,6 +218,7 @@ func (s detailListView) renderBox(title string, rowCount int) string {
 		frame.WithTitlePadding(0),
 		frame.WithMeta(s.rowsMeta(rowCount)),
 		frame.WithContent(s.lazy.View()),
+		frame.WithFooter(s.footer),
 		frame.WithPadding(1),
 		frame.WithSize(s.width, s.height),
 		frame.WithMinHeight(5),

@@ -77,6 +77,9 @@ func (a *periodicActions) confirm(parent context.Context, msg confirmdialog.Acti
 		} else {
 			err = client.SetPeriodicJobPaused(ctx, action.job, action.verb == "pause")
 		}
+		if err != nil {
+			err = fmt.Errorf("%s periodic job %s failed: %w", action.verb, action.job.LID, err)
+		}
 		return PeriodicActionResultMsg{owner: a, generation: generation, Err: err}
 	}
 }

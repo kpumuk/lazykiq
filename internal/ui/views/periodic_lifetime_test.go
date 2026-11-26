@@ -3,6 +3,7 @@ package views
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -97,8 +98,12 @@ func TestPeriodicMutationLifetimes(t *testing.T) {
 					}
 					select {
 					case msg := <-done:
-						if !errors.Is(msg.(PeriodicActionResultMsg).Err, context.Canceled) {
+						err := msg.(PeriodicActionResultMsg).Err
+						if !errors.Is(err, context.Canceled) {
 							t.Fatal("mutation did not return cancellation")
+						}
+						if want := " periodic job " + periodicFixture().job.LID + " failed: "; !strings.Contains(err.Error(), want) {
+							t.Fatalf("error %q does not name the action and loop", err)
 						}
 					case <-time.After(5 * time.Second):
 						t.Fatal("mutation did not finish")

@@ -30,6 +30,7 @@ type busyDataMsg struct {
 
 // Busy shows active workers/processes.
 type Busy struct {
+	frameFooter
 	IntentScope
 	dialogs.Opener
 	requestctx.Scope
@@ -596,6 +597,7 @@ func (b *Busy) renderJobsBox() string {
 		frame.WithTitlePadding(0),
 		frame.WithMeta(meta),
 		frame.WithContent(content),
+		frame.WithFooter(b.footer),
 		frame.WithPadding(1),
 		frame.WithSize(b.width, boxHeight),
 		frame.WithMinHeight(5),
@@ -605,7 +607,7 @@ func (b *Busy) renderJobsBox() string {
 }
 
 func (b *Busy) renderMessage(msg string) string {
-	return renderStatusMessage("Active Jobs", msg, b.styles, b.width, b.height)
+	return renderStatusMessage("Active Jobs", msg, b.footer, b.styles, b.width, b.height)
 }
 
 func formatPID(pid int) string {

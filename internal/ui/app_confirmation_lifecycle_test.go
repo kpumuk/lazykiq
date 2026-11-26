@@ -175,8 +175,8 @@ func TestAppSortedConfirmationKeepsEntrySnapshot(t *testing.T) {
 			}
 			mutation := dialogStep(&app, confirmationReply(dialogStep(&app, confirmationKey('y'))))
 			dialogStep(&app, confirmationReply(mutation))
-			if app.connectionError == nil || !strings.Contains(app.connectionError.Error(), "job not found") {
-				t.Fatalf("replaced source should fail without using the replacement: %v", app.connectionError)
+			if app.connectionError != nil || !strings.HasSuffix(app.actionError, " failed for JID same-jid: job not found") {
+				t.Fatalf("replaced source should fail without using the replacement: %q, %v", app.actionError, app.connectionError)
 			}
 			if client.Redis().ZScore(t.Context(), tc.set, replacement).Err() != nil || mr.Exists("queue:default") || mr.Exists("queue:other") {
 				t.Fatal("confirmation mutated a different entry with the same JID")

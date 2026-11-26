@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
@@ -14,6 +16,7 @@ import (
 
 	"github.com/kpumuk/lazykiq/internal/devtools"
 	"github.com/kpumuk/lazykiq/internal/sidekiq"
+	"github.com/kpumuk/lazykiq/internal/ui/components/stats"
 	"github.com/kpumuk/lazykiq/internal/ui/dialogs"
 	devtoolsdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/devtools"
 	filterdialog "github.com/kpumuk/lazykiq/internal/ui/dialogs/filter"
@@ -185,11 +188,11 @@ func TestQueueMutationErrorSurvivesNavigation(t *testing.T) {
 		dialogs:      stubDialogs{},
 	}
 	app.setActiveView(viewBusy)
-	want := errors.New("queue pause failed after navigation")
+	want := errors.New("Queue pause failed after navigation")
 	updated, _ := app.Update(views.QueueActionResultMsg{Err: want})
 	got := updated.(App)
-	if !errors.Is(got.connectionError, want) {
-		t.Fatalf("connectionError = %v; want %v", got.connectionError, want)
+	if got.actionError != want.Error() {
+		t.Fatalf("actionError = %q; want %v", got.actionError, want)
 	}
 	if queues.cancelations == 0 {
 		t.Fatal("test did not hide original view")
@@ -315,6 +318,136 @@ func TestPushViewCancelsPreviousActiveViewRequests(t *testing.T) {
 	}
 	if processes.cancelations != 0 {
 		t.Fatalf("processes cancelations = %d, want 0", processes.cancelations)
+	}
+}
+
+func TestAppActionErrorSurvivesStatsRefresh(t *testing.T) {
+	failure := errors.New("retry job failed: job not found")
+	for name, msg := range map[string]tea.Msg{
+		"sorted jobs": views.ActionErrorMsg{Err: failure},
+		"queues":      views.QueueActionResultMsg{Err: failure},
+		"periodic":    views.PeriodicActionResultMsg{Err: failure},
+	} {
+		t.Run(name, func(t *testing.T) {
+			a := New(&ownershipClient{}, "", false, nil)
+			a.setActiveView(viewRetries)
+			var app tea.Model = a
+			app, _ = app.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
+			app, _ = app.Update(msg)
+			app, _ = app.Update(stats.UpdateMsg{})
+			output := ansi.Strip(app.(App).View().Content)
+			if !strings.Contains(output, "╰─ Retry job failed: job not found ──") || strings.Contains(output, "Connection Error") {
+				t.Fatalf("after stats refresh:\n%s", output)
+			}
+		})
+	}
+}
+
+// actionErrorTimers runs the timer commands returned with an action error and
+// reports when each fired, relative to the failure. Call it inside a synctest
+// bubble so the timers fire on the fake clock.
+func actionErrorTimers(t *testing.T, cmd tea.Cmd, start time.Time) map[time.Duration]tea.Msg {
+	t.Helper()
+	fired := map[time.Duration]tea.Msg{}
+	var run func(tea.Cmd)
+	run = func(cmd tea.Cmd) {
+		if cmd == nil {
+			return
+		}
+		switch msg := cmd().(type) {
+		case tea.BatchMsg:
+			for _, c := range msg {
+				run(c)
+			}
+		case actionErrorDismissableMsg, actionErrorExpiredMsg:
+			fired[time.Since(start)] = msg
+		}
+	}
+	run(cmd)
+	return fired
+}
+
+func TestAppActionErrorDismissal(t *testing.T) {
+	hasError := func(m tea.Model, text string) bool {
+		return strings.Contains(ansi.Strip(m.(App).View().Content), text)
+	}
+	for name, tc := range map[string]struct {
+		run func(t *testing.T, app tea.Model, dismissable, expired tea.Msg) tea.Model
+	}{
+		"key press within minimum keeps error and still navigates": {func(t *testing.T, app tea.Model, _, _ tea.Msg) tea.Model {
+			app, _ = app.Update(tea.KeyPressMsg{Code: '5', Text: "5"})
+			if app.(App).activeViewID() != viewScheduled {
+				t.Fatal("key press lost its usual action")
+			}
+			if !hasError(app, "First failed") {
+				t.Fatal("key press within minimum cleared the error")
+			}
+			return app
+		}},
+		"key press after minimum clears error": {func(t *testing.T, app tea.Model, dismissable, _ tea.Msg) tea.Model {
+			app, _ = app.Update(dismissable)
+			if !hasError(app, "First failed") {
+				t.Fatal("minimum timer cleared the error by itself")
+			}
+			app, _ = app.Update(tea.KeyPressMsg{Code: '5', Text: "5"})
+			if app.(App).activeViewID() != viewScheduled || hasError(app, "First failed") {
+				t.Fatal("key press after minimum did not dismiss the error and navigate")
+			}
+			return app
+		}},
+		"expiry clears error without key press": {func(t *testing.T, app tea.Model, _, expired tea.Msg) tea.Model {
+			app, _ = app.Update(expired)
+			if hasError(app, "First failed") {
+				t.Fatal("expiry did not clear the error")
+			}
+			return app
+		}},
+		"timers from replaced error do not affect new one": {func(t *testing.T, app tea.Model, dismissable, expired tea.Msg) tea.Model {
+			app, _ = app.Update(views.ActionErrorMsg{Err: errors.New("second failed")})
+			app, _ = app.Update(dismissable)
+			app, _ = app.Update(expired)
+			app, _ = app.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+			if !hasError(app, "Second failed") || hasError(app, "First failed") {
+				t.Fatal("stale timer cleared or kept the wrong error")
+			}
+			return app
+		}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				a := New(&ownershipClient{}, "", false, nil)
+				a.setActiveView(viewRetries)
+				var app tea.Model = a
+				app, _ = app.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
+				start := time.Now()
+				app, cmd := app.Update(views.ActionErrorMsg{Err: errors.New("first failed")})
+				fired := actionErrorTimers(t, cmd, start)
+				dismissable, expired := fired[actionErrorMinVisible], fired[actionErrorExpiry]
+				if _, ok := dismissable.(actionErrorDismissableMsg); !ok {
+					t.Fatalf("timers fired at %v, want minimum at %v", fired, actionErrorMinVisible)
+				}
+				if _, ok := expired.(actionErrorExpiredMsg); !ok {
+					t.Fatalf("timers fired at %v, want expiry at %v", fired, actionErrorExpiry)
+				}
+				app, _ = app.Update(stats.UpdateMsg{})
+				tc.run(t, app, dismissable, expired)
+			})
+		})
+	}
+}
+
+func TestAppStatsRefreshClearsConnectionError(t *testing.T) {
+	a := New(&ownershipClient{}, "", false, nil)
+	a.setActiveView(viewRetries)
+	var app tea.Model = a
+	app, _ = app.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
+	app, _ = app.Update(views.ConnectionErrorMsg{Err: errors.New("dial tcp: connection refused")})
+	if output := ansi.Strip(app.(App).View().Content); !strings.Contains(output, "Connection Error") {
+		t.Fatalf("connection error not shown:\n%s", output)
+	}
+	app, _ = app.Update(stats.UpdateMsg{})
+	if output := ansi.Strip(app.(App).View().Content); strings.Contains(output, "Connection Error") || strings.Contains(output, "connection refused") {
+		t.Fatalf("stats refresh kept connection error:\n%s", output)
 	}
 }
 

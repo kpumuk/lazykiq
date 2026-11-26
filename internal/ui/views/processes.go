@@ -28,6 +28,7 @@ type processesListDataMsg struct {
 
 // ProcessesList shows all Sidekiq processes in a table.
 type ProcessesList struct {
+	frameFooter
 	IntentScope
 	dialogs.Opener
 	requestctx.Scope
@@ -412,7 +413,7 @@ func (p *ProcessesList) pauseProcessCmd(identity string) tea.Cmd {
 	ctx := devtools.WithTracker(p.Context(), "processes.pauseProcessCmd")
 	return func() tea.Msg {
 		if err := p.client.NewProcess(identity).Pause(ctx); err != nil {
-			return ConnectionErrorMsg{Err: err}
+			return ActionErrorMsg{Err: fmt.Errorf("pause process %s failed: %w", identity, err)}
 		}
 		return RefreshMsg{}
 	}
@@ -422,7 +423,7 @@ func (p *ProcessesList) stopProcessCmd(identity string) tea.Cmd {
 	ctx := devtools.WithTracker(p.Context(), "processes.stopProcessCmd")
 	return func() tea.Msg {
 		if err := p.client.NewProcess(identity).Stop(ctx); err != nil {
-			return ConnectionErrorMsg{Err: err}
+			return ActionErrorMsg{Err: fmt.Errorf("stop process %s failed: %w", identity, err)}
 		}
 		return RefreshMsg{}
 	}
@@ -500,6 +501,7 @@ func (p *ProcessesList) renderProcessesBox() string {
 		frame.WithFilter(p.filter),
 		frame.WithTitlePadding(0),
 		frame.WithContent(content),
+		frame.WithFooter(p.footer),
 		frame.WithPadding(1),
 		frame.WithSize(p.width, boxHeight),
 		frame.WithMinHeight(5),
@@ -509,5 +511,5 @@ func (p *ProcessesList) renderProcessesBox() string {
 }
 
 func (p *ProcessesList) renderMessage(msg string) string {
-	return renderStatusMessage("Select process", msg, p.styles, p.width, p.height)
+	return renderStatusMessage("Select process", msg, p.footer, p.styles, p.width, p.height)
 }

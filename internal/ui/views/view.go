@@ -58,6 +58,22 @@ type ConnectionErrorMsg struct {
 	RequestID int // Nonzero IDs must still belong to the active view at delivery.
 }
 
+// ActionErrorMsg reports a failed user-confirmed mutation, such as retrying a
+// job that Sidekiq already moved. Wrap Err with the action and its target. The
+// app insets it into the view's bottom border for at least five seconds, then
+// clears it on the next key press or after 30 seconds; stats refreshes do not
+// clear it.
+type ActionErrorMsg struct {
+	Err error
+}
+
+// FooterSetter receives a styled label, such as a failed action, to inset into
+// the bottom border of the view's bottom-most frame. An empty footer clears it.
+// When frames sit side by side, the view picks the one that carries it.
+type FooterSetter interface {
+	SetFooter(footer string)
+}
+
 // View defines the interface that all views must implement.
 type View interface {
 	// Init returns an initial command for the view
