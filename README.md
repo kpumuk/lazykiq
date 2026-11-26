@@ -76,6 +76,8 @@ Run all CI tasks with:
 mise run ci
 ```
 
+A few tests and benchmarks start a private `redis-server` for commands that miniredis does not support. Install Redis to run them; without it they skip locally, and the tests fail when the `CI` environment variable is set.
+
 Build the app locally with:
 
 ```bash
