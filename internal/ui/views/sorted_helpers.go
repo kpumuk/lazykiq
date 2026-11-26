@@ -11,12 +11,8 @@ import (
 
 type sortedEntriesClient interface {
 	GetSortedEntries(context.Context, sidekiq.SortedSetKind, int, int) ([]*sidekiq.SortedEntry, int64, error)
-	ScanSortedEntries(context.Context, sidekiq.SortedSetKind, string) ([]*sidekiq.SortedEntry, error)
-	GetSortedEntryBounds(context.Context, sidekiq.SortedSetKind) (*sidekiq.SortedEntry, *sidekiq.SortedEntry, error)
-}
-
-type sortedEntriesWindowScanner interface {
 	ScanSortedEntriesWindow(context.Context, sidekiq.SortedSetKind, string, int, int) (sidekiq.SortedEntriesWindow, error)
+	GetSortedEntryBounds(context.Context, sidekiq.SortedSetKind) (*sidekiq.SortedEntry, *sidekiq.SortedEntry, error)
 }
 
 type sortedWindowConfig struct {
@@ -140,20 +136,8 @@ func fetchFilteredSortedWindow(
 	cfg sortedWindowConfig,
 	windowSize int,
 ) (sortedWindowResult, error) {
-	if _, ok := cfg.client.(sortedEntriesWindowScanner); ok {
-		return fetchFilteredSortedWindowPage(ctx, cfg, windowSize)
-	}
-	return fetchFilteredSortedWindowFallback(ctx, cfg, windowSize)
-}
-
-func fetchFilteredSortedWindowPage(
-	ctx context.Context,
-	cfg sortedWindowConfig,
-	windowSize int,
-) (sortedWindowResult, error) {
-	scanner := cfg.client.(sortedEntriesWindowScanner)
 	windowStart := max(cfg.windowStart, 0)
-	window, err := scanner.ScanSortedEntriesWindow(ctx, cfg.kind, cfg.filter, windowStart, windowSize)
+	window, err := cfg.client.ScanSortedEntriesWindow(ctx, cfg.kind, cfg.filter, windowStart, windowSize)
 	if err != nil {
 		return sortedWindowResult{}, err
 	}
@@ -164,7 +148,7 @@ func fetchFilteredSortedWindowPage(
 	maxStart := max(int(window.Total)-windowSize, 0)
 	if windowStart > maxStart {
 		windowStart = maxStart
-		window, err = scanner.ScanSortedEntriesWindow(ctx, cfg.kind, cfg.filter, windowStart, windowSize)
+		window, err = cfg.client.ScanSortedEntriesWindow(ctx, cfg.kind, cfg.filter, windowStart, windowSize)
 		if err != nil {
 			return sortedWindowResult{}, err
 		}
@@ -177,55 +161,4 @@ func fetchFilteredSortedWindowPage(
 		firstEntry:  window.FirstEntry,
 		lastEntry:   window.LastEntry,
 	}, nil
-}
-
-func fetchFilteredSortedWindowFallback(
-	ctx context.Context,
-	cfg sortedWindowConfig,
-	windowSize int,
-) (sortedWindowResult, error) {
-	jobs, err := cfg.client.ScanSortedEntries(ctx, cfg.kind, cfg.filter)
-	if err != nil {
-		return sortedWindowResult{}, err
-	}
-
-	total := int64(len(jobs))
-	if total <= 0 {
-		return sortedWindowResult{total: 0}, nil
-	}
-
-	windowStart := max(cfg.windowStart, 0)
-	maxStart := max(int(total)-windowSize, 0)
-	if windowStart > maxStart {
-		windowStart = maxStart
-	}
-
-	firstEntry, lastEntry := sortedEntryBounds(jobs)
-	end := min(windowStart+windowSize, len(jobs))
-	return sortedWindowResult{
-		jobs:        jobs[windowStart:end],
-		total:       total,
-		windowStart: windowStart,
-		firstEntry:  firstEntry,
-		lastEntry:   lastEntry,
-	}, nil
-}
-
-func sortedEntryBounds(entries []*sidekiq.SortedEntry) (*sidekiq.SortedEntry, *sidekiq.SortedEntry) {
-	if len(entries) == 0 {
-		return nil, nil
-	}
-
-	minEntry := entries[0]
-	maxEntry := entries[0]
-	for _, entry := range entries[1:] {
-		if entry.Score < minEntry.Score {
-			minEntry = entry
-		}
-		if entry.Score > maxEntry.Score {
-			maxEntry = entry
-		}
-	}
-
-	return minEntry, maxEntry
 }

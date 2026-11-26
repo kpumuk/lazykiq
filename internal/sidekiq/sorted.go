@@ -144,14 +144,6 @@ func (c *Client) getSortedSetJobs(ctx context.Context, key string, start, count 
 	return entries, size, nil
 }
 
-func (c *Client) scanSortedSetJobs(ctx context.Context, key, match string, reverse bool) ([]*SortedEntry, error) {
-	window, err := c.scanSortedSetWindow(ctx, key, match, 0, -1, reverse)
-	if err != nil {
-		return nil, err
-	}
-	return window.Entries, nil
-}
-
 func (c *Client) scanSortedSetWindow(
 	ctx context.Context,
 	key, match string,
@@ -267,15 +259,6 @@ func (c *Client) GetSortedEntries(
 		return nil, 0, err
 	}
 	return c.getSortedSetJobs(ctx, spec.key, start, count, spec.reverse)
-}
-
-// ScanSortedEntries scans sorted-set jobs using a match pattern (no paging).
-func (c *Client) ScanSortedEntries(ctx context.Context, kind SortedSetKind, match string) ([]*SortedEntry, error) {
-	spec, err := sortedSetSpecFor(kind)
-	if err != nil {
-		return nil, err
-	}
-	return c.scanSortedSetJobs(ctx, spec.key, match, spec.reverse)
 }
 
 // ScanSortedEntriesWindow scans sorted-set jobs using a match pattern and returns one window.

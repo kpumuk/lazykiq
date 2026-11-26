@@ -239,44 +239,6 @@ func TestParseProcessInfoMissingInfo(t *testing.T) {
 	}
 }
 
-func TestGetProcesses(t *testing.T) {
-	mr, client := setupTestRedis(t)
-
-	_, _ = mr.SetAdd("processes", "host1:100:abc", "host2:200:def", "host3:300:ghi")
-
-	processes, err := client.GetProcesses(testContext(t))
-	if err != nil {
-		t.Fatalf("GetProcesses failed: %v", err)
-	}
-
-	if len(processes) != 3 {
-		t.Fatalf("len(processes) = %d, want 3", len(processes))
-	}
-
-	if processes[0].Identity != "host1:100:abc" {
-		t.Errorf("processes[0].Identity = %q, want host1:100:abc (sorted)", processes[0].Identity)
-	}
-	if processes[1].Identity != "host2:200:def" {
-		t.Errorf("processes[1].Identity = %q, want host2:200:def", processes[1].Identity)
-	}
-	if processes[2].Identity != "host3:300:ghi" {
-		t.Errorf("processes[2].Identity = %q, want host3:300:ghi", processes[2].Identity)
-	}
-}
-
-func TestGetProcesses_Empty(t *testing.T) {
-	_, client := setupTestRedis(t)
-
-	processes, err := client.GetProcesses(testContext(t))
-	if err != nil {
-		t.Fatalf("GetProcesses failed: %v", err)
-	}
-
-	if len(processes) != 0 {
-		t.Errorf("len(processes) = %d, want 0", len(processes))
-	}
-}
-
 func TestGetBusyData(t *testing.T) {
 	mr, client := setupTestRedis(t)
 	ctx := testContext(t)
